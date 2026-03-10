@@ -398,6 +398,7 @@ end
 - `[oh-my-robot] link contract check failed`：`tar_os`/`tar_sync` 的关键符号未以强符号形态提供；应回查模块构建输入与依赖传播，不要在应用目标补直连依赖。
 
 ## 13. 变更记录
+- 2026-03-10：并行开发策略收敛为“`oh-my-robot` 使用仓库外 worktree 池”；Git / worktree 细则统一以 `oh-my-robot/docs/process/git_collaboration_spec.md` 为准。
 - 2026-02-19：LTO 在 debug/release 统一纳入策略控制；收敛为“gnu-rm 按版本门槛启用（>=14.2.0）、armclang 默认开启”，并在 `oh_my_robot.context` 按工具链显式注入 LTO 参数。
 - 2026-02-19：根 `xmake.lua` 使用官方策略 `set_policy("build.optimization.lto", false)` 作为统一入口，具体目标开关由 `oh_my_robot.context` 依据工具链动态设置，避免模式与工具链行为分叉。
 - 2026-02-18：将 `tar_oh_my_robot`、`tar_osal` 收敛为聚合目标（`phony`），并新增二进制构建后的 OSAL/SYNC 关键符号链接契约校验。

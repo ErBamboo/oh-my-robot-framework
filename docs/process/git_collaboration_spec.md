@@ -47,6 +47,20 @@ git remote -v
 
 3. Fork 关系的强制校验以第 `4.1.2` 节为准。
 
+### 3.4 外部 Worktree 并行开发（默认）
+
+1. 日常开发统一使用仓库根外部的 worktree，避免污染当前主 checkout 与 IDE / 构建扫描范围。
+2. 推荐目录为当前仓库同级的 `../worktrees/<task>/`。
+3. 一个任务只对应一个开发分支和一个 worktree；worktree 目录名使用去斜杠形式，例如 `feature-15-osal-mutex/`。
+
+推荐命令：
+
+```bash
+git fetch upstream --prune
+git worktree add ../worktrees/feature-15-osal-mutex -b feature/15-osal-mutex upstream/integration
+cd ../worktrees/feature-15-osal-mutex
+```
+
 ## 4. 分支同步与变基（Rebase）标准规范
 
 ### 4.1 提交前预检（Fork 与上游落后检查）
@@ -155,19 +169,23 @@ git push origin <当前特性分支名> --force-with-lease
 
 ### 阶段二：本地环境起步（CLI）
 
-1. 严禁直接在本地已有分支上开工，必须基于 `upstream/integration` 切出专属分支。
+1. 严禁直接在当前主 checkout 或本地已有开发分支上开工；必须基于 `upstream/integration` 切出专属分支，并使用仓库外部 worktree 承接开发。
 2. 分支命名格式：`feature/<issue编号>-<简短英文描述>`，必须包含 Issue 编号。
 3. 缺陷修复任务的 `fix/*` 与 `hotfix/*` 命名和流转规则，见第 6.1 节。
 
 ```bash
 # 1) 从官方仓库同步最新 integration
-git fetch upstream
+git fetch upstream --prune
 
-# 2) 基于官方 integration 切出任务分支
-git checkout -b feature/15-osal-mutex upstream/integration
+# 2) 基于官方 integration 创建外部 worktree 与任务分支
+# 示例：../worktrees/feature-15-osal-mutex
+git worktree add ../worktrees/feature-15-osal-mutex -b feature/15-osal-mutex upstream/integration
+
+# 3) 进入任务 worktree
+cd ../worktrees/feature-15-osal-mutex
 ```
 
-### 阶段三：开发与原子提交（本地分支）
+### 阶段三：开发与原子提交（任务 worktree）
 
 1. 在专属 `feature/*` 分支开发，遵循 `.clang-format` 与 `.clang-tidy` 规范。
 2. 过程推演文档按文档治理规范放入：
@@ -323,3 +341,7 @@ xmake check clang.tidy --fix
 xmake check clang.tidy --fix_errors
 xmake check clang.tidy --fix_notes
 ```
+
+## 13. 变更记录
+
+- 2026-03-10：新增外部 worktree 并行开发规范；`oh-my-robot` 日常开发统一转为仓库外 worktree 池。
