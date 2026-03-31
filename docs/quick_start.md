@@ -144,11 +144,11 @@ target("robot_project")
     set_filename("robot_project.elf")
     add_deps("tar_oh_my_robot")
     add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")
-    add_files(path.join("oh-my-robot", "samples", "motor", "p1010b", "main.c")) -- 示例文件
+    add_files(path.join("app", "main.c")) -- 项目入口文件
 target_end()
 ```
 
-### 2.3 每行都在做什么（新手解释）
+### 2.3 每行都在做什么
 - `set_project("oh-my-robot")`：设置项目名。
 - `set_xmakever("3.0.7")`：声明最低 XMake 版本。
 - `add_rules("mode.debug", "mode.release")`：声明 Debug/Release 两种模式。
@@ -160,7 +160,11 @@ target_end()
 - `set_filename("robot_project.elf")`：输出文件名（供调试配置中的 `executable` 路径使用）。
 - `add_deps("tar_oh_my_robot")`：依赖 OM 的聚合静态库目标。
 - `add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")`：注入上下文、板级资源并生成镜像格式。
-- `add_files(path.join(...))`：指定入口源文件；当前示例使用 `oh-my-robot/samples/motor/p1010b/main.c`。
+- `add_files(path.join(...))`：指定项目入口源文件；建议放在项目仓库自己的 `app/main.c`。
+
+补充说明：
+- `oh-my-robot` 不再推荐把框架样例文件直接当作项目入口长期引用。
+- 业务样例与机器人机构逻辑应放在项目仓库或独立领域仓库中。
 
 ### 2.4 完成后验证
 ```powershell
@@ -290,7 +294,7 @@ xmake f -c --toolchain=armclang -m debug --semihosting=off
 xmake flash --native_output=true
 ```
 
-### 3.6 `flash.jlink.target` 到底要填什么（高频混淆）
+### 3.6 `flash.jlink.target` 到底要填什么
 - `flash.jlink.target` 填的是 **XMake 目标名**，不是文件名。
 - 在本项目里，它应当与 `xmake.lua` 里的 `target("robot_project")` 保持一致。
 - 它不等于 `set_filename("robot_project.elf")` 里的文件名。
@@ -357,7 +361,7 @@ xmake flash --native_output=true
 }
 ```
 
-### 4.4 关键参数怎么填（新手版）
+### 4.4 关键参数怎么填
 | 参数 | 作用 | 你通常需要改什么 |
 | --- | --- | --- |
 | `name` | 调试配置显示名 | 建议保留，便于区分 gcc/armclang |

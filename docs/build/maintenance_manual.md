@@ -68,7 +68,7 @@ graph TD
   tar_oh_my_robot --> tar_awcore
   tar_oh_my_robot --> tar_awalgo
   tar_oh_my_robot --> tar_awdrivers
-  tar_oh_my_robot --> tar_awsystems
+  tar_oh_my_robot --> tar_awasync
   tar_oh_my_robot --> tar_bsp
   tar_oh_my_robot --> tar_osal
   tar_oh_my_robot --> tar_sync
@@ -194,6 +194,7 @@ flowchart LR
 ### 8.8 OSAL/SYNC 聚合边界与链接契约约束
 当前实现（必须保持）：
 - `tar_oh_my_robot` 与 `tar_osal` 使用聚合目标（`phony`），不直接产出静态库。
+- `tar_oh_my_robot` 仅传播框架底座能力，不得继续吸纳 `systems` 或其他业务层目标。
 - 应用目标只依赖 `tar_oh_my_robot`，禁止直连 `tar_os`、`tar_sync`。
 - `tar_osal -> tar_os` 采用 `public` 依赖传播，确保链路闭包稳定。
 
@@ -404,6 +405,7 @@ end
 
 ## 13. 变更记录
 - 2026-03-26：preset 解析链路收敛为“只读取项目根 `om_preset.lua`”；`xmake init_workspace` 会在项目壳中创建本地 `oh-my-robot` 目录链接/junction，并自动落一份项目级 `om_preset.lua` 模板；新增 `--preset=<path>` 后，可直接把指定 preset 源文件复制到项目壳根目录；`docs/process/git_collaboration_spec.md` 已补充“外部 worktree 开发 + 外层项目根独立构建”的推荐用法，`quick_start.md` 收回到项目根首次构建口径。
+- 2026-03-29：`tar_oh_my_robot` 正式收敛为“底座聚合目标”，移除 `tar_awsystems` 传播；机器人业务子系统改由外部领域仓库承载。
 - 2026-02-19：LTO 在 debug/release 统一纳入策略控制；收敛为“gnu-rm 按版本门槛启用（>=14.2.0）、armclang 默认开启”，并在 `oh_my_robot.context` 按工具链显式注入 LTO 参数。
 - 2026-02-19：根 `xmake.lua` 使用官方策略 `set_policy("build.optimization.lto", false)` 作为统一入口，具体目标开关由 `oh_my_robot.context` 依据工具链动态设置，避免模式与工具链行为分叉。
 - 2026-02-18：将 `tar_oh_my_robot`、`tar_osal` 收敛为聚合目标（`phony`），并新增二进制构建后的 OSAL/SYNC 关键符号链接契约校验。

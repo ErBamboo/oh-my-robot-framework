@@ -1,8 +1,11 @@
-﻿# Oh My Robot
-A universal embedded development framework specifically designed for robots
+# Oh My Robot
+A cross-project embedded framework for platform, OS, and device abstraction
 
 ## Documentation
 - Quick Start: [`docs/quick_start.md`](docs/quick_start.md)
+
+## Scope
+- `oh-my-robot` 只承载跨项目可复用的底座能力：`core / osal / sync / async / services / drivers / bsp / build`。
 
 ---
 
@@ -18,4 +21,3 @@ A universal embedded development framework specifically designed for robots
 [`docs/process/document_governance_spec.md`](docs/process/document_governance_spec.md)
 
 ---
-

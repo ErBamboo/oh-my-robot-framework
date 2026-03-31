@@ -409,6 +409,7 @@ xmake clean
 当前实现约束：
 - `tar_oh_my_robot` 与 `tar_osal` 是“聚合目标”（`phony`），只负责依赖传播，不直接产出静态库文件。
 - 真实代码产物由 `tar_os`、`tar_sync` 等模块静态库承担。
+- `tar_oh_my_robot` 只聚合底座层能力，不包含任何机器人业务子系统或领域仓库目标。
 - 应用目标只依赖 `tar_oh_my_robot`，不直连 OSAL/SYNC 实现层目标。
 
 为什么这样设计：

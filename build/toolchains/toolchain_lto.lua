@@ -9,13 +9,12 @@ local MIN_GNURM_LTO_VERSION = {
 }
 
 --- gnu-rm 在 safe 范围下默认允许开启 LTO 的目标
---- 目标选择原则：优先核心业务库与最终 binary，规避 HAL/RTOS 大体量对象导致的不稳定行为。
+--- 目标选择原则：优先核心基础库与最终 binary，规避 HAL/RTOS 大体量对象导致的不稳定行为。
 local GNURM_SAFE_TARGETS = {
     robot_project = true,
     tar_awcore = true,
     tar_awalgo = true,
     tar_awdrivers = true,
-    tar_awsystems = true,
     tar_sync = true,
 }
 

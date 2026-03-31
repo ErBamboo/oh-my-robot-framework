@@ -1289,9 +1289,14 @@
 
 **备注**：当前仅有占位头文件，未声明服务层对外 API。
 
-## 9. systems（系统/业务子系统层）
+## 9. 外部领域层（仓库外，非正式框架层）
 
-### 主要模块
+### 现状结论
+- `oh-my-robot` 仓库内已不再保留 `lib/systems/` 目录下的任何文件。
+- 机器人机构与业务模块已迁移到独立领域仓库（例如 `omr-robotics`），不再作为框架内层存在。
+- `tar_oh_my_robot` 不再传播任何领域层目标或头文件。
+
+### 主要模块（已迁出首批目录语义）
 - `arm`
 - `chassis`
 - `gimbal`
@@ -1299,40 +1304,14 @@
 - `supercap`
 
 ### 入口文件
-- [`oh-my-robot/lib/systems/include/systems/systems.h`](../../lib/systems/include/systems/systems.h)
-- [`oh-my-robot/lib/systems/include/systems/supercap/supercap.h`](../../lib/systems/include/systems/supercap/supercap.h)
+- 不适用；应查看独立领域仓库的公开入口。
 
-### 对外 API 列表
-#### [`oh-my-robot/lib/systems/include/systems/supercap/supercap.h`](../../lib/systems/include/systems/supercap/supercap.h)
-- 外部宏
-  - 无
-- 内部宏
-  - `__OM_SUPERCAP_H__`
-- 外部类型
-  - 无
-- 内部类型
-  - 无
-- 外部函数
-  - 无
-- 内部函数
-  - 无
-
-#### [`oh-my-robot/lib/systems/include/systems/systems.h`](../../lib/systems/include/systems/systems.h)
-- 外部宏
-  - 无
-- 内部宏
-  - `__OM_SYSTEMS_H__`
-- 外部类型
-  - 无
-- 内部类型
-  - 无
-- 外部函数
-  - 无
-- 内部函数
-  - 无
+### 对外 API 判定
+- 当前不存在 `oh-my-robot` 内部的 `systems` 公共 API。
+- 新增项目应直接依赖独立领域仓库的公开入口。
 
 ### 依赖/调用关系摘要
 - 依赖（基于 `#include`）
-  - 无
+  - 不适用
 - 调用（基于 `.c` 对公开 API 的显式调用）
-  - 无或不适用
+  - 不适用
