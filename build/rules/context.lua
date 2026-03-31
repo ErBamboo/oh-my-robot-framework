@@ -42,7 +42,8 @@ rule("oh_my_robot.context")
             toolchain_lib.add_target_flags(target, "cflags", lto_plan.cflags, false)
             toolchain_lib.add_target_flags(target, "cxflags", lto_plan.cxflags, false)
             if target:kind() == "binary" then
-                toolchain_lib.add_target_flags(target, "ldflags", lto_plan.ldflags, false)
+                -- `--lto` 会被 XMake 的自动 flag 检查忽略，链接阶段必须强制注入。
+                toolchain_lib.add_target_flags(target, "ldflags", lto_plan.ldflags, true)
             end
         end
         if target:kind() == "binary" then
