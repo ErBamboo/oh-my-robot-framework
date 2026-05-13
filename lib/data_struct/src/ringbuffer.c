@@ -1,4 +1,4 @@
-#include "core/data_struct/ringbuffer.h"
+#include "data_struct/ringbuffer.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>

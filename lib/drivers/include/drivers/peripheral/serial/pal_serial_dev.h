@@ -1,7 +1,7 @@
 ﻿#ifndef __HAL_SERIAL_H__
 #define __HAL_SERIAL_H__
 
-#include "core/data_struct/ringbuffer.h"
+#include "data_struct/ringbuffer.h"
 #include "drivers/model/device.h"
 #include "sync/completion.h"
 

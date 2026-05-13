@@ -1,4 +1,4 @@
-#include "core/data_struct/ringbuffer.h"
+#include "data_struct/ringbuffer.h"
 #include "atomic/atomic_simple.h"
 #include <stdint.h>
 #include <stdio.h>

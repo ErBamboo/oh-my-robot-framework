@@ -5,8 +5,8 @@
 extern "C" {
 #endif
 
-#include "core/data_struct/bitmap.h"
-#include "core/data_struct/corelist.h"
+#include "data_struct/bitmap.h"
+#include "data_struct/corelist.h"
 #include "drivers/model/device.h"
 #include "osal/osal_timer.h"
 
