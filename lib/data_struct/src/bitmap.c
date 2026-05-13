@@ -1,4 +1,4 @@
-#include "core/data_struct/bitmap.h"
+#include "data_struct/bitmap.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -72,7 +72,7 @@ OmRet om_bitmap_atomic_init(AwBitmapAtomic *bitmap, OmAtomicUlong *buffer, size_
     bitmap->words = buffer;
 
     for (size_t index = 0; index < bitmap->meta.wordCount; index++)
-        OM_STORE(&bitmap->words[index], 0UL, MO_RELAXED);
+        OM_STORE(&bitmap->words[index], 0UL, MO_CONSUME);
     return OM_OK;
 }
 
@@ -118,7 +118,7 @@ bool om_bitmap_atomic_test(const AwBitmapAtomic *bitmap, size_t bit_index)
 
     size_t word_index = om_bitmap_word_index(bit_index);
     unsigned long bit_mask = om_bitmap_bit_mask(bit_index);
-    unsigned long word_value = OM_LOAD(&bitmap->words[word_index], MO_RELAXED);
+    unsigned long word_value = OM_LOAD(&bitmap->words[word_index], MO_CONSUME);
     return (word_value & bit_mask) != 0U;
 }
 

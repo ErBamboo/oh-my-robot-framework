@@ -7,6 +7,6 @@
 #include "core/om_config.h"
 #include "core/om_cpu.h"
 #include "core/om_def.h"
-#include "core/data_struct/data_struct.h"
+#include "data_struct/data_struct.h"
 
 #endif

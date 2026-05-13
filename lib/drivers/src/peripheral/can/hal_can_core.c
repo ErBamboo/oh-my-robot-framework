@@ -1,4 +1,4 @@
-#include "core/data_struct/bitmap.h"
+#include "data_struct/bitmap.h"
 #include "core/om_def.h"
 #include "drivers/peripheral/can/pal_can_dev.h"
 #include "osal/osal_core.h"

@@ -4,13 +4,12 @@
 
 --- @target tar_awcore
 --- @brief AW 核心静态库
---- @details 提供核心基础能力与数据结构。
+--- @details 提供核心基础能力（类型、错误码、atomic）。
 target("tar_awcore")
     set_kind("static")
     add_rules("oh_my_robot.context", {public = true})
     add_includedirs("include", {public = true})
     add_files("source/core/**.c")
-    add_files("source/data_struct/**.c")
 target_end()
 
 --- @target tar_awapi_osal
@@ -32,6 +31,18 @@ target("tar_awosal_probe")
     add_files("osal/check/osal_headers_probe.c")
 target_end()
 
+--- @target tar_awdatastruct
+--- @brief 数据结构静态库
+--- @details 独立数据结构组件，可依赖 osal 临界区等 OS 原语。
+target("tar_awdatastruct")
+    set_kind("static")
+    add_rules("oh_my_robot.context")
+    add_deps("tar_awcore", {public = true})
+    add_deps("tar_awapi_osal", {public = true})
+    add_includedirs("data_struct/include", {public = true})
+    add_files("data_struct/src/**.c")
+target_end()
+
 --- @target tar_awapi_sync
 --- @brief Sync API 头文件接口
 --- @details 为同步原语目标提供公共头文件。
@@ -45,7 +56,7 @@ target_end()
 --- @details 为跨上下文数据传输层提供公共头文件。
 target("tar_awapi_ipc")
     set_kind("headeronly")
-    add_deps("tar_awcore", {public = true})
+    add_deps("tar_awdatastruct", {public = true})
     add_deps("tar_awapi_osal", {public = true})
     add_includedirs("ipc/include", {public = true})
 target_end()
@@ -67,7 +78,7 @@ target_end()
 --- @details 为驱动层提供公共头文件与依赖。
 target("tar_awapi_driver")
     set_kind("headeronly")
-    add_deps("tar_awcore", {public = true})
+    add_deps("tar_awdatastruct", {public = true})
     add_includedirs("drivers/include", {public = true})
     add_deps("tar_awapi_osal", {public = true})
     add_deps("tar_awapi_sync", {public = true})
@@ -112,7 +123,7 @@ target_end()
 --- @details 提供系统级实现与公共头文件。
 target("tar_awsystems")
     set_kind("static")
-    add_deps("tar_awcore", {public = true})
+    add_deps("tar_awdatastruct", {public = true})
     add_includedirs("include", {public = true})
     add_includedirs("systems/include", {public = true})
     add_files("systems/src/**.c")

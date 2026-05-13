@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "core/data_struct/ringbuffer.h"
+#include "data_struct/ringbuffer.h"
 #include "core/om_def.h"
 #include "osal/osal_sem.h"
 

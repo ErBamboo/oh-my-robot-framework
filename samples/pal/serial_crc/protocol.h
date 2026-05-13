@@ -6,7 +6,7 @@
 #define TEST_PROTOCOL_H
 
 #include "core/om_def.h"
-#include "core/data_struct/ringbuffer.h"
+#include "data_struct/ringbuffer.h"
 #include "drivers/model/device.h"
 
 #define TEST_HEADER_SZ (sizeof(TestHeader))
