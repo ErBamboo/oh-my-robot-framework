@@ -922,7 +922,9 @@ static void completion_test_thread_entry(void *arg)
     completion_expect(osal_thread_create(&g_waiter_thread, &waiter_attr, completion_waiter_thread_entry, NULL) == OSAL_OK);
     completion_expect(completion_wait_flag(&g_waiter_started, 100u) == 1);
     completion_expect(completion_wait_flag(&g_waiter_waiting, 100u) == 1);
-    completion_expect(completion_wait_status(&g_completion.status, COMP_WAIT, 100u) == 1);
+    completion_expect(
+        completion_wait_status(&g_completion.status, COMP_WAIT, 100u) == 1 ||
+        g_completion.status == COMP_WAITING);
     completion_expect(completion_wait(&g_completion, 0u) == OM_ERROR_BUSY);
     completion_expect(completion_done(&g_completion) == OM_OK);
     completion_expect(completion_wait_flag(&g_waiter_done, 100u) == 1);
@@ -1051,7 +1053,7 @@ int main(void)
     OsalThreadAttr test_attr = {
         "sync_cpt_test",
         768u * OSAL_STACK_WORD_BYTES,
-        2u,
+        completion_priority_test_ctrl(),
     };
 
     if (osal_thread_create(&g_test_thread, &test_attr, completion_test_thread_entry, NULL) != OSAL_OK)
