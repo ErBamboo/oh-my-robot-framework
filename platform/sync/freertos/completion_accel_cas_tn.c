@@ -1,74 +1,61 @@
+/*
+ * completion_accel_cas_tn.c
+ * FreeRTOS 加速后端: CAS 状态机 + Task Notification (index 1)
+ *
+ * 用 CAS 原子操作替代 irq_lock，用 Task Notification 替代 Semaphore。
+ * 占用通知 index 1，其他模块不得使用同 index。
+ * ISR 路径不使用临界区。
+ */
 #include "sync/completion.h"
 
 #include "atomic/atomic_simple.h"
 #include "osal/osal_core.h"
 #include "osal/osal_port.h"
-#include "osal/osal_sem.h"
 #include "osal/osal_thread.h"
 
-/*
- * completion 后端选择策略：
- * - reference 后端：CAS + OSAL Semaphore（4 状态机，无 irq_lock）；
- * - 加速后端通过 capability 显式声明（如 FreeRTOS: CAS + Task Notification）。
- */
-#if defined(OM_SYNC_ACCEL) && (OM_SYNC_ACCEL == 1) && defined(OM_SYNC_ACCEL_CAP_COMPLETION) && \
-    (OM_SYNC_ACCEL_CAP_COMPLETION == 1)
-#define OM_COMPLETION_ACCEL_ENABLED 1
-#else
-#define OM_COMPLETION_ACCEL_ENABLED 0
-#endif
+#include "FreeRTOS.h"
+#include "task.h"
 
-static uint32_t completion_timeout_to_osal_ms(size_t timeout_ms)
+static TickType_t cas_tn_timeout_to_ticks(size_t timeout_ms)
 {
     if (timeout_ms >= (size_t)0xFFFFFFFFu)
-        return OSAL_WAIT_FOREVER;
-    return (uint32_t)timeout_ms;
+        return portMAX_DELAY;
+    if (timeout_ms == 0U)
+        return 0;
+    return (TickType_t)(timeout_ms * configTICK_RATE_HZ / 1000U);
 }
 
-static void completion_sem_drain(OsalSem *sem)
+#define COMPLETION_NOTIFY_INDEX 1U
+
+static void cas_tn_drain_notification(void)
 {
-    if (!sem)
-        return;
-    while (osal_sem_wait(sem, 0u) == OSAL_OK)
-    {
-    }
+    ulTaskNotifyTakeIndexed(COMPLETION_NOTIFY_INDEX, pdTRUE, 0);
 }
 
-static OmRet completion_cas_sem_init(Completion *completion)
+OmRet completion_accel_init(Completion *completion)
 {
     if (!completion)
         return OM_ERROR_PARAM;
 
-    if (!completion->sem)
-    {
-        if (osal_sem_create(&completion->sem, 1u, 0u) != OSAL_OK)
-            return OM_ERROR_MEMORY;
-    }
-
-    completion_sem_drain(completion->sem);
+    completion->sem = NULL;
     completion->waitThread = NULL;
     OM_STORE_REL(&completion->status, COMP_INIT);
     return OM_OK;
 }
 
-static void completion_cas_sem_deinit(Completion *completion)
+void completion_accel_deinit(Completion *completion)
 {
     if (!completion)
         return;
 
-    if (completion->sem)
-    {
-        (void)osal_sem_delete(completion->sem);
-        completion->sem = NULL;
-    }
-
+    completion->sem = NULL;
     completion->waitThread = NULL;
     OM_STORE_REL(&completion->status, COMP_INIT);
 }
 
-static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t timeout_ms)
+OmRet completion_accel_wait_one_shot(Completion *completion, size_t timeout_ms)
 {
-    if (!completion || !completion->sem)
+    if (!completion)
         return OM_ERROR_PARAM;
     if (osal_is_in_isr())
         return OM_ERROR_PARAM;
@@ -86,7 +73,7 @@ static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t tim
         if (OM_CAS_AR(&completion->status, &expected, COMP_INIT))
         {
             completion->waitThread = NULL;
-            completion_sem_drain(completion->sem);
+            cas_tn_drain_notification();
             return OM_OK;
         }
         snap = (CompStatus)OM_LOAD_ACQ(&completion->status);
@@ -114,14 +101,14 @@ static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t tim
             expected = COMP_DONE;
             if (OM_CAS_AR(&completion->status, &expected, COMP_INIT))
             {
-                completion_sem_drain(completion->sem);
+                cas_tn_drain_notification();
                 return OM_OK;
             }
         }
         return (expected == COMP_WAIT || expected == COMP_WAITING) ? OM_ERROR_BUSY : OM_ERROR;
     }
 
-    /* 阶段 3: WAIT → WAITING（消除 CAS→block 竞态） */
+    /* 阶段 3: WAIT → WAITING */
     expected = COMP_WAIT;
     if (!OM_CAS_AR(&completion->status, &expected, COMP_WAITING))
     {
@@ -130,22 +117,21 @@ static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t tim
         {
             expected = COMP_DONE;
             OM_CAS_AR(&completion->status, &expected, COMP_INIT);
-            completion_sem_drain(completion->sem);
+            cas_tn_drain_notification();
             return OM_OK;
         }
         OM_STORE_REL(&completion->status, COMP_INIT);
         return OM_ERROR;
     }
 
-    /* 阶段 4: 阻塞等待 */
-    uint32_t osal_timeout_ms = completion_timeout_to_osal_ms(timeout_ms);
-    OsalStatus wait_status = osal_sem_wait(completion->sem, osal_timeout_ms);
+    /* 阶段 4: 阻塞等待 Task Notification */
+    TickType_t ticks = cas_tn_timeout_to_ticks(timeout_ms);
+    uint32_t notify_result = ulTaskNotifyTakeIndexed(COMPLETION_NOTIFY_INDEX, pdTRUE, ticks);
 
-    if (wait_status == OSAL_OK)
+    if (notify_result != 0U)
     {
         completion->waitThread = NULL;
         OM_STORE_REL(&completion->status, COMP_INIT);
-        completion_sem_drain(completion->sem);
         return OM_OK;
     }
 
@@ -157,7 +143,7 @@ static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t tim
         if (expected == COMP_DONE)
         {
             OM_STORE_REL(&completion->status, COMP_INIT);
-            completion_sem_drain(completion->sem);
+            cas_tn_drain_notification();
             return OM_OK;
         }
         OM_STORE_REL(&completion->status, COMP_INIT);
@@ -168,9 +154,9 @@ static OmRet completion_cas_sem_wait_one_shot(Completion *completion, size_t tim
     return OM_ERROR_TIMEOUT;
 }
 
-static OmRet completion_cas_sem_done_one_shot(Completion *completion)
+OmRet completion_accel_done_one_shot(Completion *completion)
 {
-    if (!completion || !completion->sem)
+    if (!completion)
         return OM_ERROR_PARAM;
 
     int in_isr = osal_is_in_isr();
@@ -189,10 +175,20 @@ static OmRet completion_cas_sem_done_one_shot(Completion *completion)
         CompStatus prev = expected;
         if (OM_CAS_AR(&completion->status, &prev, COMP_DONE))
         {
-            if (in_isr)
-                (void)osal_sem_post_from_isr(completion->sem);
-            else
-                (void)osal_sem_post(completion->sem);
+            TaskHandle_t wait_task = (TaskHandle_t)completion->waitThread;
+            if (wait_task != NULL)
+            {
+                if (in_isr)
+                {
+                    BaseType_t higher_priority_woken = pdFALSE;
+                    vTaskNotifyGiveIndexedFromISR(wait_task, COMPLETION_NOTIFY_INDEX, &higher_priority_woken);
+                    portYIELD_FROM_ISR(higher_priority_woken);
+                }
+                else
+                {
+                    (void)xTaskNotifyGiveIndexed(wait_task, COMPLETION_NOTIFY_INDEX);
+                }
+            }
             return OM_OK;
         }
         if (prev == COMP_DONE)
@@ -201,40 +197,4 @@ static OmRet completion_cas_sem_done_one_shot(Completion *completion)
     }
 
     return OM_ERROR;
-}
-
-#if OM_COMPLETION_ACCEL_ENABLED
-extern OmRet completion_accel_init(Completion *completion);
-extern void completion_accel_deinit(Completion *completion);
-extern OmRet completion_accel_wait_one_shot(Completion *completion, size_t timeout_ms);
-extern OmRet completion_accel_done_one_shot(Completion *completion);
-#define OM_COMPLETION_BACKEND_INIT completion_accel_init
-#define OM_COMPLETION_BACKEND_DEINIT completion_accel_deinit
-#define OM_COMPLETION_BACKEND_WAIT_ONE_SHOT completion_accel_wait_one_shot
-#define OM_COMPLETION_BACKEND_DONE_ONE_SHOT completion_accel_done_one_shot
-#else
-#define OM_COMPLETION_BACKEND_INIT completion_cas_sem_init
-#define OM_COMPLETION_BACKEND_DEINIT completion_cas_sem_deinit
-#define OM_COMPLETION_BACKEND_WAIT_ONE_SHOT completion_cas_sem_wait_one_shot
-#define OM_COMPLETION_BACKEND_DONE_ONE_SHOT completion_cas_sem_done_one_shot
-#endif
-
-OmRet completion_init(Completion *completion)
-{
-    return OM_COMPLETION_BACKEND_INIT(completion);
-}
-
-void completion_deinit(Completion *completion)
-{
-    OM_COMPLETION_BACKEND_DEINIT(completion);
-}
-
-OmRet completion_wait(Completion *completion, size_t timeout_ms)
-{
-    return OM_COMPLETION_BACKEND_WAIT_ONE_SHOT(completion, timeout_ms);
-}
-
-OmRet completion_done(Completion *completion)
-{
-    return OM_COMPLETION_BACKEND_DONE_ONE_SHOT(completion);
 }
