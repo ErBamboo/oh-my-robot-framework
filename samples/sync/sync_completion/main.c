@@ -924,8 +924,8 @@ static void completion_test_thread_entry(void *arg)
     completion_expect(completion_wait_flag(&g_waiter_started, 100u) == 1);
     completion_expect(completion_wait_flag(&g_waiter_waiting, 100u) == 1);
     completion_expect(
-        completion_wait_status((volatile CompStatus *)&g_completion.status, COMP_WAIT, 100u) == 1 ||
-        g_completion.status == COMP_WAITING);
+    completion_wait_status((volatile CompStatus *)&g_completion.status, COMP_WAIT, 100u) == 1 ||
+    g_completion.status == COMP_WAITING);
     completion_expect(completion_wait(&g_completion, 0u) == OM_ERROR_BUSY);
     completion_expect(completion_done(&g_completion) == OM_OK);
     completion_expect(completion_wait_flag(&g_waiter_done, 100u) == 1);
