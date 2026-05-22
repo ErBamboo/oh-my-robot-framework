@@ -44,6 +44,9 @@ rule("oh_my_robot.context")
                 toolchain_lib.add_target_flags(target, "ldflags", lto_plan.ldflags, lto_plan.force_ldflags or false)
             end
         end
+        if context.toolchain_name == "armclang" and target:kind() == "binary" then
+            target:add("ldflags", "--datacompressor=off", {force = true})
+        end
         if target:kind() == "binary" then
             local runtime_payload = toolchain_lib.resolve_runtime_payload(
                 context.toolchain_name,

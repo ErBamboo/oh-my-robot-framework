@@ -23,6 +23,7 @@
  *     4) `done_busy > 0`（证明存在有效竞争）。
  */
 #include "osal/osal.h"
+#include "core/om_cpu.h"
 #include "osal/osal_config.h"
 #include "sync/completion.h"
 
@@ -923,8 +924,8 @@ static void completion_test_thread_entry(void *arg)
     completion_expect(completion_wait_flag(&g_waiter_started, 100u) == 1);
     completion_expect(completion_wait_flag(&g_waiter_waiting, 100u) == 1);
     completion_expect(
-        completion_wait_status(&g_completion.status, COMP_WAIT, 100u) == 1 ||
-        g_completion.status == COMP_WAITING);
+    completion_wait_status((volatile CompStatus *)&g_completion.status, COMP_WAIT, 100u) == 1 ||
+    g_completion.status == COMP_WAITING);
     completion_expect(completion_wait(&g_completion, 0u) == OM_ERROR_BUSY);
     completion_expect(completion_done(&g_completion) == OM_OK);
     completion_expect(completion_wait_flag(&g_waiter_done, 100u) == 1);
@@ -1055,9 +1056,12 @@ int main(void)
         768u * OSAL_STACK_WORD_BYTES,
         completion_priority_test_ctrl(),
     };
-
+    volatile SyncCompletionTestResult* result = &g_result;
     if (osal_thread_create(&g_test_thread, &test_attr, completion_test_thread_entry, NULL) != OSAL_OK)
         return -1;
+
+    om_board_init();
+
 
     return osal_kernel_start();
 }

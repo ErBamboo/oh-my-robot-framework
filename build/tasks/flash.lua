@@ -6,13 +6,13 @@ task("flash")
         usage = "xmake flash [options]",
         description = "Flash firmware via J-Link",
         options = {
-            {"d", "device", "kv", "STM32F407IG", "J-Link device name"},
-            {"i", "interface", "kv", "swd", "J-Link interface"},
-            {"s", "speed", "kv", "4000", "J-Link speed (kHz)"},
+            {"d", "device", "kv", nil, "J-Link device name"},
+            {"i", "interface", "kv", nil, "J-Link interface"},
+            {"s", "speed", "kv", nil, "J-Link speed (kHz)"},
             {"f", "firmware", "kv", nil, "Firmware file (.hex/.elf)"},
             {"H", "prefer_hex", "kv", nil, "Prefer HEX when auto resolving firmware (true/false)"},
             {"p", "program", "kv", nil, "J-Link executable path"},
-            {"t", "target", "kv", "robot_project", "Target name"},
+            {"t", "target", "kv", nil, "Target name"},
             {"r", "reset", "kv", "true", "Reset before/after flash"},
             {"g", "run", "kv", "true", "Run after flash"},
             {"n", "native_output", "kv", nil, "Show native flasher CLI output (true/false)"},
@@ -147,8 +147,12 @@ task("flash")
             local elf_file = target:targetfile()
             local elf_ext = normalize_extension(elf_file)
             local hex_file = path.join(target_dir, basename .. ".hex")
+            local bin_file = path.join(target_dir, basename .. ".bin")
             if prefer_hex and os.isfile(hex_file) then
                 return hex_file
+            end
+            if not prefer_hex and os.isfile(bin_file) then
+                return bin_file
             end
             if os.isfile(elf_file) then
                 if elf_ext == "" then
@@ -158,6 +162,9 @@ task("flash")
             end
             if os.isfile(hex_file) then
                 return hex_file
+            end
+            if os.isfile(bin_file) then
+                return bin_file
             end
             raise("flash file not found: please build target and enable oh_my_robot.image_convert")
         end
@@ -190,10 +197,11 @@ task("flash")
         ---@param interface string 接口类型
         ---@param speed string|number 速度
         ---@param firmware string 烧录文件
+        ---@param firmware_size number|nil 固件文件大小（bytes），bin 烧录时需要
         ---@param reset_after boolean 是否重置
         ---@param run_after boolean 是否运行
         ---@return string content
-        local function build_jlink_command(device, interface, speed, firmware, reset_after, run_after)
+        local function build_jlink_command(device, interface, speed, firmware, firmware_size, reset_after, run_after)
             local lines = {}
             lines[#lines + 1] = "device " .. device
             lines[#lines + 1] = "if " .. interface
@@ -202,7 +210,15 @@ task("flash")
                 lines[#lines + 1] = "r"
             end
             lines[#lines + 1] = "halt"
-            lines[#lines + 1] = "loadfile " .. firmware
+            local ext = normalize_extension(firmware)
+            if ext == ".bin" then
+                local end_addr = 0x08000000 + firmware_size
+                lines[#lines + 1] = string.format("erase 0x08000000, 0x%08X", end_addr)
+                lines[#lines + 1] = "loadbin " .. firmware .. ", 0x08000000"
+                lines[#lines + 1] = "verifybin " .. firmware .. ", 0x08000000"
+            else
+                lines[#lines + 1] = "loadfile " .. firmware
+            end
             if reset_after then
                 lines[#lines + 1] = "r"
             end
@@ -313,11 +329,19 @@ task("flash")
         ---@param ctx table 上下文
         ---@return table ctx
         local function step_prepare_command(ctx)
+            local firmware_size = nil
+            if normalize_extension(ctx.firmware) == ".bin" then
+                firmware_size = os.filesize(ctx.firmware)
+                if not firmware_size or firmware_size == 0 then
+                    raise("cannot determine firmware file size: " .. ctx.firmware)
+                end
+            end
             local command_content = build_jlink_command(
                 ctx.device,
                 ctx.interface,
                 ctx.speed,
                 ctx.firmware,
+                firmware_size,
                 ctx.reset_after,
                 ctx.run_after
             )
