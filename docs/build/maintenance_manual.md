@@ -45,7 +45,8 @@
 自定义任务：
 - `xmake init_workspace`：为当前 `oh-my-robot` checkout 生成轻量项目壳，并创建本地 `oh-my-robot` 目录链接/junction，解决单独 worktree 缺少顶层 `xmake.lua` 的问题。
 - `xmake flash`：通过 J-Link Commander 烧录，默认优先使用 HEX，可通过 `--firmware` 指定 ELF/HEX，并可通过 `--native_output=true` 透传原生输出。
-- 调试器支持矩阵（当前）：`om_preset.flash` 仅接入 `jlink`；`daplink` 尚未实现，仅作为规划项记录。
+- `xmake flash`：通过策略模式支持 J-Link (JLink.exe) 与 DAPLink (OpenOCD) 两种烧录器，通过 `--flasher` 或 `flash.flasher` 切换。J-Link 链路生成 `.jlink` 命令文件调用 JLink.exe；DAPLink 链路通过 OpenOCD `program` 命令完成烧录与校验。
+- 调试器支持矩阵（当前）：`om_preset.flash` 同时支持 `jlink` 与 `daplink`，通过策略模式注册表统一管理。
 
 
 ## 5. 目录职责与依赖方向简图
@@ -399,11 +400,12 @@ end
 - 出现 `attempt to concatenate a nil value (global 'sourcefile')`：请检查本机 XMake 是否低于 `3.0.7`，并升级后重试。
 - Cortex-Debug `armclang + load` 初始化异常：优先切换为 `restore <profile>.hex` 下载链路。
 - weak 覆盖未生效：检查 `override_sources` 是否登记、是否被 `oh_my_robot.board_assets` 注入到 `binary`，并核对最终 ELF 符号是否仍为 `W/weak`。
-- 预设中配置了 `flash.daplink` 但不生效：当前任务链路只读取 `flash.jlink`，DAPLink 尚未接入实现。
+- 预设中配置了 `flash.daplink` 但 OpenOCD 找不到：检查 `flash.daplink.program` 路径是否正确，或确认 OpenOCD 已加入 PATH。
 - `[oh-my-robot] link contract check failed`：`tar_os`/`tar_sync` 的关键符号未以强符号形态提供；应回查模块构建输入与依赖传播，不要在应用目标补直连依赖。
 
 ## 13. 变更记录
-- 2026-03-26：preset 解析链路收敛为“只读取项目根 `om_preset.lua`”；`xmake init_workspace` 会在项目壳中创建本地 `oh-my-robot` 目录链接/junction，并自动落一份项目级 `om_preset.lua` 模板；新增 `--preset=<path>` 后，可直接把指定 preset 源文件复制到项目壳根目录；`docs/process/git_collaboration_spec.md` 已补充“外部 worktree 开发 + 外层项目根独立构建”的推荐用法，`quick_start.md` 收回到项目根首次构建口径。
+- 2026-05-23：`xmake flash` 重构为策略模式，新增 DAPLink (OpenOCD) 烧录器支持。`flash` 预设格式升级：新增 `flash.flasher` 通用字段与 `flash.daplink` 子表，通用字段（`target`/`firmware`/`prefer_hex`/`reset`/`run`/`native_output`）提升至 `flash` 层级对两种烧录器均生效。同步更新全部构建文档与 VSCode 调试模板。
+- 2026-03-26：preset 解析链路收敛为”只读取项目根 `om_preset.lua`”；`xmake init_workspace` 会在项目壳中创建本地 `oh-my-robot` 目录链接/junction，并自动落一份项目级 `om_preset.lua` 模板；新增 `--preset=<path>` 后，可直接把指定 preset 源文件复制到项目壳根目录；`docs/process/git_collaboration_spec.md` 已补充“外部 worktree 开发 + 外层项目根独立构建”的推荐用法，`quick_start.md` 收回到项目根首次构建口径。
 - 2026-02-19：LTO 在 debug/release 统一纳入策略控制；收敛为“gnu-rm 按版本门槛启用（>=14.2.0）、armclang 默认开启”，并在 `oh_my_robot.context` 按工具链显式注入 LTO 参数。
 - 2026-02-19：根 `xmake.lua` 使用官方策略 `set_policy("build.optimization.lto", false)` 作为统一入口，具体目标开关由 `oh_my_robot.context` 依据工具链动态设置，避免模式与工具链行为分叉。
 - 2026-02-18：将 `tar_oh_my_robot`、`tar_osal` 收敛为聚合目标（`phony`），并新增二进制构建后的 OSAL/SYNC 关键符号链接契约校验。

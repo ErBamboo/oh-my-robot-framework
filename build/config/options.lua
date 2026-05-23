@@ -147,10 +147,6 @@ local function persist_flash_preset(config, preset)
     if type(flash) ~= "table" then
         return
     end
-    local jlink = type(flash.jlink) == "table" and flash.jlink or flash
-    if type(jlink) ~= "table" then
-        return
-    end
     local has_value = false
     --- 写入单个字段
     ---@param key string 字段名
@@ -163,16 +159,28 @@ local function persist_flash_preset(config, preset)
         config.set("om_flash_" .. key, value)
         has_value = true
     end
-    set_flash_value("device", jlink.device)
-    set_flash_value("interface", jlink.interface)
-    set_flash_value("speed", jlink.speed)
-    set_flash_value("program", jlink.program)
-    set_flash_value("target", jlink.target)
-    set_flash_value("firmware", jlink.firmware)
-    set_flash_value("file", jlink.file)
-    set_flash_value("prefer_hex", jlink.prefer_hex)
-    set_flash_value("reset", jlink.reset)
-    set_flash_value("run", jlink.run)
+    -- 通用字段
+    set_flash_value("flasher", flash.flasher)
+    set_flash_value("target", flash.target)
+    set_flash_value("firmware", flash.firmware)
+    set_flash_value("file", flash.file)
+    set_flash_value("prefer_hex", flash.prefer_hex)
+    set_flash_value("reset", flash.reset)
+    set_flash_value("run", flash.run)
+    set_flash_value("native_output", flash.native_output)
+    -- jlink 子表
+    if type(flash.jlink) == "table" then
+        set_flash_value("jlink_device", flash.jlink.device)
+        set_flash_value("jlink_interface", flash.jlink.interface)
+        set_flash_value("jlink_speed", flash.jlink.speed)
+        set_flash_value("jlink_program", flash.jlink.program)
+    end
+    -- daplink 子表
+    if type(flash.daplink) == "table" then
+        set_flash_value("daplink_config", flash.daplink.config)
+        set_flash_value("daplink_frequency", flash.daplink.frequency)
+        set_flash_value("daplink_program", flash.daplink.program)
+    end
     if has_value then
         config.save()
     end
