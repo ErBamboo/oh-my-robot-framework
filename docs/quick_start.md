@@ -108,8 +108,27 @@ arm-none-eabi-gdb --version
 ```
 
 说明：
-- 当前仓库调试链路默认使用 J-Link。
-- DAPLink 为后续规划，当前版本不提供可用模板。
+- 当前仓库调试链路支持 J-Link 与 DAPLink (OpenOCD) 两种调试器。
+
+### 1.7 OpenOCD（DAPLink 调试/烧录）
+下载入口（官方）：
+- <https://openocd.org/pages/getting-openocd.html>
+
+安装建议：
+- 下载 Windows 预编译包，解压到不含中文和空格的目录，例如 `D:/openocd-win`。
+- 可执行文件路径：`D:/openocd-win/bin/openocd.exe`。
+
+验证命令（PowerShell）：
+```powershell
+openocd --version
+```
+
+期望结果：
+- 能输出版本信息（建议 `0.12.0` 及以上）。
+
+DAPLink 探针要求：
+- 支持 CMSIS-DAP 协议的调试探针（如 DAP-WL-HS、Segger J-Link CMSIS-DAP 模式等）。
+- 若有多探针，需在 OpenOCD 配置文件中通过 `adapter serial` 指定目标探针序列号。
 
 ## 2. 在项目根目录编写 `xmake.lua`
 
@@ -219,19 +238,25 @@ local preset = {
     },
   },
 
-  -- 烧录器预设：当前仅支持 jlink
+  -- 烧录器预设
   flash = {
+    flasher = "jlink",                -- 默认烧录器：jlink / daplink
+    target = "robot_project",
+    firmware = nil,
+    prefer_hex = true,
+    reset = true,
+    run = true,
+    native_output = false,
     jlink = {
       device = "STM32F407IG",
       interface = "swd",
       speed = 4000,
       program = "D:/Program Files/ProgramTools/SEGGER/Jlink/JLink.exe", -- 找不到 JLink 时请改
-      target = "robot_project",
-      firmware = nil,
-      prefer_hex = true,
-      reset = true,
-      run = true,
-      native_output = false,
+    },
+    daplink = {
+      program = "D:/openocd-win/bin/openocd.exe",   -- 找不到 openocd 时请改
+      config = ".vscode/daplink.cfg",               -- OpenOCD 配置文件路径
+      frequency = 4000,
     },
   },
 }
@@ -242,9 +267,10 @@ end
 ```
 
 ### 3.3 重要说明：当前调试器支持范围
-- `om_preset.flash` 当前只消费 `flash.jlink`。
-- 当前版本不支持 `flash.daplink`。
-- 后续计划支持 DAPLink（当前处于规划阶段，尚未接入构建任务）。
+- `om_preset.flash` 同时支持 `flash.jlink` 与 `flash.daplink` 两种调试器。
+- 通过 `flash.flasher` 字段指定默认烧录器（`"jlink"` 或 `"daplink"`），命令行 `--flasher=...` 可覆盖。
+- J-Link 使用 JLink.exe 命令行工具烧录；DAPLink 使用 OpenOCD 烧录。
+- 通用字段（`target`/`firmware`/`prefer_hex`/`reset`/`run`/`native_output`）对两种烧录器均生效。
 
 ### 3.4 每个常用参数是什么意思
 参数优先级（非常重要）：
@@ -262,19 +288,24 @@ end
 | `toolchain_default.name` | 默认使用哪个工具链 | 可按习惯改 |
 | `toolchain_presets.<name>.sdk` | 工具链根目录 | 通常必须改成你本机路径 |
 | `toolchain_presets.<name>.bin` | 工具链可执行目录 | 通常必须改成你本机路径 |
+| `flash.flasher` | 默认烧录器类型 | 可选 `"jlink"` / `"daplink"` |
+| `flash.target` | 烧录目标名（XMake 目标名） | 必须与 `target("...")` 一致 |
+| `flash.firmware` | 手工指定固件路径 | 一般留空，自动选产物 |
+| `flash.prefer_hex` | 自动选择固件时优先 HEX | 一般保留 `true` |
+| `flash.reset` | 烧录前后是否复位 | 一般保留 `true` |
+| `flash.run` | 烧录后是否运行 | 调试停机时可改 |
+| `flash.native_output` | 是否显示原生 CLI 输出 | 排错时改为 `true` |
 | `flash.jlink.device` | 芯片名（J-Link 用） | 芯片变化时改 |
 | `flash.jlink.interface` | 调试接口（如 `swd`） | 一般不改 |
 | `flash.jlink.speed` | 下载速度（kHz） | 速度不稳时改 |
 | `flash.jlink.program` | `JLink.exe` 路径 | 自动发现失败时改 |
-| `flash.jlink.target` | 烧录目标名（XMake 目标名） | 必须与 `target("...")` 一致 |
-| `flash.jlink.firmware` | 手工指定固件路径 | 一般留空，自动选产物 |
-| `flash.jlink.prefer_hex` | 自动选择固件时优先 HEX | 一般保留 `true` |
-| `flash.jlink.reset` | 烧录前后是否复位 | 一般保留 `true` |
-| `flash.jlink.run` | 烧录后是否运行 | 调试停机时可改 |
-| `flash.jlink.native_output` | 是否显示原生 CLI 输出 | 排错时改为 `true` |
+| `flash.daplink.program` | `openocd.exe` 路径 | 自动发现失败时改 |
+| `flash.daplink.config` | OpenOCD 配置文件路径 | 按探针类型修改 |
+| `flash.daplink.frequency` | 适配器频率（Hz） | 速度不稳时改 |
 
 兼容项说明：
-- `flash.file` 与 `flash.firmware` 都可识别，但新配置建议只用 `flash.jlink.firmware`。
+- `flash.file` 与 `flash.firmware` 都可识别，但新配置建议只用 `flash.firmware`。
+- 旧格式（`flash.jlink` 内直接写 `target`/`firmware` 等通用字段）仍然兼容，但推荐将通用字段提升到 `flash` 层级。
 
 ### 3.5 写完后怎么确认没写错
 ```powershell
@@ -289,9 +320,13 @@ xmake f -c --toolchain=armclang -m debug --semihosting=off
 ```powershell
 xmake flash --native_output=true
 ```
+- 若需使用 DAPLink 烧录：
+```powershell
+xmake flash --flasher=daplink
+```
 
-### 3.6 `flash.jlink.target` 到底要填什么（高频混淆）
-- `flash.jlink.target` 填的是 **XMake 目标名**，不是文件名。
+### 3.6 `flash.target` 到底要填什么（高频混淆）
+- `flash.target` 填的是 **XMake 目标名**，不是文件名。
 - 在本项目里，它应当与 `xmake.lua` 里的 `target("robot_project")` 保持一致。
 - 它不等于 `set_filename("robot_project.elf")` 里的文件名。
 
@@ -307,7 +342,7 @@ xmake flash --native_output=true
 步骤 2：创建文件 `.vscode/launch.json`。  
 步骤 3：粘贴以下模板并按注释改路径。
 
-### 4.3 双工具链模板（可直接复制）
+### 4.3 多调试器模板（可直接复制）
 ```json
 {
   "version": "0.2.0",
@@ -352,6 +387,38 @@ xmake flash --native_output=true
         "monitor semihosting breakonerror 0",
         "set mem inaccessible-by-default off"
       ]
+    },
+    {
+      "name": "Debug (OpenOCD / DAPLink)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "build/cross/cortex-m4/debug/robot_project.elf",
+      "serverpath": "D:/openocd-win/bin/openocd.exe",
+      "configFiles": [
+        "${workspaceFolder}/.vscode/daplink.cfg"
+      ],
+      "gdbPath": "D:/Toolchains/gcc-arm-none-eabi-10.3-2021.10/bin/arm-none-eabi-gdb",
+      "svdFile": "${workspaceFolder}/oh-my-robot/platform/bsp/vendor/STM32/STM32F4/SVD/STM32F407.svd",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "xmake-build-debug",
+      "showDevDebugOutput": "none"
+    },
+    {
+      "name": "Attach (OpenOCD / DAPLink)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "build/cross/cortex-m4/debug/robot_project.elf",
+      "serverpath": "D:/openocd-win/bin/openocd.exe",
+      "configFiles": [
+        "${workspaceFolder}/.vscode/daplink.cfg"
+      ],
+      "gdbPath": "D:/Toolchains/gcc-arm-none-eabi-10.3-2021.10/bin/arm-none-eabi-gdb",
+      "svdFile": "${workspaceFolder}/oh-my-robot/platform/bsp/vendor/STM32/STM32F4/SVD/STM32F407.svd",
+      "showDevDebugOutput": "none"
     }
   ]
 }
@@ -360,21 +427,29 @@ xmake flash --native_output=true
 ### 4.4 关键参数怎么填（新手版）
 | 参数 | 作用 | 你通常需要改什么 |
 | --- | --- | --- |
-| `name` | 调试配置显示名 | 建议保留，便于区分 gcc/armclang |
+| `name` | 调试配置显示名 | 建议保留，便于区分调试器/工具链 |
 | `type` | 调试器插件类型 | 固定 `cortex-debug` |
-| `servertype` | GDB Server 类型 | 当前固定 `jlink` |
-| `device` | 目标芯片名 | 芯片变化时改 |
+| `servertype` | GDB Server 类型 | J-Link 用 `jlink`；DAPLink 用 `openocd` |
+| `device` | 目标芯片名（J-Link） | 芯片变化时改 |
 | `executable` | 符号 ELF 路径 | 切换工具链或 profile 时改 |
-| `serverpath` | `JLinkGDBServerCL.exe` 路径 | 通常按本机安装路径改 |
-| `armToolchainPath` | `arm-none-eabi-gdb` 所在目录 | 按本机路径改 |
+| `serverpath` | GDB Server 可执行路径 | J-Link: `JLinkGDBServerCL.exe`；OpenOCD: `openocd.exe` |
+| `configFiles` | OpenOCD 配置文件列表 | DAPLink 调试时必填 |
+| `gdbPath` | `arm-none-eabi-gdb` 完整路径 | OpenOCD 链路需显式指定 |
+| `armToolchainPath` | `arm-none-eabi-gdb` 所在目录 | J-Link 链路使用，按本机路径改 |
 | `overrideLaunchCommands` | 自定义下载链路 | armclang 推荐 `restore ...hex` |
 | `preLaunchCommands` | 调试前命令 | semihosting 场景按需调整 |
+| `preLaunchTask` | 调试前构建任务 | 可选，用于自动编译后启动调试 |
 
 ### 4.5 常见坑与处理
 - `Failed to launch GDB`：
-  - 检查 `armToolchainPath` 是否是 `arm-none-eabi-gdb` 所在目录。
+  - J-Link 链路：检查 `armToolchainPath` 是否是 `arm-none-eabi-gdb` 所在目录。
+  - OpenOCD 链路：检查 `gdbPath` 是否为 `arm-none-eabi-gdb` 完整路径。
 - `JLinkGDBServerCL.exe` 找不到：
   - 检查 `serverpath` 是否为本机真实路径。
+- OpenOCD 启动失败 / 探针无法连接：
+  - 检查 `configFiles` 中 OpenOCD 配置文件路径是否正确。
+  - 若有多探针，确保在 `.cfg` 文件中配置了 `adapter serial` 指定目标探针。
+  - 执行 `openocd -f .vscode/daplink.cfg` 检查原生输出定位问题。
 - `armclang` 下载后异常：
   - 优先使用 `restore ...robot_project.hex`，不要直接套用 `load`。
 - 停在 semihosting 相关 BKPT：
@@ -382,21 +457,23 @@ xmake flash --native_output=true
   - 若构建使用 `--semihosting=off`，可移除 semihosting 相关命令，仅保留 `set mem inaccessible-by-default off`。
 
 ### 4.6 与 `om_preset.lua` 的关系
-- `om_preset.lua`：决定构建与烧录默认参数（例如工具链路径、J-Link 参数）。
+- `om_preset.lua`：决定构建与烧录默认参数（例如工具链路径、J-Link/OpenOCD 参数）。
 - `.vscode/launch.json`：决定 VSCode 调试时如何连接并加载程序。
-- 两边路径都要指向你本机真实安装位置。
+- `.vscode/daplink.cfg`：OpenOCD 配置文件，指定调试探针与目标芯片。
+- 各文件路径都要指向你本机真实安装位置。
 
 ### 4.7 跨模块 `name` 映射关系（必须一致的部分）
 | 概念 | 配置位置 | 示例 | 关系规则 |
 | --- | --- | --- | --- |
-| XMake 目标名 | `xmake.lua` 的 `target("...")` | `target("robot_project")` | 这是“目标 ID”，给 `xmake flash --target=...` 与 `flash.jlink.target` 使用 |
-| 烧录目标名 | `om_preset.lua` 的 `flash.jlink.target` | `target = "robot_project"` | 必须与 `target("...")` 完全一致 |
-| 输出文件名 | `xmake.lua` 的 `set_filename("...")` | `set_filename("robot_project.elf")` | 仅决定产物文件名，不参与目标查找 |
+| XMake 目标名 | `xmake.lua` 的 `target(“...”)` | `target(“robot_project”)` | 这是”目标 ID”，给 `xmake flash --target=...` 与 `flash.target` 使用 |
+| 烧录目标名 | `om_preset.lua` 的 `flash.target` | `target = “robot_project”` | 必须与 `target(“...”)` 完全一致 |
+| 输出文件名 | `xmake.lua` 的 `set_filename(“...”)` | `set_filename(“robot_project.elf”)` | 仅决定产物文件名，不参与目标查找 |
 | 调试符号文件路径 | `.vscode/launch.json` 的 `executable` | `build/cross/arm/debug/robot_project.elf` | 必须指向 `set_filename` 生成的真实 ELF 路径 |
-| 调试配置显示名 | `.vscode/launch.json` 的 `name` | `J-Link | STM32F407IG | gcc` | 仅用于界面显示，与构建/烧录逻辑无绑定 |
+| OpenOCD 配置 | `.vscode/daplink.cfg` | `adapter serial 5627220232` | 指定 CMSIS-DAP 探针序列号与目标芯片 |
+| 调试配置显示名 | `.vscode/launch.json` 的 `name` | `Debug (OpenOCD / DAPLink)` | 仅用于界面显示，与构建/烧录逻辑无绑定 |
 
 快速判断是否填错：
-- `xmake flash` 报 “target not found”：先检查 `flash.jlink.target` 与 `target("...")` 是否一致。
+- `xmake flash` 报 “target not found”：先检查 `flash.target` 与 `target(“...”)` 是否一致。
 - VSCode 报找不到可执行文件：先检查 `launch.json` 的 `executable` 是否对应 `set_filename(...)` 的实际输出路径。
 
 ## 5. 新手常见错误

@@ -1,32 +1,32 @@
 --- @task flash
---- @brief J-Link 烧录任务
---- @details 通过 J-Link Commander 对目标进行烧录。
+--- @brief 统一烧录任务
+--- @details 通过策略模式支持 J-Link / DAPLink 等多种调试器。
 task("flash")
     set_menu {
         usage = "xmake flash [options]",
-        description = "Flash firmware via J-Link",
+        description = "Flash firmware via J-Link / DAPLink",
         options = {
-            {"d", "device", "kv", nil, "J-Link device name"},
-            {"i", "interface", "kv", nil, "J-Link interface"},
-            {"s", "speed", "kv", nil, "J-Link speed (kHz)"},
-            {"f", "firmware", "kv", nil, "Firmware file (.hex/.elf)"},
-            {"H", "prefer_hex", "kv", nil, "Prefer HEX when auto resolving firmware (true/false)"},
-            {"p", "program", "kv", nil, "J-Link executable path"},
-            {"t", "target", "kv", nil, "Target name"},
-            {"r", "reset", "kv", "true", "Reset before/after flash"},
+            {nil, "flasher", "kv", nil, "Flasher type: jlink, daplink"},
+            {"d", "device", "kv", nil, "J-Link device name / pyOCD target name"},
+            {"i", "interface", "kv", nil, "J-Link interface (swd/jtag)"},
+            {"s", "speed", "kv", nil, "J-Link speed (kHz) / DAPLink frequency (Hz)"},
+            {"f", "firmware", "kv", nil, "Firmware file (.hex/.elf/.bin)"},
+            {"H", "prefer_hex", "kv", nil, "Prefer HEX when auto resolving (true/false)"},
+            {"p", "program", "kv", nil, "Flasher executable path"},
+            {"t", "target", "kv", nil, "Target name (xmake target)"},
+            {"r", "reset", "kv", "true", "Reset after flash"},
             {"g", "run", "kv", "true", "Run after flash"},
-            {"n", "native_output", "kv", nil, "Show native flasher CLI output (true/false)"},
+            {"n", "native_output", "kv", nil, "Show native flasher CLI output"},
+            {"u", "uid", "kv", nil, "DAPLink probe serial number / UID"},
         }
     }
     on_run(function()
-        -- 脚本域内定义流水线与工具函数，避免描述域使用脚本接口
+        -- ===================================================================
+        -- 工具函数
+        -- ===================================================================
         local build_root = path.join(os.scriptdir(), "..")
         local modules_root = path.join(build_root, "modules")
 
-        --- 解析布尔值
-        ---@param value string|boolean|nil 输入值
-        ---@param default_value boolean 默认值
-        ---@return boolean result
         local function resolve_bool(value, default_value)
             if value == nil then
                 return default_value
@@ -44,9 +44,6 @@ task("flash")
             return default_value
         end
 
-        --- 获取绝对路径
-        ---@param file_path string 文件路径
-        ---@return string absolute_path
         local function resolve_path(file_path)
             if path.is_absolute(file_path) then
                 return file_path
@@ -54,7 +51,6 @@ task("flash")
             return path.join(os.projectdir(), file_path)
         end
 
-        -- normalize extension (lowercase, with leading dot)
         local function normalize_extension(file_path)
             local ext = path.extension(file_path) or ""
             ext = ext:lower()
@@ -64,7 +60,6 @@ task("flash")
             return ext
         end
 
-        -- ensure firmware path has explicit extension
         local function ensure_firmware_extension(file_path)
             local ext = normalize_extension(file_path)
             if ext == ".elf" or ext == ".hex" or ext == ".bin" then
@@ -73,7 +68,6 @@ task("flash")
             raise("firmware must include explicit extension: .elf/.hex/.bin")
         end
 
-        -- read config scalar value
         local function read_config_scalar(value)
             if type(value) == "table" then
                 return value[1]
@@ -81,7 +75,6 @@ task("flash")
             return value
         end
 
-        -- normalize toolchain name (strip bracket suffix)
         local function normalize_toolchain_name(name)
             if not name or name == "" then
                 return name
@@ -90,25 +83,28 @@ task("flash")
             return base or name
         end
 
-        --- 读取预设中的 J-Link 配置
-        ---@return table|nil preset
-        local function load_jlink_preset()
+        --- 从 flash preset 提取通用字段（兼容新旧格式）
+        local function read_common_value(flash_preset, key)
+            if not flash_preset then
+                return nil
+            end
+            if flash_preset[key] ~= nil and flash_preset[key] ~= "" then
+                return flash_preset[key]
+            end
+            return nil
+        end
+
+        --- 加载 flash 预设
+        local function load_flash_preset()
             local oh_my_robot = import("oh-my-robot", {rootdir = modules_root})
             local preset = oh_my_robot.get_preset()
             if not preset or type(preset) ~= "table" then
                 return nil
             end
-            local flash_preset = preset.flash
-            if type(flash_preset) ~= "table" then
-                return nil
-            end
-            if type(flash_preset.jlink) == "table" then
-                return flash_preset.jlink
-            end
-            return flash_preset
+            return preset.flash
         end
 
-        -- load toolchain preset name
+        --- 加载工具链预设名
         local function load_toolchain_preset()
             local oh_my_robot = import("oh-my-robot", {rootdir = modules_root})
             local preset = oh_my_robot.get_preset()
@@ -116,25 +112,7 @@ task("flash")
             return toolchain_default and toolchain_default.name or nil
         end
 
-        --- 读取预设字段
-        ---@param preset table|nil 预设表
-        ---@param key string 字段名
-        ---@return any value
-        local function read_preset_value(preset, key)
-            if not preset then
-                return nil
-            end
-            local value = preset[key]
-            if value == nil or value == "" then
-                return nil
-            end
-            return value
-        end
-
         --- 解析目标输出文件
-        ---@param target_name string 目标名称
-        ---@param prefer_hex boolean 是否优先使用 HEX
-        ---@return string file_path
         local function resolve_target_output(target_name, prefer_hex)
             local project = import("core.project.project")
             project.load_targets()
@@ -169,80 +147,242 @@ task("flash")
             raise("flash file not found: please build target and enable oh_my_robot.image_convert")
         end
 
-        --- 解析 J-Link 可执行程序
-        ---@param program string|nil 用户指定路径
-        ---@return string program_path
-        local function resolve_jlink_program(program)
-            if program and program ~= "" then
-                local abs = resolve_path(program)
-                if os.isexec(abs) then
-                    return abs
-                end
-                raise("jlink program not executable: " .. abs)
-            end
+        --- 通用程序查找
+        local function find_program(name, paths)
             local find_tool = import("lib.detect.find_tool")
-            local tool = find_tool("JLink", {paths = {}})
+            local tool = find_tool(name, {paths = paths or {}})
             if tool and tool.program and os.isexec(tool.program) then
                 return tool.program
             end
-            tool = find_tool("JLink.exe", {paths = {}})
-            if tool and tool.program and os.isexec(tool.program) then
-                return tool.program
-            end
-            raise("J-Link program not found: please pass --program=<path>")
+            return nil
         end
 
-        --- 生成 J-Link 命令文件内容
-        ---@param device string 设备名
-        ---@param interface string 接口类型
-        ---@param speed string|number 速度
-        ---@param firmware string 烧录文件
-        ---@param firmware_size number|nil 固件文件大小（bytes），bin 烧录时需要
-        ---@param reset_after boolean 是否重置
-        ---@param run_after boolean 是否运行
-        ---@return string content
-        local function build_jlink_command(device, interface, speed, firmware, firmware_size, reset_after, run_after)
-            local lines = {}
-            lines[#lines + 1] = "device " .. device
-            lines[#lines + 1] = "if " .. interface
-            lines[#lines + 1] = "speed " .. tostring(speed)
-            if reset_after then
-                lines[#lines + 1] = "r"
+        -- ===================================================================
+        -- Flasher 策略：J-Link
+        -- ===================================================================
+        local flasher_jlink = {
+            name = "jlink",
+
+            resolve_config = function(self, ctx)
+                local option = ctx.option
+                local preset = ctx.flash_preset
+
+                local jlink_preset = nil
+                if preset then
+                    if type(preset.jlink) == "table" then
+                        jlink_preset = preset.jlink
+                    elseif not preset.flasher then
+                        -- 旧格式：整个 flash 表就是 jlink 配置
+                        jlink_preset = preset
+                    end
+                end
+
+                local config = {
+                    device = option.get("device")
+                        or (jlink_preset and jlink_preset.device)
+                        or "STM32F407IG",
+                    interface = option.get("interface")
+                        or (jlink_preset and jlink_preset.interface)
+                        or "swd",
+                    speed = option.get("speed")
+                        or (jlink_preset and jlink_preset.speed)
+                        or "4000",
+                    program = option.get("program")
+                        or (jlink_preset and jlink_preset.program),
+                    reset_after = resolve_bool(
+                        option.get("reset") or read_common_value(preset, "reset"),
+                        true
+                    ),
+                    run_after = resolve_bool(
+                        option.get("run") or read_common_value(preset, "run"),
+                        true
+                    ),
+                    native_output = resolve_bool(
+                        option.get("native_output") or read_common_value(preset, "native_output"),
+                        false
+                    ),
+                }
+                ctx.flasher_config = config
+                return ctx
+            end,
+
+            get_program = function(config)
+                if config.program and config.program ~= "" then
+                    local abs = resolve_path(config.program)
+                    if os.isexec(abs) then
+                        return abs
+                    end
+                    raise("jlink program not executable: " .. abs)
+                end
+                local found = find_program("JLink")
+                    or find_program("JLink.exe")
+                if found then
+                    return found
+                end
+                raise("J-Link program not found: please pass --program=<path>")
+            end,
+
+            build_command = function(config, firmware, build_dir)
+                local firmware_size = nil
+                if normalize_extension(firmware) == ".bin" then
+                    firmware_size = os.filesize(firmware)
+                    if not firmware_size or firmware_size == 0 then
+                        raise("cannot determine firmware file size: " .. firmware)
+                    end
+                end
+
+                local lines = {}
+                lines[#lines + 1] = "device " .. config.device
+                lines[#lines + 1] = "if " .. config.interface
+                lines[#lines + 1] = "speed " .. tostring(config.speed)
+                if config.reset_after then
+                    lines[#lines + 1] = "r"
+                end
+                lines[#lines + 1] = "halt"
+                local ext = normalize_extension(firmware)
+                if ext == ".bin" then
+                    local end_addr = 0x08000000 + firmware_size
+                    lines[#lines + 1] = string.format("erase 0x08000000, 0x%08X", end_addr)
+                    lines[#lines + 1] = "loadbin " .. firmware .. ", 0x08000000"
+                    lines[#lines + 1] = "verifybin " .. firmware .. ", 0x08000000"
+                else
+                    lines[#lines + 1] = "loadfile " .. firmware
+                end
+                if config.reset_after then
+                    lines[#lines + 1] = "r"
+                end
+                if config.run_after then
+                    lines[#lines + 1] = "g"
+                end
+                lines[#lines + 1] = "q"
+
+                local flash_dir = path.join(build_dir, "oh-my-robot", "flash")
+                os.mkdir(flash_dir)
+                local command_path = path.join(flash_dir, "jlink_flash.jlink")
+                io.writefile(command_path, table.concat(lines, "\n") .. "\n")
+                return {"-CommandFile", command_path}
+            end,
+        }
+
+        -- ===================================================================
+        -- Flasher 策略：DAPLink (OpenOCD)
+        -- ===================================================================
+        local flasher_daplink = {
+            name = "daplink",
+
+            resolve_config = function(self, ctx)
+                local option = ctx.option
+                local preset = ctx.flash_preset
+
+                local daplink_preset = nil
+                if preset and type(preset.daplink) == "table" then
+                    daplink_preset = preset.daplink
+                end
+
+                local config = {
+                    config_file = (daplink_preset and daplink_preset.config),
+                    frequency = option.get("speed")
+                        or (daplink_preset and daplink_preset.frequency)
+                        or 4000,
+                    program = option.get("program")
+                        or (daplink_preset and daplink_preset.program),
+                    reset_after = resolve_bool(
+                        option.get("reset") or read_common_value(preset, "reset"),
+                        true
+                    ),
+                    run_after = resolve_bool(
+                        option.get("run") or read_common_value(preset, "run"),
+                        true
+                    ),
+                    native_output = resolve_bool(
+                        option.get("native_output") or read_common_value(preset, "native_output"),
+                        false
+                    ),
+                }
+                ctx.flasher_config = config
+                return ctx
+            end,
+
+            get_program = function(config)
+                if config.program and config.program ~= "" then
+                    local abs = resolve_path(config.program)
+                    if os.isexec(abs) then
+                        return abs
+                    end
+                    local found = find_program(config.program)
+                    if found then
+                        return found
+                    end
+                    raise("openocd program not found: " .. abs)
+                end
+                local found = find_program("openocd")
+                if found then
+                    return found
+                end
+                raise("openocd not found: please install OpenOCD or pass --program=<path>")
+            end,
+
+            build_command = function(config, firmware, build_dir)
+                local args = {}
+                if config.config_file then
+                    args[#args + 1] = "-f"
+                    args[#args + 1] = resolve_path(config.config_file)
+                end
+                if config.frequency then
+                    args[#args + 1] = "-c"
+                    args[#args + 1] = "adapter speed " .. tostring(config.frequency)
+                end
+                -- 将反斜杠转为正斜杠，避免 OpenOCD TCL 将其当作转义符
+                local normalized_fw = firmware:gsub("\\", "/")
+                local flash_cmd = "program " .. normalized_fw .. " verify"
+                if config.reset_after then
+                    flash_cmd = flash_cmd .. " reset"
+                end
+                flash_cmd = flash_cmd .. " exit"
+                args[#args + 1] = "-c"
+                args[#args + 1] = flash_cmd
+                return args
+            end,
+        }
+
+        -- ===================================================================
+        -- Flasher 注册表
+        -- ===================================================================
+        local flasher_registry = {}
+
+        local function register_flasher(flasher)
+            if not flasher or not flasher.name then
+                raise("flasher register: name required")
             end
-            lines[#lines + 1] = "halt"
-            local ext = normalize_extension(firmware)
-            if ext == ".bin" then
-                local end_addr = 0x08000000 + firmware_size
-                lines[#lines + 1] = string.format("erase 0x08000000, 0x%08X", end_addr)
-                lines[#lines + 1] = "loadbin " .. firmware .. ", 0x08000000"
-                lines[#lines + 1] = "verifybin " .. firmware .. ", 0x08000000"
-            else
-                lines[#lines + 1] = "loadfile " .. firmware
+            if flasher_registry[flasher.name] then
+                raise("flasher register: duplicate name " .. flasher.name)
             end
-            if reset_after then
-                lines[#lines + 1] = "r"
-            end
-            if run_after then
-                lines[#lines + 1] = "g"
-            end
-            lines[#lines + 1] = "q"
-            return table.concat(lines, "\n") .. "\n"
+            flasher_registry[flasher.name] = flasher
         end
 
-        --- 写入 J-Link 命令文件
-        ---@param build_dir string 构建目录
-        ---@param content string 命令内容
-        ---@return string command_path
-        local function write_jlink_command_file(build_dir, content)
-            local flash_dir = path.join(build_dir, "oh-my-robot", "flash")
-            os.mkdir(flash_dir)
-            local command_path = path.join(flash_dir, "jlink_flash.jlink")
-            io.writefile(command_path, content)
-            return command_path
+        local function get_flasher(name)
+            return flasher_registry[name]
         end
 
-        --- 构建上下文
-        ---@return table context
+        local function detect_flasher_from_preset(preset)
+            if not preset then
+                return "jlink"
+            end
+            if preset.flasher then
+                return preset.flasher
+            end
+            -- 旧格式兼容：无 flasher 字段默认为 jlink
+            return "jlink"
+        end
+
+        register_flasher(flasher_jlink)
+        register_flasher(flasher_daplink)
+
+        -- ===================================================================
+        -- 流水线步骤
+        -- ===================================================================
+
+        --- Step 0: 构建上下文
         local function build_context()
             local config = import("core.project.config")
             local option = import("core.base.option")
@@ -261,26 +401,42 @@ task("flash")
             return {
                 config = config,
                 option = option,
-                preset = load_jlink_preset(),
+                flash_preset = load_flash_preset(),
             }
         end
 
-        --- Step: 解析固件路径与选择策略
-        ---@param ctx table 上下文
-        ---@return table ctx
+        --- Step 1: 加载 flasher 策略
+        local function step_load_flasher(ctx)
+            local flasher_name = ctx.option.get("flasher")
+            if not flasher_name then
+                flasher_name = detect_flasher_from_preset(ctx.flash_preset)
+            end
+            ctx.flasher = get_flasher(flasher_name)
+            if not ctx.flasher then
+                local names = {}
+                for k, _ in pairs(flasher_registry) do
+                    names[#names + 1] = k
+                end
+                raise("unknown flasher: " .. flasher_name
+                    .. ". Available: " .. table.concat(names, ", "))
+            end
+            return ctx
+        end
+
+        --- Step 2: 解析固件路径
         local function step_resolve_firmware(ctx)
             local option = ctx.option
-            local preset = ctx.preset
+            local preset = ctx.flash_preset
             ctx.target_name = option.get("target")
-                or read_preset_value(preset, "target")
+                or read_common_value(preset, "target")
                 or "robot_project"
             ctx.prefer_hex = resolve_bool(
-                option.get("prefer_hex") or read_preset_value(preset, "prefer_hex"),
+                option.get("prefer_hex") or read_common_value(preset, "prefer_hex"),
                 true
             )
             local file_override = option.get("firmware")
-                or read_preset_value(preset, "firmware")
-                or read_preset_value(preset, "file")
+                or read_common_value(preset, "firmware")
+                or read_common_value(preset, "file")
             if file_override then
                 ensure_firmware_extension(file_override)
             end
@@ -292,86 +448,44 @@ task("flash")
             return ctx
         end
 
-        --- Step: 解析设备、接口与执行器
-        ---@param ctx table 上下文
-        ---@return table ctx
-        local function step_resolve_driver(ctx)
-            local option = ctx.option
-            local preset = ctx.preset
-            ctx.device = option.get("device")
-                or read_preset_value(preset, "device")
-                or "STM32F407IG"
-            ctx.interface = option.get("interface")
-                or read_preset_value(preset, "interface")
-                or "swd"
-            ctx.speed = option.get("speed")
-                or read_preset_value(preset, "speed")
-                or "4000"
-            ctx.reset_after = resolve_bool(
-                option.get("reset") or read_preset_value(preset, "reset"),
-                true
-            )
-            ctx.run_after = resolve_bool(
-                option.get("run") or read_preset_value(preset, "run"),
-                true
-            )
-            ctx.native_output = resolve_bool(
-                option.get("native_output") or read_preset_value(preset, "native_output"),
-                false
-            )
-            ctx.program = resolve_jlink_program(
-                option.get("program") or read_preset_value(preset, "program")
-            )
+        --- Step 3: 解析 flasher 配置
+        local function step_resolve_flasher_config(ctx)
+            ctx.flasher:resolve_config(ctx)
             return ctx
         end
 
-        --- Step: 生成命令并写入临时文件
-        ---@param ctx table 上下文
-        ---@return table ctx
+        --- Step 4: 准备命令
         local function step_prepare_command(ctx)
-            local firmware_size = nil
-            if normalize_extension(ctx.firmware) == ".bin" then
-                firmware_size = os.filesize(ctx.firmware)
-                if not firmware_size or firmware_size == 0 then
-                    raise("cannot determine firmware file size: " .. ctx.firmware)
-                end
-            end
-            local command_content = build_jlink_command(
-                ctx.device,
-                ctx.interface,
-                ctx.speed,
+            ctx.program = ctx.flasher.get_program(ctx.flasher_config)
+            ctx.args = ctx.flasher.build_command(
+                ctx.flasher_config,
                 ctx.firmware,
-                firmware_size,
-                ctx.reset_after,
-                ctx.run_after
+                ctx.config.builddir()
             )
-            ctx.command_path = write_jlink_command_file(ctx.config.builddir(), command_content)
             return ctx
         end
 
-        --- Step: 执行烧录
-        ---@param ctx table 上下文
-        ---@return table ctx
+        --- Step 5: 执行烧录
         local function step_execute(ctx)
-            local command_arguments = {"-CommandFile", ctx.command_path}
-            if ctx.native_output then
-                os.execv(ctx.program, command_arguments)
+            if ctx.flasher_config.native_output then
+                os.execv(ctx.program, ctx.args)
             else
-                os.runv(ctx.program, command_arguments)
+                os.runv(ctx.program, ctx.args)
             end
-            -- 输出实际使用的可执行文件路径与工具链信息
             local toolchain_name = ctx.config and ctx.config.get("toolchain") or "unknown"
+            print("[oh-my-robot] flash flasher: " .. ctx.flasher.name)
             print("[oh-my-robot] flash program: " .. tostring(ctx.program))
             print("[oh-my-robot] flash firmware: " .. tostring(ctx.firmware))
             print("[oh-my-robot] flash toolchain: " .. tostring(toolchain_name))
-            print("[oh-my-robot] flash native output: " .. tostring(ctx.native_output))
+            print("[oh-my-robot] flash native output: " .. tostring(ctx.flasher_config.native_output))
             return ctx
         end
 
         local ctx = build_context()
         local steps = {
+            step_load_flasher,
             step_resolve_firmware,
-            step_resolve_driver,
+            step_resolve_flasher_config,
             step_prepare_command,
             step_execute,
         }

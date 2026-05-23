@@ -133,17 +133,23 @@ local preset = {
   board = {name = "rm-c-board"},
   os = {name = "freertos"},
   flash = {
+    flasher = "jlink",
+    target = "robot_project",
+    firmware = nil,
+    prefer_hex = true,
+    reset = true,
+    run = true,
+    native_output = false,
     jlink = {
       device = "STM32F407IG",
       interface = "swd",
       speed = 4000,
       program = "D:/Program Files/ProgramTools/SEGGER/Jlink/JLink.exe",
-      target = "robot_project",
-      firmware = nil,
-      prefer_hex = true,
-      reset = true,
-      run = true,
-      native_output = false,
+    },
+    daplink = {
+      program = "D:/openocd-win/bin/openocd.exe",
+      config = ".vscode/daplink.cfg",
+      frequency = 4000,
     },
   },
 }
@@ -155,8 +161,9 @@ end
 约束：
 - 仅用于选择与路径配置，不用于新增 board/os/toolchain 数据。
 - `toolchain_default.name` 和 `toolchain_presets` 的键必须在内置数据中存在。
-- `flash.jlink` 仅在 `xmake flash` 任务中读取，不影响常规构建流程。
-- 当前 `om_preset.flash` 仅支持 `jlink` 配置；`daplink` 处于规划阶段，尚未接入任务链路。
+- `flash` 配置在 `xmake flash` 任务中读取，不影响常规构建流程。
+- `om_preset.flash` 同时支持 `jlink` 与 `daplink` 两种调试器；通过 `flash.flasher` 指定默认类型，命令行 `--flasher=...` 可覆盖。
+- 通用字段（`target`/`firmware`/`prefer_hex`/`reset`/`run`/`native_output`）对两种烧录器均生效。
 
 ### 8.1 项目根与框架根
 - 项目根：当前顶层 `xmake.lua` 所在目录，也是 `compile_commands.json` 与构建产物的默认落点。
@@ -172,12 +179,12 @@ end
 | 概念 | 来源 | 示例 | 规则 |
 | --- | --- | --- | --- |
 | 目标名（Target ID） | `xmake.lua` 的 `target("...")` | `target("robot_project")` | 这是目标唯一标识 |
-| 烧录目标名 | `om_preset.lua` 的 `flash.jlink.target` | `target = "robot_project"` | 必须与 `target("...")` 完全一致 |
+| 烧录目标名 | `om_preset.lua` 的 `flash.target` | `target = "robot_project"` | 必须与 `target("...")` 完全一致 |
 | 输出文件名 | `xmake.lua` 的 `set_filename("...")` | `set_filename("robot_project.elf")` | 仅决定产物文件名 |
 | 调试符号文件 | `.vscode/launch.json` 的 `executable` | `build/cross/arm/debug/robot_project.elf` | 必须指向实际生成的 ELF |
 
 常见错配后果：
-- `flash.jlink.target` 与 `target("...")` 不一致：`xmake flash` 无法定位目标。
+- `flash.target` 与 `target("...")` 不一致：`xmake flash` 无法定位目标。
 - `launch.json.executable` 与真实产物不一致：Cortex-Debug 启动失败或符号加载失败。
 
 ## 9. 构建产物与清理
@@ -209,8 +216,8 @@ xmake clean
   - 生成项目壳：`xmake init_workspace --output=<dir>`。
   - 编辑项目根 `om_preset.lua`，填写当前项目使用的 `sdk/bin` 与烧录参数。
   - 进入项目壳后再执行 `xmake f -c -m debug` 与 `xmake`。
-- 烧录：`xmake flash` 通过 J-Link Commander 烧录，默认优先使用 HEX，可通过 `--firmware` 指定 ELF/HEX，并可用 `--native_output=true` 透传原生输出。
-- 调试器支持范围：当前仅支持 J-Link；DAPLink 为后续规划项（当前版本不可用）。
+- 烧录：`xmake flash` 通过策略模式支持 J-Link 与 DAPLink (OpenOCD) 两种烧录器，通过 `--flasher` 切换。默认优先使用 HEX，可通过 `--firmware` 指定 ELF/HEX，并可用 `--native_output=true` 透传原生输出。
+- 调试器支持范围：同时支持 J-Link 与 DAPLink (OpenOCD + CMSIS-DAP)。VSCode 调试通过 Cortex-Debug 插件，J-Link 使用 `servertype: "jlink"`，DAPLink 使用 `servertype: "openocd"`。
 - 更换板级/OS/工具链：重新执行 `xmake f -c --board=... --os=... --toolchain=...`。
 - 关闭镜像生成：从目标规则中移除 `oh_my_robot.image_convert`。
 - 禁用同步加速：`xmake f -c --sync_accel=none ...`。
@@ -308,7 +315,7 @@ xmake clean
 | `name` | 配置显示名称 | 建议包含探针/芯片/工具链，便于选择 |
 | `type` | 调试插件类型 | Cortex-Debug 固定为 `cortex-debug` |
 | `request` | 调试请求类型 | 启动并下载通常用 `launch` |
-| `servertype` | GDB Server 类型 | J-Link 链路固定 `jlink` |
+| `servertype` | GDB Server 类型 | J-Link 用 `jlink`；DAPLink 用 `openocd` |
 | `device` | 目标芯片型号 | 必须与探针端识别名称一致 |
 | `interface` | 调试接口 | 常用 `swd` |
 | `cwd` | 命令执行工作目录 | 固定 `${workspaceFolder}`，避免路径转义问题 |
