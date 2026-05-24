@@ -80,6 +80,25 @@ static int run_ringbuffer_basic_test(void)
     return 1;
 }
 
+/* A1: 非 2 的幂容量不挂死，自动向上取整 */
+static int run_ringbuffer_non_power_of_two_test(void)
+{
+    Ringbuf rb;
+    uint32_t storage[16] = {0};
+    unsigned int cap;
+
+    memset(&rb, 0, sizeof(rb));
+    /* 传入 3，应自动取整为 4，不挂死 */
+    if (!ringbuf_init(&rb, (uint8_t*)storage, sizeof(uint32_t), 3))
+        return 0;
+
+    cap = ringbuf_cap(&rb);
+    if (cap != 4)
+        return 0;
+
+    return 1;
+}
+
 #ifdef _WIN32
 static int host_thread_create(HostThread* thread, LPTHREAD_START_ROUTINE entry, void* arg)
 {
@@ -238,6 +257,7 @@ static int run_ringbuffer_concurrency_test(void)
 int main(void)
 {
     int basicOk = run_ringbuffer_basic_test();
+    int pow2Ok = run_ringbuffer_non_power_of_two_test();
     int concurOk = run_ringbuffer_concurrency_test();
 
     if (!basicOk)
@@ -247,10 +267,17 @@ int main(void)
     }
     printf("[PASS] ringbuffer basic test passed\n");
 
+    if (!pow2Ok)
+    {
+        printf("[FAIL] ringbuffer non-power-of-two init test failed\n");
+        return 2;
+    }
+    printf("[PASS] ringbuffer non-power-of-two init test passed\n");
+
     if (!concurOk)
     {
         printf("[FAIL] ringbuffer concurrency test failed\n");
-        return 2;
+        return 5;
     }
     printf("[PASS] ringbuffer concurrency test passed\n");
 

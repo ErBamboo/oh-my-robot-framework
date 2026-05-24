@@ -3,19 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define IS_NUM_POWER_OF_TWO(x) ((x) && !(((x) & ((x) - 1U))))
-
 bool ringbuf_init(Ringbuf *rb, uint8_t *buff, unsigned int item_size, unsigned int item_count)
 {
     if ((rb == NULL) || (buff == NULL) || (item_size == 0U) || (item_count == 0U))
         return false;
 
-    if (!IS_NUM_POWER_OF_TWO(item_count))
-    {
-        while (1)
-        {
-        }
-    }
+    item_count = roundup_pow_of_two(item_count);
 
     rb->buf = buff;
     rb->esize = item_size;
