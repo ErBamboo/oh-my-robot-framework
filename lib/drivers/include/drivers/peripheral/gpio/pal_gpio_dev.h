@@ -129,8 +129,9 @@ typedef struct {
  *          后续操作直接通过 ctrl 指针路由，零字符串查找开销，ISR 安全。
  *
  * @code
- * GpioPin led = gpio_pin_get(&led_spec);
- * if (!gpio_pin_valid(led)) return OM_ENODEV;
+ * GpioPin led;
+ * OmRet ret = gpio_pin_get(&led_spec, &led);
+ * if (ret != OM_OK) return ret;
  * gpio_pin_write(led, 1);
  * @endcode
  */
@@ -373,18 +374,24 @@ struct GpioOps {
 
 /**
  * @brief  从编译时描述符解析运行时引脚句柄
- * @param[in] spec  编译时引脚描述符，不可为 NULL
- * @return 运行时引脚句柄；解析失败时 ctrl 为 NULL
+ * @param[in]  spec  编译时引脚描述符，不可为 NULL
+ * @param[out] pin   解析结果句柄；失败时写入 ctrl=NULL 的无效句柄
+ * @return OM_OK 成功，OM_ERROR_PARAM 参数无效，OM_ERROR 控制器未找到或类型不匹配
  * @note   通常在初始化阶段调用一次，后续复用返回的 #GpioPin
  */
-GpioPin gpio_pin_get(const GpioPinSpec *spec);
+OmRet gpio_pin_get(const GpioPinSpec *spec, GpioPin *pin);
 
 /**
  * @brief  检查引脚句柄是否有效
+ * @details 等效于 `pin.ctrl != NULL`。gpio_pin_get() 成功后无需调用此函数；
+ *          主要用于可选引脚场景（如 SPI 片选）的运行时判断。
  * @param[in] pin  待检查的引脚句柄
  * @return true 有效，false 无效（ctrl 为 NULL）
  */
-bool gpio_pin_valid(GpioPin pin);
+static inline bool gpio_pin_valid(GpioPin pin)
+{
+    return pin.ctrl != NULL;
+}
 
 /** @} */
 
@@ -487,7 +494,10 @@ GpioPort gpio_port_get(const char *controller);
  * @param[in] port  待检查的端口句柄
  * @return true 有效，false 无效
  */
-bool gpio_port_valid(GpioPort port);
+static inline bool gpio_port_valid(GpioPort port)
+{
+    return port.ctrl != NULL;
+}
 
 /**
  * @brief  掩码写入端口

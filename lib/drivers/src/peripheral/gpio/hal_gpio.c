@@ -78,32 +78,31 @@ OmRet gpio_controller_register(GpioController *ctrl, const char *name,
 /* ===== Pin 句柄解析 ===== */
 
 /**
- * @brief  通过 device_find() 查找控制器、校验 offset、返回 GpioPin
+ * @brief  通过 device_find() 查找控制器、校验 offset、写入输出参数
  */
-GpioPin gpio_pin_get(const GpioPinSpec *spec)
+OmRet gpio_pin_get(const GpioPinSpec *spec, GpioPin *pin)
 {
+    if (!pin)
+        return OM_ERROR_PARAM;
+
     GpioPin invalid = {NULL, 0, 0};
+    *pin = invalid;
+
     if (!spec || !spec->controller)
-        return invalid;
+        return OM_ERROR_PARAM;
 
     Device *dev = device_find((char *)spec->controller);
     if (!dev || dev->type != DEVICE_TYPE_GPIO)
-        return invalid;
+        return OM_ERROR;
 
     GpioController *ctrl = (GpioController *)dev;
     if (spec->offset >= ctrl->pin_count)
-        return invalid;
+        return OM_ERROR;
 
-    GpioPin pin = {ctrl, spec->offset, spec->flags};
-    return pin;
-}
-
-/**
- * @brief  检查 GpioPin 的 ctrl 指针是否非空
- */
-bool gpio_pin_valid(GpioPin pin)
-{
-    return pin.ctrl != NULL;
+    pin->ctrl   = ctrl;
+    pin->offset = spec->offset;
+    pin->flags  = spec->flags;
+    return OM_OK;
 }
 
 /* ===== 引脚级操作（无锁） ===== */
@@ -246,14 +245,6 @@ GpioPort gpio_port_get(const char *controller)
 
     GpioPort port = {(GpioController *)dev};
     return port;
-}
-
-/**
- * @brief  检查 GpioPort 的 ctrl 指针是否非空
- */
-bool gpio_port_valid(GpioPort port)
-{
-    return port.ctrl != NULL;
 }
 
 /* ===== 端口级批量操作 ===== */

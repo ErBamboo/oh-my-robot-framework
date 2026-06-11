@@ -7,7 +7,6 @@
 /* 抽象层裁剪 */
 #define OM_USE_HAL_SERIALS
 #define OM_USE_HAL_CAN
-#define OM_USE_HAL_GPIO
 #define OM_USE_HAL_SPI
 
 /*
