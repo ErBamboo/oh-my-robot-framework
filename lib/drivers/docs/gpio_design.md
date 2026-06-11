@@ -35,7 +35,7 @@
 - 电平读写、翻转
 - 上下拉配置（无/上拉/下拉）
 - 驱动模式（推挽/开漏）
-- 驱动强度（低/中/高，硬件相关，不支持的 BSP 返回 OM_ENOTSUP）
+- 驱动强度（低/中/高，硬件相关，不支持的 BSP 返回 OM_ERROR_NOT_SUPPORT）
 - 输出初始值
 - 中断（边沿/电平触发）
 
@@ -92,8 +92,8 @@ typedef struct {
 使用方式：
 ```c
 static const GpioPinSpec led_spec = { "gpio0", 19, 0 };
-GpioPin led = gpio_pin_get(&led_spec);
-if (!gpio_pin_valid(led)) return OM_ENODEV;
+GpioPin led;
+if (gpio_pin_get(&led_spec, &led) != OM_OK) return OM_ERROR;
 gpio_pin_write(led, 1);  // 直接通过 ctrl 指针，无字符串查找
 ```
 
@@ -145,7 +145,7 @@ OmRet gpio_pin_irq_enable(GpioPin pin, bool enable);
 **理由**：
 - 延迟最低，适合机器人场景中的实时响应（编码器脉冲、限位开关、紧急停止）
 - attach/enable 分离允许先注册回调再条件使能，灵活控制中断生命周期
-- 不引入 osal/sync/ipc 依赖，GPIO 子系统保持最轻依赖（仅 core）
+- ISR 热路径不依赖 osal/sync/ipc（回调表管理使用 osal_irq_lock，但不在 ISR 中），子系统依赖 core + osal
 - 用户若需任务级处理，可在回调中自行使用 osal 原语（信号量 give、队列发送等）
 
 ---
@@ -164,10 +164,8 @@ OmRet gpio_pin_irq_enable(GpioPin pin, bool enable);
 ### D8: 依赖一致性
 
 **决策**：
-- GPIO 子系统位于 `lib/drivers/`，依赖 `core`（类型/错误码/atomic）+ `osal`（`osal_irq_lock/unlock`，仅 IRQ 管理路径使用）
+- GPIO 子系统位于 `lib/drivers/`，依赖 `core`（类型/错误码）+ `osal`（`osal_irq_lock/unlock`、`osal_malloc/free`，IRQ 管理路径和控制器注册使用）
 - API 头文件放入 `tar_awapi_driver`（headeronly target），实现放入 `tar_awdrivers`（static target）
-- 裁剪宏：`OM_USE_HAL_GPIO`，在 `om_config.h` 中定义
-- PAL 入口：在 `pal_dev.h` 中通过条件编译包含 GPIO 头文件
 - 不依赖 sync/ipc/services/systems，不 include bsp 头文件
 
 **理由**：
@@ -264,8 +262,8 @@ typedef struct GpioPin {
 } GpioPin;
 
 // 解析 + 有效性检查
-GpioPin gpio_pin_get(const GpioPinSpec *spec);
-bool    gpio_pin_valid(GpioPin pin);
+OmRet gpio_pin_get(const GpioPinSpec *spec, GpioPin *pin);
+bool  gpio_pin_valid(GpioPin pin);
 
 /* ===== 引脚配置 ===== */
 typedef enum { GPIO_DIR_INPUT, GPIO_DIR_OUTPUT } GpioDirection;
@@ -332,7 +330,8 @@ typedef struct GpioOps {
     uint32_t (*port_read)(GpioController *ctrl);
 } GpioOps;
 
-OmRet gpio_controller_register(const char *name,
+OmRet gpio_controller_register(GpioController *ctrl,
+                                const char *name,
                                 uint8_t pin_count,
                                 uint32_t caps, const GpioOps *ops, void *priv);
 
@@ -340,10 +339,10 @@ OmRet gpio_controller_register(const char *name,
 typedef struct GpioController {
     Device parent;               // 内嵌 Device
     const GpioOps *ops;          // BSP 注入的硬件操作函数表
-    uint8_t pin_start;
     uint8_t pin_count;
+    uint32_t caps;               // IRQ 能力位图
     void *priv;                  // BSP 私有数据
-    struct GpioIrqHdr *irq_hdrs; // 中断回调表
+    GpioIrqHdr *irq_hdrs;        // 中断回调表
 } GpioController;
 ```
 

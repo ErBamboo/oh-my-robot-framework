@@ -68,13 +68,11 @@ static void gpio_test_task(void *arg)
     (void)arg;
 
     /* 1. 解析引脚句柄 */
-    GpioPin out     = gpio_pin_get(&out_spec);
-    GpioPin in      = gpio_pin_get(&in_spec);
-    GpioPin irq_src = gpio_pin_get(&irq_src_spec);
-    GpioPin irq_pin = gpio_pin_get(&irq_pin_spec);
-
-    if (!gpio_pin_valid(out) || !gpio_pin_valid(in) ||
-        !gpio_pin_valid(irq_src) || !gpio_pin_valid(irq_pin)) {
+    GpioPin out, in, irq_src, irq_pin;
+    if (gpio_pin_get(&out_spec, &out) != OM_OK ||
+        gpio_pin_get(&in_spec, &in) != OM_OK ||
+        gpio_pin_get(&irq_src_spec, &irq_src) != OM_OK ||
+        gpio_pin_get(&irq_pin_spec, &irq_pin) != OM_OK) {
         /* 引脚解析失败 — 检查控制器名和偏移是否在范围内 */
         while (1) {}
     }

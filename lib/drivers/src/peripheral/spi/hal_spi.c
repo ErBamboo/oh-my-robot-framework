@@ -233,7 +233,7 @@ OmRet hal_spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
 
     /* 解析 CS 引脚 */
     if (cfg->csSpec.controller != NULL)
-        dev->cs = gpio_pin_get(&cfg->csSpec);
+        gpio_pin_get(&cfg->csSpec, &dev->cs);
 
     /* 注册为标准 Device */
     static const DevInterface g_spiDevInterface = {
@@ -405,7 +405,7 @@ OmRet hal_spi_dev_control(Device *dev, size_t cmd, void *arg)
         spiDev->cfg = *newCfg;
         /* 解析新的 CS 引脚：GPIO→硬件CS 切换时需清除旧 GPIO 句柄 */
         if (newCfg->csSpec.controller != NULL)
-            spiDev->cs = gpio_pin_get(&newCfg->csSpec);
+            gpio_pin_get(&newCfg->csSpec, &spiDev->cs);
         else
             memset(&spiDev->cs, 0, sizeof(spiDev->cs));
 
