@@ -2,9 +2,8 @@
 
 ## 0. 说明
 
-- 本文是 `oh-my-robot` 框架的**架构参考**，描述分层结构、各层职责边界与横切规则。
-- **分层与依赖方向**的唯一总规范源为 [`layer_dependency_spec.md`](layer_dependency_spec.md)，本文引用要点但不重复定义依赖矩阵。
-- 本文只描述**架构定义**——分层结构、各层职责边界、依赖方向与横切规则。不包含实现细节（文件路径、API 清单、类型签名等）和演进记录（ADR 索引等），后者有其独立的事实源，在此重复会制造维护负担。
+- 本文是 `oh-my-robot` 框架分层结构、各层职责边界、依赖方向与横切规则的**唯一总规范源**。
+- 本文只描述**架构定义**，不包含实现细节（文件路径、API 清单、类型签名等）和演进记录（ADR 索引等），后者有其独立的事实源，在此重复会制造维护负担。
 
 ## 1. 分层架构总览
 
@@ -12,18 +11,18 @@
 ┌──────────────────────────────────────────────────┐
 │                 systems  业务子系统                │
 ├──────────────────────────────────────────────────┤
-│   services（通用服务）   │   drivers（驱动与 PAL）  │
+│   services（通用服务）   │   drivers（驱动与 PAL）   │
 ├──────────────────────────────────────────────────┤
-│   async（异步）  │  ipc（数传）  │  sync（同步）    │
+│   async（异步）  │  ipc（数传）  │  sync（同步）     │
 ├──────────────────────────────────────────────────┤
 │              osal（操作系统抽象）                   │
 ├──────────────────────────────────────────────────┤
-│              core（基础能力）                       │
+│              core（基础能力）                      │
 ╞══════════════════════════════════════════════════╡
-│              platform（平台适配）                   │
-│   bsp · osal端口 · sync加速 · 工具链/ABI · RTOS绑定  │
+│              platform（平台适配）                  │
+│   bsp · osal端口 · sync加速 · 工具链/ABI · RTOS绑定 │
 ├──────────────────────────────────────────────────┤
-│              third_party（外部依赖）                │
+│              third_party（外部依赖）               │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -33,7 +32,7 @@
 
 **依赖方向**：上层依赖下层，可跨层直连。
 
-**禁止依赖方向（示例）**：`drivers → services`、`services → drivers`、`osal → 任何上层`、`platform → services/systems`、`core → 任何上层`。完整依赖矩阵见 [`layer_dependency_spec.md`](layer_dependency_spec.md)。
+**禁止依赖方向**：`drivers → services`、`services → drivers`、`osal → 任何上层`、`platform → services/systems`、`core → 任何上层`。
 
 ## 2. 各层职责与边界
 
@@ -97,13 +96,13 @@
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `platform` 处理。
 - **可依赖**：`core`、`osal`、`sync`、`async`。
 - **禁止依赖**：`platform`（任意代码）、`services` 核心路径、`systems`。
-- **规则**：当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
 
 **services — 通用服务层**
+
 - **职责**：可复用的通用服务组件（日志、配置、通信、诊断、文件系统等）。
 - **边界**：服务语义必须保持项目无关，不得绑定具体机器人机构或业务。
 - **可依赖**：`core`、`osal`、`sync`、`ipc`。
-- **禁止依赖**：`drivers` 核心路径（实现侧 adapter 解耦除外）、`systems`。
+- **禁止依赖**：`drivers` 、`systems`。
 
 ### 2.5 业务 — systems
 
@@ -111,7 +110,7 @@
 
 - **职责**：机器人系统级模块（chassis、gimbal、arm、robot 等），业务语义明确。可位于 `oh-my-robot` 仓库内，也可位于独立领域仓库。
 - **可依赖**：`services`、`drivers`、`sync`、`ipc`、`osal`、`core` — 即业务可直取领域模块或任意原语，不受中间层约束。
-- **说明**：可直接依赖 `drivers`（驱动层视为硬件无关抽象），必要时可绕过 `services`。
+- **说明**：可直接依赖 `drivers`（驱动层为硬件无关抽象）。
 
 ## 3. 横切规则
 
@@ -146,7 +145,6 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`layer_dependency_spec.md`](layer_dependency_spec.md) | 分层与依赖方向的**唯一总规范源** |
 | [`docs/process/document_governance_spec.md`](../process/document_governance_spec.md) | 文档治理规范（ADR 提纯与归档流程） |
 | [`docs/process/git_collaboration_spec.md`](../process/git_collaboration_spec.md) | Git 协作规范（分支架构与 SOP） |
 | [`docs/process/git_version_release_spec.md`](../process/git_version_release_spec.md) | 发布与版本控制规范 |
