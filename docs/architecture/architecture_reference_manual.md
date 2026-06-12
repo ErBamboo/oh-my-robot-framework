@@ -20,45 +20,37 @@
 ├──────────────────────────────────────────────────┤
 │              core（基础能力）                       │
 ╞══════════════════════════════════════════════════╡
-│   platform          │    bsp                      │
-│   平台适配 · osal端口  │    板级支持 · 硬件初始化      │
+│              platform（平台适配）                   │
+│   bsp · osal端口 · sync加速 · 工具链/ABI · RTOS绑定  │
 ├──────────────────────────────────────────────────┤
 │              third_party（外部依赖）                │
 └──────────────────────────────────────────────────┘
 ```
 
-> 双线以上为**架构定义**（接口与抽象），双线以下为**平台实现**（端口、适配、硬件初始化）。`osal` 的接口定义在架构侧，各 RTOS 端口实现落在 `platform`。
+> 双线以上为**架构定义**（接口与抽象），双线以下为**平台实现**。`platform` 是所有平台适配代码的有序聚合，配合构建系统选择性编译；`third_party` 为第三方外部代码，仅供适配与移植使用。
 >
 > **设计思想**：下层为**单一功能原语**（sync 提供同步语义、async 提供执行调度、ipc 提供跨上下文数据传输、osal 抽象操作系统、core 提供基础能力），中层（services、drivers）是原语组合而成的**领域模块**，各有独立语义。业务（systems）可直取任意一层——原语或组合，不受中间层约束。
 
 **依赖方向**：上层依赖下层，可跨层直连。
 
-**禁止依赖方向（示例）**：`drivers → services`、`services → drivers`、`osal → 任何上层`、`bsp → osal/sync/ipc`、`core → 任何上层`。完整依赖矩阵见 [`layer_dependency_spec.md`](layer_dependency_spec.md)。
+**禁止依赖方向（示例）**：`drivers → services`、`services → drivers`、`osal → 任何上层`、`platform → services/systems`、`core → 任何上层`。完整依赖矩阵见 [`layer_dependency_spec.md`](layer_dependency_spec.md)。
 
 ## 2. 各层职责与边界
 
-双线之下（`platform`、`bsp`、`third_party`）为**平台实现**——按目标选择性编译的适配代码、板级硬件初始化、外部依赖，包括 osal 的 RTOS 端口实现。双线之上为**架构定义**，按角色分为三组：**单一功能原语** → **领域模块** → **业务**。依赖方向自顶向下，可跨层直连。
+双线之下（`platform`、`third_party`）为**平台实现**。`platform` 是所有平台适配代码的有序聚合，配合构建系统选择性编译；`third_party` 为第三方代码，仅供适配与移植使用。双线之上为**架构定义**，按角色分为三组：**单一功能原语** → **领域模块** → **业务**。依赖方向自顶向下，可跨层直连。
 
 ### 2.1 third_party — 外部依赖
 
 - **职责**：第三方代码（FreeRTOS、CMSIS、HAL 等），仅用于框架的适配与移植，不面向上层模块直接使用。
 - **约束**：公共头文件不得直接暴露 third_party 类型/宏；如需对外暴露，必须通过封装或句柄隔离。
 
-### 2.2 bsp — 板级支持
+### 2.2 platform — 平台适配
 
-- **职责**：特定 MCU 板卡的初始化、外设配置、启动文件、时钟与引脚物理连接。与具体芯片强耦合，属于移植桩，不承载架构语义。
-- **边界**：不承担 OSAL 端口或业务语义。
-- **可依赖**：`core`、`drivers`（仅通过 PAL 接口）、`third_party`。
-- **禁止依赖**：`osal`、`sync`、`ipc`、`services`、`systems`。
-
-### 2.3 platform — 端口与平台适配
-
-- **职责**：所有平台适配代码的有序聚合——按目标 OS/工具链/架构组织目录，由构建系统选择性编译。包含 OSAL 端口实现、sync 加速后端、工具链/ABI 适配、RTOS 绑定等。
-- **边界**：不包含板级初始化与外设物理连接。
-- **可依赖**：`core`、`third_party`（通过平台内接口层）。
+- **职责**：所有平台适配代码的有序聚合，配合构建系统选择性编译。涵盖板级初始化与外设配置（bsp）、OSAL 端口实现、sync 加速后端、工具链/ABI 适配、RTOS 绑定。
+- **可依赖**：`core`、`third_party`。
 - **禁止依赖**：`services`、`systems`。
 
-### 2.4 单一功能原语 — core / osal / sync / async / ipc
+### 2.3 单一功能原语 — core / osal / sync / async / ipc
 
 这些层各自提供单一、独立的功能原语，不承载业务或领域语义。任何上层模块（drivers、services、systems）均可按需直取任意原语进行组合。
 
@@ -66,7 +58,7 @@
 - **职责**：基础类型、错误码、通用宏、原子操作、平台无关的数据结构与算法。
 - **边界**：不包含 OS、设备驱动、板级或业务语义。
 - **可依赖**：必要的 `third_party`（需封装在实现或内部头）。
-- **禁止依赖**：`osal`、`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`bsp`、`platform`。
+- **禁止依赖**：`osal`、`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
 
 **osal — 操作系统抽象层**
 - **职责**：对 RTOS/系统调用做最小可移植抽象（线程、互斥、信号量、队列、时间、定时器、事件对象等）。
@@ -93,16 +85,16 @@
 - **可依赖**：`core`、`osal`。
 - **禁止依赖**：`services`、`drivers`、`systems`。
 
-### 2.5 领域模块 — drivers / services
+### 2.4 领域模块 — drivers / services
 
 基于下层原语组合而成的领域模块，各有独立语义。二者对等、互不依赖，均可直取任意原语层。
 
 **drivers — 驱动与 PAL**
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
-- **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `bsp`/`platform` 处理。
-- **可依赖**：`core`、`osal`、`sync`、`ipc`、必要的 `third_party`（尽量通过 BSP 或 port 封装）。
+- **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `platform` 处理。
+- **可依赖**：`core`、`osal`、`sync`、`ipc`、必要的 `third_party`（尽量通过 `platform` 封装）。
 - **禁止依赖**：`services` 核心路径、`systems`。
-- **规则**：禁止直接 include `bsp/` 私有头文件。当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
+- **规则**：禁止直接 include `platform/` 内私有实现。当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
 
 **services — 通用服务层**
 - **职责**：可复用的通用服务组件（日志、配置、通信、诊断、文件系统等）。
@@ -110,7 +102,7 @@
 - **可依赖**：`core`、`osal`、`sync`、`ipc`。
 - **禁止依赖**：`drivers` 核心路径（实现侧 adapter 解耦除外）、`systems`。
 
-### 2.6 业务 — systems
+### 2.5 业务 — systems
 
 **systems — 业务子系统层**
 - **职责**：机器人系统级模块（chassis、gimbal、arm、robot 等），业务语义明确。可位于 `oh-my-robot` 仓库内，也可位于独立领域仓库。
@@ -137,7 +129,7 @@
 - 公共头文件仅能 include 本层或下层公开头；不得 include `third_party` 类型或私有实现头。
 - 实现文件可 include 同层私有头，但不得穿透到上层目录。
 - 同层之间不得形成环依赖；必要时拆分子层或抽象接口。
-- 领域仓库与项目仓库不得直接 include `platform/`、`bsp/` 私有实现头。
+- 领域仓库与项目仓库不得直接 include `platform/` 私有实现。
 - 对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件。
 
 ### 3.3 聚合目标约定
