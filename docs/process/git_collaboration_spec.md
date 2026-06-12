@@ -241,6 +241,9 @@ git worktree add $WS_ROOT/worktrees/oh-my-robot/<task> \
 
 # 进入任务 worktree 开始开发
 cd $WS_ROOT/worktrees/oh-my-robot/<task>
+
+# 初始化子模块（oh-my-robot 以子模块形式嵌入父仓库）
+git submodule update --init --recursive
 ```
 
 #### 阶段二补充：worktree 与项目根推荐组织
@@ -255,6 +258,10 @@ cd $WS_ROOT/worktrees/oh-my-robot/<task>
 
 ```bash
 cd $WS_ROOT/worktrees/oh-my-robot/<task>
+
+# 若尚未初始化子模块，先执行（否则 xmake init_workspace 会因子模块目录为空而失败）
+git submodule update --init --recursive
+
 xmake init_workspace --output=$WS_ROOT/workspaces/oh-my-robot/<task>
 ```
 
@@ -320,9 +327,10 @@ git push origin feature/15-osal-mutex --force-with-lease
 2. 是否已执行第 `4.1` 节预检并确认 `origin` 是 `upstream` 的 Fork。
 3. 是否已执行 `git rev-list --left-right --count <base>...HEAD` 并按规则完成落后处理。
 4. 分支名是否为 `feature/<id>-<slug>` 且包含 Issue 编号。
-5. 是否所有提交都带 `(#<id>)` 锚点。
-6. 提交 PR 前是否已 `rebase upstream/integration`。
-7. PR 描述是否按目标分支使用正确关键字：`Refs #<id>`（到 `integration`）/`Fixes #<id>`（到 `main`）。
+5. 创建 worktree 后是否已执行 `git submodule update --init --recursive`。
+6. 是否所有提交都带 `(#<id>)` 锚点。
+7. 提交 PR 前是否已 `rebase upstream/integration`。
+8. PR 描述是否按目标分支使用正确关键字：`Refs #<id>`（到 `integration`）/`Fixes #<id>`（到 `main`）。
 
 ## 6. 合并策略
 
