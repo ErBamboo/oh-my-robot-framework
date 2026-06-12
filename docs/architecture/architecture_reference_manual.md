@@ -34,80 +34,85 @@
 
 ## 2. 各层职责与边界
 
-### 2.1 third_party — 外部依赖
+各层按角色分为四组：**适配底座** → **单一功能原语** → **领域模块** → **业务**。依赖方向自顶向下，可跨组、跨层直连。
 
+### 2.1 适配底座 — third_party / bsp / platform
+
+最底层，直接与硬件和外部代码交互。仅被上层依赖，自身不依赖上层任何组。
+
+**third_party — 外部依赖**
 - **职责**：第三方代码（FreeRTOS、CMSIS、HAL 等）。
 - **规则**：禁止业务逻辑直接修改；如需扩展，优先在 `platform/` 或 `drivers/` 做封装。
 - **约束**：公共头文件不得直接暴露 third_party 类型/宏；如需对外暴露，必须通过封装或句柄隔离。
 
-### 2.2 bsp — 板级支持
-
+**bsp — 板级支持**
 - **职责**：芯片板卡初始化、外设底层配置、启动文件、时钟与引脚物理连接。与具体 MCU 强耦合。
 - **边界**：不承担 OSAL 端口或业务语义。
 - **可依赖**：`core`、`drivers`（仅通过 PAL 接口）、`third_party`。
 - **禁止依赖**：`osal`、`sync`、`ipc`、`services`、`systems`。
 
-### 2.3 platform — 端口与平台适配
-
+**platform — 端口与平台适配**
 - **职责**：OSAL 端口实现、sync 加速后端、工具链/ABI 适配、RTOS 绑定。
 - **边界**：不包含板级初始化与外设物理连接。
 - **可依赖**：`core`、`third_party`（通过平台内接口层）。
 - **禁止依赖**：`services`、`systems`。
 
-### 2.4 core — 基础能力层
+### 2.2 单一功能原语 — core / osal / sync / async / ipc
 
+这些层各自提供单一、独立的功能原语，不承载业务或领域语义。任何上层模块（drivers、services、systems）均可按需直取任意原语进行组合；原语之间（如 sync 基于 osal、async 基于 sync）仅允许下层被依赖。
+
+**core — 基础能力层**
 - **职责**：基础类型、错误码、通用宏、原子操作、平台无关的数据结构与算法。
 - **边界**：不包含 OS、设备驱动、板级或业务语义。
 - **可依赖**：必要的 `third_party`（需封装在实现或内部头）。
 - **禁止依赖**：`osal`、`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`bsp`、`platform`。
 
-### 2.5 osal — 操作系统抽象层
-
+**osal — 操作系统抽象层**
 - **职责**：对 RTOS/系统调用做最小可移植抽象（线程、互斥、信号量、队列、时间、定时器、事件对象等）。
 - **规则**：OSAL 只定义"端口必须实现"的最小原语，不承诺更高层语义。端口实现放在 `platform/` 中，避免公共接口混杂平台细节。
 - **可依赖**：`core`。
 
-### 2.6 sync — 同步语义层
-
+**sync — 同步语义层**
 - **职责**：基于 OSAL 原语组合出的纯同步信号抽象（例如事件通知、栅栏同步等），无数据载荷。
 - **与 ipc 的区别**：sync 只传递"事件信号"，不传递数据。
 - **规则**：对外 API 不暴露具体 RTOS 类型；默认实现仅依赖 OSAL，可选加速实现须满足跨模块复用约束。
 - **可依赖**：`core`、`osal`。
 
-### 2.7 ipc — 跨上下文数据传输层
+**async — 异步执行基座**
+- **职责**：在 `osal`/`sync` 之上提供通用执行调度能力（工作队列、延时执行等）。
+- **边界**：只提供通用执行语义，不承载业务模块。
+- **可依赖**：`core`、`osal`、`sync`。
+- **禁止依赖**：`drivers`、`services`、`systems`。
 
+**ipc — 跨上下文数据传输层**
 - **职责**：跨上下文（Task↔Task / ISR→Task / Task→ISR）的字节流/消息传输通道，有数据载荷。
 - **与 sync 的区别**：ipc 传输带数据的通道，sync 只传递事件信号。
 - **与 services/comm 的区别**：ipc 提供无结构的字节流，comm 提供带帧格式和路由的结构化消息。
 - **可依赖**：`core`、`osal`。
 - **禁止依赖**：`services`、`drivers`、`systems`。
 
-### 2.8 async — 异步执行基座
+### 2.3 领域模块 — drivers / services
 
-- **职责**：在 `osal`/`sync` 之上提供通用执行调度能力（工作队列、延时执行等）。
-- **边界**：只提供通用执行语义，不承载业务模块。
-- **可依赖**：`core`、`osal`、`sync`。
-- **禁止依赖**：`drivers`、`services`、`systems`。
+基于下层原语组合而成的领域模块，各有独立语义。二者对等、互不依赖，均可直取任意原语层。
 
-### 2.9 drivers — 驱动与 PAL
-
+**drivers — 驱动与 PAL**
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `bsp`/`platform` 处理。
 - **可依赖**：`core`、`osal`、`sync`、`ipc`、必要的 `third_party`（尽量通过 BSP 或 port 封装）。
 - **禁止依赖**：`services` 核心路径、`systems`。
 - **规则**：禁止直接 include `bsp/` 私有头文件。当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
 
-### 2.10 services — 通用服务层
-
+**services — 通用服务层**
 - **职责**：可复用的通用服务组件（日志、配置、通信、诊断、文件系统等）。
 - **边界**：服务语义必须保持项目无关，不得绑定具体机器人机构或裁判业务。
 - **可依赖**：`core`、`osal`、`sync`、`ipc`。
 - **禁止依赖**：`drivers` 核心路径（实现侧 adapter 解耦除外）、`systems`。
 
-### 2.11 systems — 业务子系统层
+### 2.4 业务 — systems
 
+**systems — 业务子系统层**
 - **职责**：机器人系统级模块（chassis、gimbal、arm、robot 等），业务语义明确。可位于 `oh-my-robot` 仓库内，也可位于独立领域仓库。
-- **可依赖**：`services`、`drivers`、`sync`、`ipc`、`osal`、`core`。
+- **可依赖**：`services`、`drivers`、`sync`、`ipc`、`osal`、`core` — 即业务可直取领域模块或任意原语，不受中间层约束。
 - **说明**：可直接依赖 `drivers`（驱动层视为硬件无关抽象），必要时可绕过 `services`。
 
 ## 3. 横切规则
