@@ -15,19 +15,19 @@
 │  services       通用服务                      │
 ├──────────────────────────────────────────────┤
 │  drivers        驱动与 PAL                    │
-├────────────┬─────┬────────────┬──────────────┤
-│  async     │ ipc │            │               │
-│  异步基座   │ 跨上 │            │               │
-│            │ 下文 │            │               │
-│            │ 数据 │            │               │
-│            │ 传输 │            │               │
-├────────────┴─────┴────────────┤  comm adapter │
-│  sync        同步语义          │  （实现侧适配） │
-├───────────────────────────────┤               │
-│  osal        操作系统抽象       │               │
-├───────────────────────────────┤               │
-│  core        基础能力          │               │
-├───────────────────────────────┴───────────────┤
+├────────────┬─────┤                          │
+│  async     │ ipc │                          │
+│  异步基座   │ 跨上 │                          │
+│            │ 下文 │                          │
+│            │ 数据 │                          │
+│            │ 传输 │                          │
+├────────────┴─────┤                          │
+│  sync        同步语义                         │
+├──────────────────                          │
+│  osal        操作系统抽象                     │
+├──────────────────                          │
+│  core        基础能力                        │
+├──────────────────┬─────────────────────────┤
 │  platform     端口与平台适配                    │
 ├───────────────────────────────────────────────┤
 │  bsp          板级支持                         │
@@ -41,7 +41,6 @@
 ```
 systems → services → ipc → sync → osal → core → third_party
 systems → drivers → ipc → sync → osal → core → third_party
-comm adapter(impl) → services/comm + drivers + ipc/sync/osal/core
 bsp → drivers/core/third_party
 platform → core/third_party
 ```
@@ -111,13 +110,7 @@ platform → core/third_party
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `bsp`/`platform` 处理。
 - **可依赖**：`core`、`osal`、`sync`、`ipc`、必要的 `third_party`（尽量通过 BSP 或 port 封装）。
 - **禁止依赖**：`services` 核心路径、`systems`。
-- **规则**：禁止直接 include `bsp/` 私有头文件。
-
-#### comm adapter（驱动层实现侧适配，非独立层）
-
-- **职责**：位于驱动实现端的胶水层，把具体总线实现接入 `services/comm`。
-- **约束**：`services/comm` 核心不得依赖具体 adapter 实现；`drivers` 核心路径不得反向依赖 adapter。
-- **允许依赖**：`drivers` + `services/comm` 公共抽象。
+- **规则**：禁止直接 include `bsp/` 私有头文件。当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
 
 ### 2.10 services — 通用服务层
 
