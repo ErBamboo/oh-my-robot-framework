@@ -135,12 +135,6 @@
 - 领域仓库与项目仓库不得直接 include `platform/` 私有实现。
 - 对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件。
 
-### 3.3 聚合目标约定
-
-- `tar_oh_my_robot`：框架聚合目标，只传播底座层能力（core / osal / sync / ipc / drivers / third_party），不包含 `systems` 或领域业务模块。
-- `tar_om_full`：完整聚合目标，在 `tar_oh_my_robot` 基础上包含 services / systems。
-- 领域仓库应自行提供独立聚合目标，由项目仓库在顶层显式组合。
-
 ## 附录 A：相关文档
 
 | 文档 | 说明 |
