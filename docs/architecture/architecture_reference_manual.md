@@ -96,8 +96,8 @@
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `platform` 处理。
 - **可依赖**：`core`、`osal`、`sync`、`async`。
-- **禁止依赖**：`services` 核心路径、`systems`。
-- **规则**：禁止直接 include `platform/` 内私有实现。当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
+- **禁止依赖**：`platform`（任意代码）、`services` 核心路径、`systems`。
+- **规则**：当把具体总线实现接入 `services/comm` 时，须通过实现侧 adapter 模式解耦（`services/comm` 核心不依赖 adapter，`drivers` 核心不反向依赖 adapter）。
 
 **services — 通用服务层**
 - **职责**：可复用的通用服务组件（日志、配置、通信、诊断、文件系统等）。
