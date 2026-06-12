@@ -70,14 +70,15 @@
 ## 3. platform（端口与平台适配层）
 
 ### 主要模块
-- `OSAL 端口实现`
-- `sync 加速后端`
+- `OSAL 端口实现（FreeRTOS）`
+- `sync 加速后端（FreeRTOS Task Notification + Linux 骨架）`
 
 ### 入口文件
 - [`oh-my-robot/platform/osal/xmake.lua`](../../platform/osal/xmake.lua)
 - [`oh-my-robot/platform/osal/freertos`](../../platform/osal/freertos)
 - [`oh-my-robot/platform/sync/xmake.lua`](../../platform/sync/xmake.lua)
 - [`oh-my-robot/platform/sync/freertos`](../../platform/sync/freertos)
+- [`oh-my-robot/platform/sync/linux`](../../platform/sync/linux)（Phase 0 骨架）
 
 ### 对外 API 列表
 - 无公开 C 头文件 API。
@@ -96,24 +97,27 @@
 - `基础定义/配置/编译器适配`
 - `CPU 与中断定义`
 - `算法（控制/协议）`
-- `数据结构`
+- `数据结构`（已独立为 `lib/data_struct/`，含 DoubleBuf / MPSC Ringbuf / Bitmap / AVL Tree / Ringbuf / CoreList）
 - `原子操作`
 - `端口适配头`
 
 ### 入口文件
-- `oh-my-robot/lib/include/awlib.h`
+- `oh-my-robot/lib/include/omlib.h`
 - [`oh-my-robot/lib/include/core/om_compiler.h`](../../lib/include/core/om_compiler.h)
 - [`oh-my-robot/lib/include/core/om_config.h`](../../lib/include/core/om_config.h)
 - [`oh-my-robot/lib/include/core/om_def.h`](../../lib/include/core/om_def.h)
 - [`oh-my-robot/lib/include/core/om_interrupt.h`](../../lib/include/core/om_interrupt.h)
 - [`oh-my-robot/lib/include/core/om_cpu.h`](../../lib/include/core/om_cpu.h)
-- `oh-my-robot/lib/include/core/algorithm/om_algorithm.h`
+- `oh-my-robot/lib/include/core/algorithm/algorithm.h`
 - [`oh-my-robot/lib/include/core/algorithm/controller/pid.h`](../../lib/include/core/algorithm/controller/pid.h)
 - [`oh-my-robot/lib/include/core/algorithm/protocol/crc.h`](../../lib/include/core/algorithm/protocol/crc.h)
-- `oh-my-robot/lib/include/core/data_struct/om_data_struct.h`
-- [`oh-my-robot/lib/include/core/data_struct/avltree.h`](../../lib/include/core/data_struct/avltree.h)
-- [`oh-my-robot/lib/include/core/data_struct/corelist.h`](../../lib/include/core/data_struct/corelist.h)
-- [`oh-my-robot/lib/include/core/data_struct/ringbuffer.h`](../../lib/include/core/data_struct/ringbuffer.h)
+- `oh-my-robot/lib/data_struct/include/data_struct/data_struct.h`
+- [`oh-my-robot/lib/data_struct/include/data_struct/avltree.h`](../../lib/data_struct/include/data_struct/avltree.h)
+- [`oh-my-robot/lib/data_struct/include/data_struct/corelist.h`](../../lib/data_struct/include/data_struct/corelist.h)
+- [`oh-my-robot/lib/data_struct/include/data_struct/ringbuffer.h`](../../lib/data_struct/include/data_struct/ringbuffer.h)
+- [`oh-my-robot/lib/data_struct/include/data_struct/double_buf.h`](../../lib/data_struct/include/data_struct/double_buf.h)
+- [`oh-my-robot/lib/data_struct/include/data_struct/mpsc_ringbuf.h`](../../lib/data_struct/include/data_struct/mpsc_ringbuf.h)
+- [`oh-my-robot/lib/data_struct/include/data_struct/bitmap.h`](../../lib/data_struct/include/data_struct/bitmap.h)
 - [`oh-my-robot/lib/include/atomic/atomic.h`](../../lib/include/atomic/atomic.h)
 - [`oh-my-robot/lib/include/atomic/atomic_simple.h`](../../lib/include/atomic/atomic_simple.h)
 - [`oh-my-robot/lib/include/atomic/atomic_base.h`](../../lib/include/atomic/atomic_base.h)
@@ -335,7 +339,7 @@
 - 内部函数
   - 无
 
-#### `oh-my-robot/lib/include/awlib.h`
+#### `oh-my-robot/lib/include/omlib.h`
 - 外部宏
   - 无
 - 内部宏
@@ -349,7 +353,7 @@
 - 内部函数
   - 无
 
-#### `oh-my-robot/lib/include/core/algorithm/om_algorithm.h`
+#### `oh-my-robot/lib/include/core/algorithm/algorithm.h`
 - 外部宏
   - 无
 - 内部宏
@@ -560,7 +564,7 @@
 - 内部函数
   - 无
 
-#### [`oh-my-robot/lib/include/core/data_struct/avltree.h`](../../lib/include/core/data_struct/avltree.h)
+#### [`oh-my-robot/lib/data_struct/include/data_struct/avltree.h`](../../lib/data_struct/include/data_struct/avltree.h)
 - 外部宏
   - 无
 - 内部宏
@@ -574,7 +578,7 @@
 - 内部函数
   - 无
 
-#### `oh-my-robot/lib/include/core/data_struct/om_data_struct.h`
+#### `oh-my-robot/lib/data_struct/include/data_struct/data_struct.h`
 - 外部宏
   - 无
 - 内部宏
@@ -588,7 +592,7 @@
 - 内部函数
   - 无
 
-#### [`oh-my-robot/lib/include/core/data_struct/corelist.h`](../../lib/include/core/data_struct/corelist.h)
+#### [`oh-my-robot/lib/data_struct/include/data_struct/corelist.h`](../../lib/data_struct/include/data_struct/corelist.h)
 - 外部宏
   - `NULL`
   - `LIST_POISON1`
@@ -615,7 +619,7 @@
 - 内部函数
   - 无
 
-#### [`oh-my-robot/lib/include/core/data_struct/ringbuffer.h`](../../lib/include/core/data_struct/ringbuffer.h)
+#### [`oh-my-robot/lib/data_struct/include/data_struct/ringbuffer.h`](../../lib/data_struct/include/data_struct/ringbuffer.h)
 - 外部宏
   - `smp_rmb`
   - `smp_wmb`
@@ -939,7 +943,9 @@
 ## 6. sync（同步语义层）
 
 ### 主要模块
-- `completion（one-shot 同步语义）`
+- `completion（one-shot 同步语义，v2 基于 CAS 四状态机 + 双后端架构）`
+
+**备注**：completion 已从旧版 irq_lock + 信号量方案重写为 CAS 四状态机（`COMP_INIT → COMP_WAIT → COMP_WAITING → COMP_DONE`），支持双后端：reference（CAS + OSAL 信号量）和 FreeRTOS 加速（CAS + Task Notification）。设计文档见 [`lib/sync/docs/completion_design.md`](../../lib/sync/docs/completion_design.md)。API 清单中的类型名（`Completion_s`/`Completion_t`/`comp_status_e`）待重新生成。
 
 ### 入口文件
 - [`oh-my-robot/lib/sync/include/sync/completion.h`](../../lib/sync/include/sync/completion.h)
@@ -972,25 +978,70 @@
 - 调用（基于 `.c` 对公开 API 的显式调用）
   - `osal`：osal_irq_restore(17), osal_irq_save(6), osal_in_isr(5), osal_sem_post(2), osal_sem_post_isr(2), osal_sem_wait(2), osal_thread_self(2), osal_sem_create(1), osal_sem_delete(1)
 
-## 7. drivers（驱动层与设备模型）
+## 7. ipc（跨上下文数据传输层）
+
+### 主要模块
+- `Pipe（SPSC 字节流通道，Task↔Task / ISR→Task / Task→ISR）`
+
+### 入口文件
+- [`oh-my-robot/lib/ipc/include/ipc/pipe.h`](../../lib/ipc/include/ipc/pipe.h)
+
+### 对外 API 列表
+**备注**：本章 API 清单待通过工具重新生成。IPC 层当前提供 SPSC Pipe，基于 Ringbuf + 门铃模式双二进制信号量，支持阻塞/ISR 读写和非消费式 peek/skip。设计文档见 [`lib/ipc/docs/pipe/pipe_design.md`](../../lib/ipc/docs/pipe/pipe_design.md)。
+
+### 依赖/调用关系摘要
+- 依赖（基于 `#include`）
+  - `core`
+  - `osal`
+  - `data_struct`
+- 调用（基于 `.c` 对公开 API 的显式调用）
+  - 待工具重新生成
+
+## 8. async（异步执行基座）
+
+### 主要模块
+- `Workqueue（工作队列，ISR 安全入队/去重/栅栏同步）`
+
+### 入口文件
+- [`oh-my-robot/lib/async/include/async/workqueue.h`](../../lib/async/include/async/workqueue.h)
+
+### 对外 API 列表
+**备注**：本章 API 清单待通过工具重新生成。async 层当前提供 Workqueue，基于 ISR 锁 + 侵入式双向链表 + Completion 栅栏同步，支持 ISR 安全入队、自动去重和 flush 排空。设计文档见 [`lib/async/docs/workqueue.md`](../../lib/async/docs/workqueue.md)。
+
+### 依赖/调用关系摘要
+- 依赖（基于 `#include`）
+  - `core`
+  - `osal`
+  - `sync`
+- 调用（基于 `.c` 对公开 API 的显式调用）
+  - 待工具重新生成
+
+## 9. drivers（驱动层与设备模型）
 
 ### 主要模块
 - `设备模型`
 - `外设抽象（PAL）`
 - `CAN 外设`
 - `串口外设`
-- `电机框架`
-- `厂商驱动（DJI）`
+- `SPI 外设`（总线/设备分离，同步/异步传输，DMA 零拷贝）
+- `GPIO 外设`（引脚/端口双模型，中断分发，Active Low 自动反转）
+- `电机框架`（接口预留阶段，motor.h / motor_drv.h 为空占位）
+- `厂商驱动（DJI / P1010B 直驱）`
+- `厂商预留（damiao 大秒电机）`
+- `Comm Adapter`（实现侧适配层，接入 services/comm）
 
 ### 入口文件
 - [`oh-my-robot/lib/drivers/include/drivers/model/device.h`](../../lib/drivers/include/drivers/model/device.h)
 - [`oh-my-robot/lib/drivers/include/drivers/peripheral/pal_dev.h`](../../lib/drivers/include/drivers/peripheral/pal_dev.h)
 - [`oh-my-robot/lib/drivers/include/drivers/peripheral/can/pal_can_dev.h`](../../lib/drivers/include/drivers/peripheral/can/pal_can_dev.h)
 - [`oh-my-robot/lib/drivers/include/drivers/peripheral/serial/pal_serial_dev.h`](../../lib/drivers/include/drivers/peripheral/serial/pal_serial_dev.h)
-- [`oh-my-robot/lib/drivers/include/drivers/motor/motor.h`](../../lib/drivers/include/drivers/motor/motor.h)
-- [`oh-my-robot/lib/drivers/include/drivers/motor/motor_drv.h`](../../lib/drivers/include/drivers/motor/motor_drv.h)
-- [`oh-my-robot/lib/drivers/include/drivers/motor/vendors/dji/dji_motor_conf.h`](../../lib/drivers/include/drivers/motor/vendors/dji/dji_motor_conf.h)
+- [`oh-my-robot/lib/drivers/include/drivers/peripheral/spi/pal_spi_dev.h`](../../lib/drivers/include/drivers/peripheral/spi/pal_spi_dev.h)
+- [`oh-my-robot/lib/drivers/include/drivers/peripheral/gpio/pal_gpio_dev.h`](../../lib/drivers/include/drivers/peripheral/gpio/pal_gpio_dev.h)
+- [`oh-my-robot/lib/drivers/include/drivers/motor/motor.h`](../../lib/drivers/include/drivers/motor/motor.h)（占位）
+- [`oh-my-robot/lib/drivers/include/drivers/motor/motor_drv.h`](../../lib/drivers/include/drivers/motor/motor_drv.h)（占位）
 - [`oh-my-robot/lib/drivers/include/drivers/motor/vendors/dji/dji_motor_drv.h`](../../lib/drivers/include/drivers/motor/vendors/dji/dji_motor_drv.h)
+- [`oh-my-robot/lib/drivers/include/drivers/motor/vendors/direct_drive/P1010B.h`](../../lib/drivers/include/drivers/motor/vendors/direct_drive/P1010B.h)
+- [`oh-my-robot/lib/drivers/include/drivers/motor/vendors/damiao/damiao.h`](../../lib/drivers/include/drivers/motor/vendors/damiao/damiao.h)（厂商预留，无实现）
 
 ### 对外 API 列表
 #### [`oh-my-robot/lib/drivers/include/drivers/model/device.h`](../../lib/drivers/include/drivers/model/device.h)
@@ -1253,18 +1304,20 @@
   - `osal`：osal_irq_restore(26), osal_irq_save(19), osal_free(6), osal_malloc(6), osal_in_isr(3), osal_timer_create(1), osal_timer_delete(1), osal_timer_get_id(1), osal_timer_start(1)
   - `sync`：completion_done(2), completion_init(2), completion_wait(2)
 
-## 8. services（通用服务层）
+## 10. services（通用服务层）
+
+**状态**：规划阶段，无公开 API 实现。
 
 ### 主要模块
-- `config`
-- `diagnostics`
-- `event`
-- `fs`
-- `comm`
-- `log`
+- `log`（占位，仅 README）
+- `config`（占位，仅 README）
+- `diagnostics`（占位，仅 README）
+- `fs`（占位，仅 README）
+- `comm`（规划中，尚未创建目录）
+- `event`（规划中，尚未创建目录）
 
 ### 入口文件
-- [`oh-my-robot/lib/services/include/services/services.h`](../../lib/services/include/services/services.h)
+- [`oh-my-robot/lib/services/include/services/services.h`](../../lib/services/include/services/services.h)（占位，内容为空）
 
 ### 对外 API 列表
 #### [`oh-my-robot/lib/services/include/services/services.h`](../../lib/services/include/services/services.h)
@@ -1289,7 +1342,7 @@
 
 **备注**：当前仅有占位头文件，未声明服务层对外 API。
 
-## 9. systems（系统/业务子系统层）
+## 11. systems（系统/业务子系统层）
 
 ### 主要模块
 - `arm`
