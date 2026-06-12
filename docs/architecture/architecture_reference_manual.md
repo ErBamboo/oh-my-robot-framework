@@ -112,29 +112,6 @@
 - **可依赖**：`services`、`drivers`、`sync`、`ipc`、`osal`、`core` — 即业务可直取领域模块或任意原语，不受中间层约束。
 - **说明**：可直接依赖 `drivers`（驱动层为硬件无关抽象）。
 
-## 3. 横切规则
-
-### 3.1 命名约定
-
-| 元素 | 约定 | 示例 |
-|------|------|------|
-| 结构体实体类型 | `_s` 后缀 | `Device_s` |
-| 句柄/指针/抽象别名 | `_t` 后缀 | `Device_t` |
-| 枚举类型 | `_e` 后缀 | `OmRet_e` |
-| 联合类型 | `_u` 后缀 | — |
-| 类型名 | `CamelCase` | `HalCanHandler` |
-| 成员变量 | `camelBack` | `rxBuffer` |
-| 函数名、变量、参数 | `snake_case` | `device_init()` |
-| 宏、枚举常量 | `UPPER_CASE` | `DEV_STATUS_OK` |
-
-### 3.2 include 边界规则
-
-- 公共头文件仅能 include 本层或下层公开头；不得 include `third_party` 类型或私有实现头。
-- 实现文件可 include 同层私有头，但不得穿透到上层目录。
-- 同层之间不得形成环依赖；必要时拆分子层或抽象接口。
-- 领域仓库与项目仓库不得直接 include `platform/` 私有实现。
-- 对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件。
-
 ## 附录 A：相关文档
 
 | 文档 | 说明 |
