@@ -25,7 +25,7 @@
  *  @modifier: 2025-12-18 Yuhao
  */
 
-#include "core/algorithm/protocol/crc.h"
+#include "algorithm/protocol/crc.h"
 #define NULL ((void *)0)
 // crc8 generator polynomial:G(x)=x8+x5+x4+1
 static const uint8_t crc8_init = 0xff;

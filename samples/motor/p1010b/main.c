@@ -9,7 +9,7 @@
  * 4) 电机 ID、目标转速、PID 参数、控制模式均支持宏配置。
  */
 
-#include "core/algorithm/controller/pid.h"
+#include "algorithm/controller/pid.h"
 #include "core/om_cpu.h"
 #include "core/om_def.h"
 #include "drivers/motor/vendors/direct_drive/P1010B.h"

@@ -1,6 +1,6 @@
 --- @file oh_my_robot/lib/xmake.lua
 --- @brief OM lib 子库构建脚本
---- @details 按单一责任原则拆分 core/algorithm/drivers/ipc/async/systems 等静态库。
+--- @details 按单一责任原则拆分 core/algorithm/drivers/ipc/async/systems 等独立静态库。
 
 --- @target tar_awcore
 --- @brief AW 核心静态库
