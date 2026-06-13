@@ -92,8 +92,9 @@ target_end()
 target("tar_awalgo")
     set_kind("static")
     add_rules("oh_my_robot.context")
-    add_includedirs("include", {public = true})
-    add_files("source/algorithm/**.c")
+    add_includedirs("algorithm/include", {public = true})
+    add_deps("tar_awcore", {public = true})
+    add_files("algorithm/src/**.c")
 target_end()
 
 --- @target tar_awdrivers
