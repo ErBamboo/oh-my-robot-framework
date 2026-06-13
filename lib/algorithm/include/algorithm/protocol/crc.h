@@ -26,7 +26,7 @@
  */
 
 #ifndef __CRC_H__
-#define CRC_H
+#define __CRC_H__
 
 #include "stdint.h"
 

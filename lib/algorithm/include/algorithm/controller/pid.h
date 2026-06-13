@@ -7,7 +7,7 @@
  */
 
 #ifndef __OM_PID_H__
-#define OM_PID_H
+#define __OM_PID_H__
 
 #include <stdbool.h>
 #include <stdint.h>
