@@ -1,59 +1,74 @@
 # Oh My Robot
 
-面向机器人的通用嵌入式开发框架。
+面向机器人的跨平台嵌入式开发框架。
+
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![XMake](https://img.shields.io/badge/xmake-%E2%89%A53.0.7-orange)](https://xmake.io)
 
 ## 项目简介
 
-Oh My Robot（OM）是一个面向机器人的跨平台嵌入式开发框架。它将机器人软件中常见的实时控制、多外设协作、跨任务通信等场景抽象为分层清晰、可移植的软件基础设施，使开发者能够专注于业务逻辑而非底层 plumbing。平台适配通过构建系统选择性编译，不侵入架构核心。
+Oh My Robot（OM）将机器人软件中常见的实时控制、多外设协作、跨任务通信等场景抽象为分层清晰、可移植的软件基础设施。框架的核心哲学是**分层原语化**——将软件栈划分为同步语义、异步调度、数据传输、OS 抽象、可选算法工具箱等独立原语，业务层可以直取任意一层进行组合，只引入你需要的抽象。平台适配统一收敛在 platform 层，由构建系统选择性编译，换芯片或换 RTOS 不触碰架构核心。
 
-## 设计哲学
+## 支持的平台
 
-**分层原语化。** 框架将软件栈划分为单一功能原语（同步语义、异步调度、数据传输、OS 抽象、平台无关基底、可选算法工具箱），再由领域模块（通用服务、驱动抽象）组合原语形成可复用能力。业务层可以直取任意一层的原语或组合，不受中间层约束——只引入你需要的抽象，不为不需要的抽象付出代价。
+| 类型 | 支持项 |
+|------|--------|
+| **MCU** | STM32F4 系列 |
+| **RTOS** | FreeRTOS |
+| **工具链** | arm-none-eabi-gcc (gnu-rm)、armclang (Arm Compiler 6) |
+| **调试器** | J-Link、DAPLink (OpenOCD) |
+| **构建系统** | XMake ≥ 3.0.7 |
 
-**平台无关核心，适配有序聚合。** core 和 algorithm 不依赖任何 OS、外设或板级代码。所有平台适配（RTOS 端口、外设 BSP、工具链绑定、sync 加速后端）统一收敛在 platform 层，由构建系统按目标选择性编译。换一颗芯片或换一个 RTOS 不应触碰到架构核心。
+## 快速开始
 
-**关注点分离。** sync 只提供执行协调（同步语义），不承载数据；ipc 只提供原始数据传输（字节流或类型化消息），不涉及寻址、路由或业务语义。drivers 与 services 对等互不依赖——驱动层不应依赖日志或通信服务。
+### 环境要求
 
-**抽象先行，但不隐藏成本。** OSAL 对 RTOS 做最小可移植抽象，PAL 对外设做硬件无关封装。抽象层的目标是消除移植摩擦，而非提供"万能接口"——每一层边界明确，承诺什么、不承诺什么，均有规范约束。
+- `arm-none-eabi-gcc` 或 `armclang`
+- XMake ≥ 3.0.7
+- （可选）J-Link 或 OpenOCD + DAPLink 探针，用于烧录和调试
 
-## 文档导航
+### 最小项目
 
-### 入门
+```lua
+-- xmake.lua
+set_project("my-robot")
+set_xmakever("3.0.7")
+add_rules("mode.debug", "mode.release")
+add_rules("plugin.compile_commands.autoupdate", {outputdir = os.projectdir()})
+
+includes("oh-my-robot")
+
+target("robot_project")
+    set_kind("binary")
+    set_filename("robot_project.elf")
+    add_deps("tar_oh_my_robot")
+    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")
+    add_files("main.c")
+target_end()
+```
+
+```bash
+xmake f -c --toolchain=gnu-rm -m debug
+xmake
+```
+
+详细的环境搭建、`om_preset.lua` 配置和 VSCode 调试步骤见 [快速开始指南](docs/quick_start.md)。
+
+## 文档
 
 | 文档 | 说明 |
 |------|------|
-| [快速开始](docs/quick_start.md) | 环境搭建、工具链安装、最小项目构建与调试 |
-
-### 架构
-
-| 文档 | 说明 |
-|------|------|
-| [架构参考手册](docs/architecture/architecture_reference_manual.md) | 分层结构、各层职责边界、依赖方向——**架构唯一总规范源** |
-
-### 构建
-
-| 文档 | 说明 |
-|------|------|
+| [快速开始](docs/quick_start.md) | 环境搭建、工具链安装、构建与调试 |
+| [架构参考手册](docs/architecture/architecture_reference_manual.md) | 分层结构、职责边界、依赖方向——**架构唯一总规范源** |
 | [构建系统参考手册](docs/build/reference_manual.md) | OM 构建体系完整参考 |
 | [构建任务手册](docs/build/build_tasks_manual.md) | 常用构建任务与工作流 |
 
-### 研发规范
+模块设计文档随代码分布在各 `lib/*/docs/` 目录下，包括 async、sync、ipc、drivers、motor 等模块。
 
-| 文档 | 说明 |
-|------|------|
-| [Git 协作规范](docs/process/git_collaboration_spec.md) | 分支职责、提交纪律、PR 流程 |
-| [Git 发布与版本规范](docs/process/git_version_release_spec.md) | Tag、版本号、Release 流程 |
+## 贡献
 
-### 模块设计文档
+提交 PR 前请阅读 [Git 协作规范](docs/process/git_collaboration_spec.md)（分支职责、提交纪律、PR 流程）和 [发布与版本规范](docs/process/git_version_release_spec.md)。
 
-各模块的设计文档和 API 说明随代码分布：
+## 许可证
 
-| 模块 | 设计文档 |
-|------|----------|
-| async | [`lib/async/docs/workqueue.md`](lib/async/docs/workqueue.md) |
-| sync | [`lib/sync/docs/completion_design.md`](lib/sync/docs/completion_design.md) |
-| ipc | [`lib/ipc/docs/pipe/pipe_design.md`](lib/ipc/docs/pipe/pipe_design.md) |
-| drivers | [`lib/drivers/docs/`](lib/drivers/docs/)（device、PAL、GPIO、SPI） |
-| peripheral (CAN/串口) | [`lib/drivers/include/drivers/peripheral/`](lib/drivers/include/drivers/peripheral/) |
-| motor | [`lib/drivers/include/drivers/motor/vendors/`](lib/drivers/include/drivers/motor/vendors/)（电机厂商适配文档） |
-| data_struct | [`lib/data_struct/docs/mpsc/mpsc_design.md`](lib/data_struct/docs/mpsc/mpsc_design.md) |
+[Apache 2.0](LICENSE)
