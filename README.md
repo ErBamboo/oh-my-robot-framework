@@ -29,16 +29,13 @@ Oh My Robot（OM）是一个面向机器人的跨平台嵌入式开发框架。�
 | 文档 | 说明 |
 |------|------|
 | [架构参考手册](docs/architecture/architecture_reference_manual.md) | 分层结构、各层职责边界、依赖方向——**架构唯一总规范源** |
-| [架构决策记录 (ADR)](docs/adr/adr_readme.md) | 已沉淀的架构决策及背景（OSAL 同步契约、CAN 架构、IPC 分层等） |
 
 ### 构建
 
 | 文档 | 说明 |
 |------|------|
 | [构建系统参考手册](docs/build/reference_manual.md) | OM 构建体系完整参考 |
-| [构建系统最佳实践](docs/build/build_system_best_practices.md) | XMake 工程实践、脚本域边界、代码组织范式 |
 | [构建任务手册](docs/build/build_tasks_manual.md) | 常用构建任务与工作流 |
-| [维护手册](docs/build/maintenance_manual.md) | 构建系统维护指南 |
 
 ### 研发规范
 
@@ -46,7 +43,6 @@ Oh My Robot（OM）是一个面向机器人的跨平台嵌入式开发框架。�
 |------|------|
 | [Git 协作规范](docs/process/git_collaboration_spec.md) | 分支职责、提交纪律、PR 流程 |
 | [Git 发布与版本规范](docs/process/git_version_release_spec.md) | Tag、版本号、Release 流程 |
-| [文档治理规范](docs/process/document_governance_spec.md) | ADR 提纯、Issue 沙盒、版本归档 |
 
 ### 模块设计文档
 
