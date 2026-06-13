@@ -1,6 +1,6 @@
 --- @file oh_my_robot/lib/xmake.lua
 --- @brief OM lib 子库构建脚本
---- @details 按单一责任原则拆分 core/algorithm/drivers/ipc/async/systems 等静态库。
+--- @details 按单一责任原则拆分 core/algorithm/drivers/ipc/async/systems 等独立静态库。
 
 --- @target tar_awcore
 --- @brief AW 核心静态库
@@ -92,8 +92,9 @@ target_end()
 target("tar_awalgo")
     set_kind("static")
     add_rules("oh_my_robot.context")
-    add_includedirs("include", {public = true})
-    add_files("source/algorithm/**.c")
+    add_includedirs("algorithm/include", {public = true})
+    add_deps("tar_awcore", {public = true})
+    add_files("algorithm/src/**.c")
 target_end()
 
 --- @target tar_awdrivers

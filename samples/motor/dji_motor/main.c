@@ -7,7 +7,7 @@
 #include "drivers/peripheral/can/pal_can_dev.h"
 
 /* Framework Includes */
-#include "core/algorithm/controller/pid.h"
+#include "algorithm/controller/pid.h"
 #include "core/om_cpu.h"
 #include "osal/osal.h"
 #include "osal/osal_time.h"

@@ -1,7 +1,7 @@
 ﻿#ifndef __OM_DEF_H__
 #define __OM_DEF_H__
 
-#include "port/om_port_compiler.h"
+#include "core/port/om_port_compiler.h"
 #include <stddef.h>
 #include <stdint.h>
 

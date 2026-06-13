@@ -8,7 +8,7 @@
  */
 #include "sync/completion.h"
 
-#include "atomic/atomic_simple.h"
+#include "core/atomic/atomic_simple.h"
 #include "osal/osal_core.h"
 #include "osal/osal_port.h"
 #include "osal/osal_thread.h"

@@ -6,7 +6,7 @@
  */
 
 #ifndef __OM_BOARD_H__
-#define OM_BOARD_H
+#define __OM_BOARD_H__
 
 #include "core/om_config.h"
 #include "core/om_def.h"

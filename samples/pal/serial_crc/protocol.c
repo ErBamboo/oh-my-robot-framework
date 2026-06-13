@@ -3,7 +3,7 @@
 */
 
 #include "protocol.h"
-#include "core/algorithm/protocol/crc.h"
+#include "algorithm/protocol/crc.h"
 #include <string.h>
 
 /*

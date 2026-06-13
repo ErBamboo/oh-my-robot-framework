@@ -1,5 +1,5 @@
 #include "data_struct/ringbuffer.h"
-#include "atomic/atomic_simple.h"
+#include "core/atomic/atomic_simple.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
