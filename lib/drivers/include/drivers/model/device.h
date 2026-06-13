@@ -6,7 +6,7 @@
 #ifndef __OM_DEVICE_H__
 #define __OM_DEVICE_H__
 
-#include "atomic/atomic_simple.h"
+#include "core/atomic/atomic_simple.h"
 #include "data_struct/corelist.h"
 #include "core/om_def.h"
 

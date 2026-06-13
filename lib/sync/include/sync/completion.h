@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "atomic/atomic_base.h"
+#include "core/atomic/atomic_base.h"
 #include "core/om_def.h"
 #include "osal/osal_sem.h"
 #include "osal/osal_thread.h"

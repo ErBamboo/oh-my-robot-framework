@@ -1,7 +1,7 @@
 #ifndef AW_BITMAP_H
 #define AW_BITMAP_H
 
-#include "atomic/atomic.h"
+#include "core/atomic/atomic.h"
 #include "core/om_def.h"
 #include <stdbool.h>
 #include <stddef.h>

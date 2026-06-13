@@ -11,7 +11,7 @@
 #ifndef MPSC_RINGBUF_H
 #define MPSC_RINGBUF_H
 
-#include "atomic/atomic_simple.h"
+#include "core/atomic/atomic_simple.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -1,7 +1,7 @@
 #ifndef DATA_STRUCT_DOUBLE_BUF_H
 #define DATA_STRUCT_DOUBLE_BUF_H
 
-#include "atomic/atomic_simple.h"
+#include "core/atomic/atomic_simple.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

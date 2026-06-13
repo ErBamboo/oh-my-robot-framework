@@ -1,7 +1,7 @@
 #ifndef AW_ATOMIC_BASE_H
 #define AW_ATOMIC_BASE_H
 
-#include "port/om_port_compiler.h"
+#include "core/port/om_port_compiler.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

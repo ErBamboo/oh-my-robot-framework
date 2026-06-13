@@ -1,8 +1,8 @@
 #ifndef __OM_API_H__
 #define __OM_API_H__
 
-#include "port/om_port_compiler.h" /* 编译器相关API */
-#include "port/om_port_hw.h"       /* 硬件相关API */
+#include "core/port/om_port_compiler.h" /* 编译器相关API */
+#include "core/port/om_port_hw.h"       /* 硬件相关API */
 #include <stdint.h>
 
 /* 硬件中断 */

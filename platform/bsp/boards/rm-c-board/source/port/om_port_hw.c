@@ -3,7 +3,7 @@
  * 注意：该文件仅用于板级/芯片层实现，不进入核心层头文件依赖。
  */
 
-#include "port/om_port_hw.h"
+#include "core/port/om_port_hw.h"
 #include "stm32f4xx.h"
 
 uint32_t port_get_primask(void)
