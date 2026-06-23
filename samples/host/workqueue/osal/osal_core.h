@@ -40,4 +40,9 @@ static inline void osal_irq_unlock(OsalIrqIsrState key)
 
 void osal_sleep_ms(uint32_t ms);
 
+/** host 测试桩：不执行任何运行时检查；触发点表明不变量已破坏 */
+#ifndef OSAL_ASSERT
+#define OSAL_ASSERT(expr) ((void)0)
+#endif
+
 #endif

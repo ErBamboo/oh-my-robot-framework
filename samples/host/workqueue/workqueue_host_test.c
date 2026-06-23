@@ -454,6 +454,49 @@ static void t_flush(void)
     TEST_END();
 }
 
+/* 测试15：work_wait_idle 等到 IDLE 才返回 */
+static void t_wait_idle(void)
+{
+    TEST_BEGIN("wait_idle");
+    Workqueue wq = {0};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
+
+    EXPECT(workqueue_init(&wq, &cfg) == OM_OK);
+    EXPECT(workqueue_start(&wq) == OM_OK);
+
+    OsalSem *sem = make_sem();
+    TW t;
+    tw_init(&t, 7, sem);
+
+    /* NULL / ISR 检查 */
+    EXPECT(work_wait_idle(NULL, 100u) == OM_ERROR_PARAM);
+
+    /* IDLE 状态下立即返回 */
+    EXPECT(work_wait_idle(&t.w, 100u) == OM_OK);
+    EXPECT(work_wait_idle(&t.w, 0u) == OM_OK);
+
+    /* 入队→sem 知道 func 已执行→但 flags 仍可能 RUNNING */
+    EXPECT(workqueue_enqueue(&wq, &t.w) == OM_OK);
+    EXPECT(wait_sem(sem, 5000u));
+    EXPECT(t.ex == 1);
+
+    /* work_wait_idle 必须等到 worker 真正写完 flags=IDLE 才返回；
+     * 返回后 work_is_busy 必为 false，此时 t.w 才可安全析构/复用。 */
+    EXPECT(work_wait_idle(&t.w, 5000u) == OM_OK);
+    EXPECT(!work_is_busy(&t.w));
+
+    /* 复用同一 work 再次入队 */
+    EXPECT(workqueue_enqueue(&wq, &t.w) == OM_OK);
+    EXPECT(wait_sem(sem, 5000u));
+    EXPECT(t.ex == 2);
+    EXPECT(work_wait_idle(&t.w, 5000u) == OM_OK);
+
+    EXPECT(workqueue_stop(&wq) == OM_OK);
+    EXPECT(workqueue_deinit(&wq) == OM_OK);
+    osal_sem_delete(sem);
+    TEST_END();
+}
+
 /* --------------------------------------------------------------------------
  * main
  * -------------------------------------------------------------------------- */
@@ -461,6 +504,11 @@ static void t_flush(void)
 int main(void)
 {
     printf("=== Workqueue Host Test ===\n\n");
+
+    /** 显式归零：全局变量默认零初始化，但显式重置便于将来 main 被复用（如 host 框架重跑）。 */
+    g_total        = 0;
+    g_failed       = 0;
+    g_current_test = 0;
 
     t_null_params();
     t_lifecycle();
@@ -476,6 +524,7 @@ int main(void)
     t_enq_stopped();
     t_query();
     t_flush();
+    t_wait_idle();
 
     printf("\n=== Results: %d/%d passed",
            g_total - g_failed, g_total);
