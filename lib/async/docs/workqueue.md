@@ -28,16 +28,16 @@ Workqueue（工作队列）是一个**中断安全的延迟工作调度器**，�
 | 共享状态                      | 保护方式                                                                      |
 | ------------------------- | ------------------------------------------------------------------------- |
 | `Workqueue.pending` 链表    | `osal_irq_lock`                                                           |
-| `Work.flags`              | `osal_irq_lock`（所有检查和修改均在临界区内）                                             |
-| `Workqueue.state`         | `osal_irq_lock`（start/stop 状态切换）、volatile 读取（enqueue/flush/worker 状态检查） |
+| `Work.flags`              | `osal_irq_lock`（所有检查和修改均在临界区内，包括 worker 的 RUNNING→IDLE）                   |
+| `Workqueue.state`         | `osal_irq_lock`（所有状态切换）、volatile 读取（enqueue/flush/worker 状态检查）            |
 
 ## 标志位状态机
 
 ```
 Work.flags:
-┌──────┐  enqueue    ┌─────────┐   worker    ┌─────────┐   func结束   ┌──────┐
+┌──────┐  enqueue    ┌─────────┐   worker    ┌─────────┐  func返回后   ┌──────┐
 │ IDLE │ ────────►  │ PENDING │ ──────────► │ RUNNING │ ──────────►  │ IDLE │
-└──────┘  irq_lock  └────┬────┘   irq_lock  └─────────┘              └──────┘
+└──────┘  irq_lock  └────┬────┘   irq_lock  └─────────┘   irq_lock   └──────┘
      ▲                    │
      │           cancel   │
      └────────────────────┘
@@ -53,6 +53,15 @@ Workqueue.state:
        └── deinit
 ```
 
+## 调用者责任
+
+| 约束                              | 说明                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `Workqueue` 实例必须 `{0}` 初始化       | `workqueue_init` 通过 `state==UNINIT` 检测重复初始化；未清零实例的 state 字段是垃圾值，无法可靠识别。                       |
+| `Work` 实例首次使用前必须 `work_init`     | 设置链表节点为哨兵态、绑定 func 与 data、flags 重置为 IDLE。                                                        |
+| 释放/复用 work 内存前必须确认 worker 已不再持有 | worker 在 `func` 返回后才写 flags=IDLE，该写入发生在 func 内部任何通知（sem_post/completion_done）**之后**。调用者通过自己的同步原语感知 func 完成时，仍需调用 `work_wait_idle` 或确认 `work_is_busy==false`，否则会触发 use-after-scope。 |
+| `work_wait_idle` 仅允许线程上下文        | 实现使用 yield + sleep 轮询；ISR 不能调用。                                                                   |
+
 ## API 参考
 
 | API                           | ISR 安全   | 说明                   |
@@ -65,6 +74,7 @@ Workqueue.state:
 | `workqueue_flush(wq)`         | ✗ (阻塞调用) | barrier work 方案排空并等待 |
 | `workqueue_is_empty(wq)`      | ✓        | 查询队列是否为空             |
 | `work_is_busy(work)`          | ✓        | 查询工作项是否忙碌            |
+| `work_wait_idle(work, to)`    | ✗ (阻塞调用) | 等待 work 回到 IDLE；析构/复用 work 内存前的同步点 |
 
 ## 演进方向：多 Worker 支持
 
