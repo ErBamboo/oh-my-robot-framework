@@ -398,6 +398,47 @@ static void t_query(void)
     osal_sem_delete(sem);
 }
 
+/* 测试14：work_wait_idle —— 等 worker 真正释放 work 后再析构/复用 */
+static void t_wait_idle(void)
+{
+    Workqueue wq = {0};
+    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+
+    expect(workqueue_init(&wq, &cfg) == OM_OK);
+    expect(workqueue_start(&wq) == OM_OK);
+
+    /* NULL 参数返回 PARAM */
+    expect(work_wait_idle(NULL, 100u) == OM_ERROR_PARAM);
+
+    OsalSem *sem = make_sem();
+    TW       t;
+    tw_init(&t, 7, sem);
+
+    /* IDLE 状态立即返回 OK，timeout=0 也 OK */
+    expect(work_wait_idle(&t.w, 100u) == OM_OK);
+    expect(work_wait_idle(&t.w, 0u) == OM_OK);
+
+    /* 入队 → sem 知道 func 已执行，但 worker 写 flags=IDLE 可能尚未完成 */
+    expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
+    expect(wait_sem(sem, 5000u));
+    expect(t.ex == 1);
+
+    /* work_wait_idle 必须等到 worker 真正写完 flags=IDLE 才返回；
+     * 返回后 work_is_busy 必为 false，此时 t.w 才可安全析构/复用。 */
+    expect(work_wait_idle(&t.w, 5000u) == OM_OK);
+    expect(!work_is_busy(&t.w));
+
+    /* 复用同一 work 再次入队 */
+    expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
+    expect(wait_sem(sem, 5000u));
+    expect(t.ex == 2);
+    expect(work_wait_idle(&t.w, 5000u) == OM_OK);
+
+    expect(workqueue_stop(&wq) == OM_OK);
+    expect(workqueue_deinit(&wq) == OM_OK);
+    osal_sem_delete(sem);
+}
+
 /* --------------------------------------------------------------------------
  * 测试线程入口 —— 顺序执行全部用例
  * -------------------------------------------------------------------------- */
@@ -419,6 +460,7 @@ static void test_thread_entry(void *arg)
     t_stop_drain();
     t_enq_stopped();
     t_query();
+    t_wait_idle();
 
     g_result.done = 1u;
     for (;;) osal_sleep_ms(1000u);
