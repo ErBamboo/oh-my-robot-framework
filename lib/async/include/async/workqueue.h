@@ -37,12 +37,23 @@
  *
  * ```
  * enqueue:  [irq_lock: flags 检查 + list_add_tail]  →  [sem_post]
- * worker:   [sem_wait]  →  [irq_lock: list_del + flags=RUNNING]  →  [执行 func]  →  [flags=IDLE]
+ * worker:   [sem_wait]  →  [irq_lock: list_del + flags=RUNNING]  →  [执行 func]  →  [irq_lock: flags=IDLE]
  * cancel:   [irq_lock: 检查 flags + list_del + flags=IDLE]
  * ```
  *
  * **关键不变量**: flags 检查、链表操作和 flags 状态转换均在同一 irq_lock 临界区内完成。
  * 这确保 cancel 看到 PENDING 时节点必定在链表中，看到 RUNNING 时 worker 已认领。
+ *
+ * ## 调用者责任
+ *
+ * - **Workqueue 实例**：调用 `workqueue_init` 前必须清零（`Workqueue wq = {0};` 或显式
+ *   `memset`）。`init` 通过 `state==UNINIT` 检测重复初始化，未清零实例的状态字段是
+ *   垃圾值，无法可靠识别。
+ * - **Work 实例**：首次使用前必须调用 `work_init`。
+ * - **Work 内存生命周期**：worker 在 `func` 返回后才会将 flags 从 RUNNING 改回 IDLE，
+ *   此写入发生在 func 内部任何通知（如 sem_post）**之后**。因此调用者通过自己的同步
+ *   原语（如 sem_wait）感知到"func 已执行"时，**不能**立即释放或复用 work 内存；
+ *   必须先调用 `work_wait_idle(work)` 或确认 `work_is_busy(work) == false`。
  *
  * ## 生命周期状态机
  *
@@ -78,7 +89,7 @@ extern "C" {
  * 所有 flags 修改均在 irq_lock 临界区内完成，调用者不应直接写 flags。
  *
  * 状态迁移规则：
- *   IDLE ──[enqueue irq_lock]──→ PENDING ──[worker irq_lock]──→ RUNNING ──[func 结束]──→ IDLE
+ *   IDLE ──[enqueue irq_lock]──→ PENDING ──[worker irq_lock]──→ RUNNING ──[worker irq_lock, func 返回后]──→ IDLE
  *   PENDING ──[cancel irq_lock]──→ IDLE
  * -------------------------------------------------------------------------- */
 
@@ -147,8 +158,10 @@ struct Work {
  */
 typedef struct WorkqueueConfig {
     const char *name;        /**< 调试名称（用作线程名） */
-    uint32_t    stack_depth; /**< worker 线程栈大小（字节） */
-    uint32_t    priority;    /**< worker 线程优先级（FreeRTOS 优先级值） */
+    uint32_t    stack_depth; /**< worker 线程栈大小（字节）；为 0 时 workqueue_init 返回 OM_ERROR_PARAM */
+    uint32_t    priority;    /**< worker 线程优先级（FreeRTOS 优先级值，0 = idle priority）。
+                              *  本模块不做范围检查，调用者需保证小于 RTOS 的 configMAX_PRIORITIES；
+                              *  实践中建议 ≥ 1，避免 worker 与 idle 任务同优先级导致调度延迟。 */
 } WorkqueueConfig;
 
 /**
@@ -300,6 +313,25 @@ int workqueue_get_state(const Workqueue *wq);
  * @return    true 无 pending 工作项。
  */
 bool workqueue_is_empty(const Workqueue *wq);
+
+/**
+ * @brief 阻塞等待工作项回到 IDLE 状态
+ *
+ * 用于 work 内存生命周期管理：worker 在 `func` 返回后才将 flags 从 RUNNING 改回
+ * IDLE，调用者通过自己的同步原语（如 sem_wait）感知到 func 已执行时，仍需调用
+ * 本接口确认 worker 已完全释放 work，方可析构或复用 work 内存。
+ *
+ * 仅允许在线程上下文调用（内部使用 yield + sleep 轮询）。flags 读取为 volatile，
+ * 单核天然可见；多核场景需配合 irq_lock 或内存屏障（本实现面向单核 MCU）。
+ *
+ * @param work        要等待的工作项。
+ * @param timeout_ms  超时（毫秒），`OSAL_WAIT_FOREVER` 表示无限等待；0 表示非阻塞
+ *                    探测（已 IDLE 返回 OM_OK，否则返回 OM_ERROR_TIMEOUT）。
+ * @return            OM_OK 已进入 IDLE；
+ *                    OM_ERROR_TIMEOUT 超时；
+ *                    OM_ERROR_PARAM 参数为 NULL 或在 ISR 中调用。
+ */
+OmRet work_wait_idle(Work *work, uint32_t timeout_ms);
 
 /* --------------------------------------------------------------------------
  * 内联辅助函数
