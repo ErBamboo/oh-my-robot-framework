@@ -53,8 +53,8 @@
  */
 
 #include "async/workqueue.h"
-#include "sync/completion.h"
 #include "osal/osal_time.h"
+#include "sync/completion.h"
 
 #include <stddef.h>
 
@@ -83,11 +83,13 @@ static void workqueue_worker_entry(void *arg)
 {
     Workqueue *wq = (Workqueue *)arg;
 
-    for (;;) {
+    for (;;)
+    {
         /** 1. 等待工作到达或停止信号。sem_wait 用 FOREVER 正常不应返回错误；
          *  若 sem 失效等异常情况发生，防御性地切换到 STOPPING 并退出 worker。 */
         OsalStatus ws = osal_sem_wait(wq->sem, OSAL_WAIT_FOREVER);
-        if (ws != OSAL_OK) {
+        if (ws != OSAL_OK)
+        {
             OsalIrqIsrState k;
             osal_irq_lock(&k);
             if (wq->state == WORKQUEUE_STATE_RUNNING)
@@ -98,7 +100,8 @@ static void workqueue_worker_entry(void *arg)
         }
 
         /** 2. 循环排空 pending 队列 */
-        for (;;) {
+        for (;;)
+        {
             Work *w = NULL;
 
             /** 2a. 关中断：从链表取出下一个工作项并认领 */
@@ -106,7 +109,8 @@ static void workqueue_worker_entry(void *arg)
                 OsalIrqIsrState k;
                 osal_irq_lock(&k);
 
-                if (!list_empty(&wq->pending)) {
+                if (!list_empty(&wq->pending))
+                {
                     w = list_first_entry(&wq->pending, Work, node);
                     list_del(&w->node);
                     w->flags = WORK_FLAG_RUNNING;
@@ -116,8 +120,10 @@ static void workqueue_worker_entry(void *arg)
             }
 
             /** 2b. 无更多工作：检查退出条件 */
-            if (!w) {
-                if (wq->state == WORKQUEUE_STATE_STOPPING) {
+            if (!w)
+            {
+                if (wq->state == WORKQUEUE_STATE_STOPPING)
+                {
                     completion_done(&wq->done);
                     osal_thread_exit();
                 }
@@ -156,11 +162,14 @@ static void workqueue_worker_entry(void *arg)
  */
 OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
 {
-    if (!wq || !cfg) return OM_ERROR_PARAM;
-    if (!cfg->stack_depth) return OM_ERROR_PARAM;
+    if (!wq || !cfg)
+        return OM_ERROR_PARAM;
+    if (!cfg->stack_depth)
+        return OM_ERROR_PARAM;
 
     /** 防止重复初始化 */
-    if (wq->state != WORKQUEUE_STATE_UNINIT) return OM_ERROR;
+    if (wq->state != WORKQUEUE_STATE_UNINIT)
+        return OM_ERROR;
 
     /** 初始化 pending 链表为空的哨兵态（自循环） */
     INIT_LIST_HEAD(&wq->pending);
@@ -168,11 +177,13 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
 
     /** 创建计数型信号量（最大计数 1，初始计数 0） */
     OsalStatus st = osal_sem_create(&wq->sem, WQ_SEM_MAX_COUNT, 0U);
-    if (st != OSAL_OK) return OM_ERROR;
+    if (st != OSAL_OK)
+        return OM_ERROR;
 
     /** 初始化 worker 退出同步原语 */
     OmRet rc = completion_init(&wq->done);
-    if (rc != OM_OK) {
+    if (rc != OM_OK)
+    {
         osal_sem_delete(wq->sem);
         wq->sem = NULL;
         return rc;
@@ -180,9 +191,9 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
 
     /** 设置状态为 IDLE */
     wq->state = WORKQUEUE_STATE_IDLE;
-    wq->name        = cfg->name ? cfg->name : "wq";
+    wq->name = cfg->name ? cfg->name : "wq";
     wq->stack_depth = cfg->stack_depth;
-    wq->priority    = cfg->priority;
+    wq->priority = cfg->priority;
 
     return OM_OK;
 }
@@ -198,12 +209,15 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
  */
 OmRet workqueue_deinit(Workqueue *wq)
 {
-    if (!wq) return OM_ERROR_PARAM;
+    if (!wq)
+        return OM_ERROR_PARAM;
 
     /** 必须已 stop */
-    if (wq->state != WORKQUEUE_STATE_IDLE) return OM_ERROR;
+    if (wq->state != WORKQUEUE_STATE_IDLE)
+        return OM_ERROR;
 
-    if (wq->sem) {
+    if (wq->sem)
+    {
         osal_sem_delete(wq->sem);
         wq->sem = NULL;
     }
@@ -230,13 +244,15 @@ OmRet workqueue_deinit(Workqueue *wq)
  */
 OmRet workqueue_start(Workqueue *wq)
 {
-    if (!wq) return OM_ERROR_PARAM;
+    if (!wq)
+        return OM_ERROR_PARAM;
 
     /** irq_lock 内检查并切换状态：IDLE → RUNNING */
     {
         OsalIrqIsrState key;
         osal_irq_lock(&key);
-        if (wq->state != WORKQUEUE_STATE_IDLE) {
+        if (wq->state != WORKQUEUE_STATE_IDLE)
+        {
             osal_irq_unlock(key);
             return OM_ERROR;
         }
@@ -245,11 +261,14 @@ OmRet workqueue_start(Workqueue *wq)
     }
 
     /** 排空上一次循环可能残留的信号量计数 */
-    while (osal_sem_wait(wq->sem, 0U) == OSAL_OK) {}
+    while (osal_sem_wait(wq->sem, 0U) == OSAL_OK)
+    {
+    }
 
     /** 重置 completion，准备新 worker 周期 */
     OmRet crc = completion_init(&wq->done);
-    if (crc != OM_OK) {
+    if (crc != OM_OK)
+    {
         OsalIrqIsrState key;
         osal_irq_lock(&key);
         wq->state = WORKQUEUE_STATE_IDLE;
@@ -259,13 +278,14 @@ OmRet workqueue_start(Workqueue *wq)
 
     /** 配置并创建 worker 线程 */
     OsalThreadAttr attr = {0};
-    attr.name      = wq->name;
+    attr.name = wq->name;
     attr.stackSize = wq->stack_depth;
-    attr.priority  = wq->priority;
+    attr.priority = wq->priority;
 
     OsalStatus st = osal_thread_create(&wq->thread, &attr,
                                        workqueue_worker_entry, wq);
-    if (st != OSAL_OK) {
+    if (st != OSAL_OK)
+    {
         /** 线程创建失败，状态回退 */
         OsalIrqIsrState key;
         osal_irq_lock(&key);
@@ -289,13 +309,15 @@ OmRet workqueue_start(Workqueue *wq)
  */
 OmRet workqueue_stop(Workqueue *wq)
 {
-    if (!wq) return OM_ERROR_PARAM;
+    if (!wq)
+        return OM_ERROR_PARAM;
 
     /** irq_lock 内检查并切换状态：RUNNING → STOPPING */
     {
         OsalIrqIsrState key;
         osal_irq_lock(&key);
-        if (wq->state != WORKQUEUE_STATE_RUNNING) {
+        if (wq->state != WORKQUEUE_STATE_RUNNING)
+        {
             osal_irq_unlock(key);
             return OM_ERROR;
         }
@@ -318,7 +340,8 @@ OmRet workqueue_stop(Workqueue *wq)
     {
         OsalIrqIsrState k;
         osal_irq_lock(&k);
-        if (!list_empty(&wq->pending)) {
+        if (!list_empty(&wq->pending))
+        {
             Work *w, *tmp;
             list_for_each_entry_safe(w, tmp, &wq->pending, node)
             {
@@ -363,10 +386,12 @@ OmRet workqueue_stop(Workqueue *wq)
  */
 OmRet workqueue_enqueue(Workqueue *wq, Work *work)
 {
-    if (!wq || !work) return OM_ERROR_PARAM;
+    if (!wq || !work)
+        return OM_ERROR_PARAM;
 
     /** 拒绝：工作队列未在运行 */
-    if (wq->state != WORKQUEUE_STATE_RUNNING) {
+    if (wq->state != WORKQUEUE_STATE_RUNNING)
+    {
         return OM_ERROR;
     }
 
@@ -375,7 +400,8 @@ OmRet workqueue_enqueue(Workqueue *wq, Work *work)
         OsalIrqIsrState key;
         osal_irq_lock(&key);
 
-        if (work->flags != WORK_FLAG_IDLE) {
+        if (work->flags != WORK_FLAG_IDLE)
+        {
             osal_irq_unlock(key);
             return OM_ERROR_BUSY;
         }
@@ -412,7 +438,8 @@ OmRet workqueue_enqueue(Workqueue *wq, Work *work)
  */
 OmRet workqueue_cancel(Work *work)
 {
-    if (!work) return OM_ERROR_PARAM;
+    if (!work)
+        return OM_ERROR_PARAM;
 
     OsalIrqIsrState key;
     osal_irq_lock(&key);
@@ -420,13 +447,15 @@ OmRet workqueue_cancel(Work *work)
     uint32_t f = work->flags;
 
     /** 拒绝：work 正在执行（worker 已认领） */
-    if (f & WORK_FLAG_RUNNING) {
+    if (f & WORK_FLAG_RUNNING)
+    {
         osal_irq_unlock(key);
         return OM_ERROR_BUSY;
     }
 
     /** 拒绝：work 不在 pending 状态 */
-    if (!(f & WORK_FLAG_PENDING)) {
+    if (!(f & WORK_FLAG_PENDING))
+    {
         osal_irq_unlock(key);
         return OM_ERROR;
     }
@@ -475,10 +504,12 @@ static void flush_barrier_fn(Work *w)
  */
 OmRet workqueue_flush(Workqueue *wq)
 {
-    if (!wq) return OM_ERROR_PARAM;
+    if (!wq)
+        return OM_ERROR_PARAM;
 
     /** 工作队列必须处于 RUNNING 状态 */
-    if (wq->state != WORKQUEUE_STATE_RUNNING) {
+    if (wq->state != WORKQUEUE_STATE_RUNNING)
+    {
         return OM_ERROR;
     }
 
@@ -487,7 +518,8 @@ OmRet workqueue_flush(Workqueue *wq)
     work_init(&bw, flush_barrier_fn, NULL);
 
     OmRet rc = workqueue_enqueue(wq, &bw);
-    if (rc != OM_OK) return rc;
+    if (rc != OM_OK)
+        return rc;
 
     /** 等 worker 完全释放 bw（flags 回到 IDLE）后再返回，bw 才能安全出栈 */
     return work_wait_idle(&bw, OSAL_WAIT_FOREVER);
@@ -508,30 +540,38 @@ OmRet workqueue_flush(Workqueue *wq)
  */
 OmRet work_wait_idle(Work *work, uint32_t timeout_ms)
 {
-    if (!work) return OM_ERROR_PARAM;
+    if (!work)
+        return OM_ERROR_PARAM;
     /** 仅允许线程上下文：内部使用 sleep 轮询 */
-    if (osal_is_in_isr()) return OM_ERROR_PARAM;
+    if (osal_is_in_isr())
+        return OM_ERROR_PARAM;
 
     uint32_t remaining = timeout_ms;
-    for (;;) {
+    for (;;)
+    {
         /** 快速路径：已 IDLE 直接返回。
          *  flags 在 irq_lock 内被写入；单核上 sleep 之后的读必然看到最新值。 */
         OsalIrqIsrState k;
         osal_irq_lock(&k);
         uint32_t f = work->flags;
         osal_irq_unlock(k);
-        if (f == WORK_FLAG_IDLE) return OM_OK;
+        if (f == WORK_FLAG_IDLE)
+            return OM_OK;
 
         /** 超时检查（非 FOREVER 且配额耗尽） */
-        if (remaining == 0U && timeout_ms != OSAL_WAIT_FOREVER) {
+        if (remaining == 0U && timeout_ms != OSAL_WAIT_FOREVER)
+        {
             return OM_ERROR_TIMEOUT;
         }
 
         /** sleep 让出 CPU 让 worker 推进；FOREVER 路径不消耗 remaining */
-        if (timeout_ms != OSAL_WAIT_FOREVER) {
+        if (timeout_ms != OSAL_WAIT_FOREVER)
+        {
             osal_sleep_ms(1U);
             remaining = (remaining > 0U) ? (remaining - 1U) : 0U;
-        } else {
+        }
+        else
+        {
             osal_sleep_ms(1U);
         }
     }
@@ -549,7 +589,8 @@ OmRet work_wait_idle(Work *work, uint32_t timeout_ms)
  */
 int workqueue_get_state(const Workqueue *wq)
 {
-    if (!wq) return WORKQUEUE_STATE_UNINIT;
+    if (!wq)
+        return WORKQUEUE_STATE_UNINIT;
     return wq->state;
 }
 
@@ -563,7 +604,8 @@ int workqueue_get_state(const Workqueue *wq)
  */
 bool workqueue_is_empty(const Workqueue *wq)
 {
-    if (!wq) return true;
+    if (!wq)
+        return true;
 
     OsalIrqIsrState key;
     osal_irq_lock(&key);

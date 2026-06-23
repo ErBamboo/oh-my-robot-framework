@@ -93,9 +93,9 @@ extern "C" {
  *   PENDING ──[cancel irq_lock]──→ IDLE
  * -------------------------------------------------------------------------- */
 
-#define WORK_FLAG_IDLE      ((uint32_t)0x00U) /**< 空闲，可被入队 */
-#define WORK_FLAG_PENDING   ((uint32_t)0x01U) /**< 在 pending 队列中等待 */
-#define WORK_FLAG_RUNNING   ((uint32_t)0x02U) /**< worker 正在执行 */
+#define WORK_FLAG_IDLE    ((uint32_t)0x00U) /**< 空闲，可被入队 */
+#define WORK_FLAG_PENDING ((uint32_t)0x01U) /**< 在 pending 队列中等待 */
+#define WORK_FLAG_RUNNING ((uint32_t)0x02U) /**< worker 正在执行 */
 
 /* --------------------------------------------------------------------------
  * Workqueue 生命周期状态
@@ -145,9 +145,9 @@ typedef void (*WorkFunc)(Work *work);
  * - flags: 状态标志位（WORK_FLAG_*），在 irq_lock 内管理
  */
 struct Work {
-    ListHead        node;  /**< 侵入式链表节点，挂在 pending 队列 */
-    WorkFunc        func;  /**< 工作处理函数 */
-    void           *data;  /**< 用户上下文 */
+    ListHead node;           /**< 侵入式链表节点，挂在 pending 队列 */
+    WorkFunc func;           /**< 工作处理函数 */
+    void *data;              /**< 用户上下文 */
     volatile uint32_t flags; /**< 状态标志位 (WORK_FLAG_*) */
 };
 
@@ -157,11 +157,11 @@ struct Work {
  * 传递给 workqueue_init()，设置 worker 线程属性。
  */
 typedef struct WorkqueueConfig {
-    const char *name;        /**< 调试名称（用作线程名） */
-    uint32_t    stack_depth; /**< worker 线程栈大小（字节）；为 0 时 workqueue_init 返回 OM_ERROR_PARAM */
-    uint32_t    priority;    /**< worker 线程优先级（FreeRTOS 优先级值，0 = idle priority）。
-                              *  本模块不做范围检查，调用者需保证小于 RTOS 的 configMAX_PRIORITIES；
-                              *  实践中建议 ≥ 1，避免 worker 与 idle 任务同优先级导致调度延迟。 */
+    const char *name;     /**< 调试名称（用作线程名） */
+    uint32_t stack_depth; /**< worker 线程栈大小（字节）；为 0 时 workqueue_init 返回 OM_ERROR_PARAM */
+    uint32_t priority;    /**< worker 线程优先级（FreeRTOS 优先级值，0 = idle priority）。
+                           *  本模块不做范围检查，调用者需保证小于 RTOS 的 configMAX_PRIORITIES；
+                           *  实践中建议 ≥ 1，避免 worker 与 idle 任务同优先级导致调度延迟。 */
 } WorkqueueConfig;
 
 /**
@@ -172,14 +172,14 @@ typedef struct WorkqueueConfig {
  *   workqueue_init(&wq, &cfg);
  */
 typedef struct Workqueue {
-    ListHead     pending;      /**< pending 工作项双向链表哨兵 */
-    OsalSem     *sem;          /**< 工作到达信号量（计数型，最大1） */
-    OsalThread  *thread;       /**< worker 线程句柄 */
-    Completion   done;         /**< worker 退出同步原语 */
-    volatile int state;        /**< 生命周期状态 (WORKQUEUE_STATE_*) */
-    uint32_t     stack_depth;  /**< worker 线程栈大小（字节） */
-    uint32_t     priority;     /**< worker 线程优先级 */
-    const char  *name;         /**< 调试名称 */
+    ListHead pending;     /**< pending 工作项双向链表哨兵 */
+    OsalSem *sem;         /**< 工作到达信号量（计数型，最大1） */
+    OsalThread *thread;   /**< worker 线程句柄 */
+    Completion done;      /**< worker 退出同步原语 */
+    volatile int state;   /**< 生命周期状态 (WORKQUEUE_STATE_*) */
+    uint32_t stack_depth; /**< worker 线程栈大小（字节） */
+    uint32_t priority;    /**< worker 线程优先级 */
+    const char *name;     /**< 调试名称 */
 } Workqueue;
 
 /* --------------------------------------------------------------------------
@@ -350,8 +350,8 @@ OmRet work_wait_idle(Work *work, uint32_t timeout_ms);
 static inline void work_init(Work *work, WorkFunc func, void *data)
 {
     INIT_LIST_HEAD(&work->node);
-    work->func = func;
-    work->data = data;
+    work->func  = func;
+    work->data  = data;
     work->flags = WORK_FLAG_IDLE;
 }
 

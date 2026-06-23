@@ -27,7 +27,8 @@
  * 测试结果追踪
  * -------------------------------------------------------------------------- */
 
-typedef struct {
+typedef struct
+{
     volatile uint32_t total;
     volatile uint32_t failed;
     volatile uint32_t done;
@@ -38,31 +39,34 @@ static TestResult g_result;
 static void expect(int condition)
 {
     g_result.total++;
-    if (!condition) g_result.failed++;
+    if (!condition)
+        g_result.failed++;
 }
 
 /* --------------------------------------------------------------------------
  * 测试工作项 —— handler 完成时 post semaphore
  * -------------------------------------------------------------------------- */
 
-typedef struct {
-    Work     w;
+typedef struct
+{
+    Work w;
     OsalSem *s;
-    int      ex;
-    int      id;
+    int ex;
+    int id;
 } TW;
 
 static void tw_handler(Work *w)
 {
     TW *t = container_of(w, TW, w);
     t->ex++;
-    if (t->s) osal_sem_post(t->s);
+    if (t->s)
+        osal_sem_post(t->s);
 }
 
 static void tw_init(TW *t, int id, OsalSem *s)
 {
     work_init(&t->w, tw_handler, NULL);
-    t->s  = s;
+    t->s = s;
     t->ex = 0;
     t->id = id;
 }
@@ -87,7 +91,7 @@ static int wait_sem(OsalSem *s, uint32_t timeout_ms)
 static void t_null_params(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_enqueue(NULL, NULL) == OM_ERROR_PARAM);
@@ -107,18 +111,18 @@ static void t_null_params(void)
 static void t_lifecycle(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_get_state(&wq) == WORKQUEUE_STATE_UNINIT);
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_get_state(&wq) == WORKQUEUE_STATE_IDLE);
     expect(workqueue_start(&wq) == OM_OK);
     expect(workqueue_get_state(&wq) == WORKQUEUE_STATE_RUNNING);
-    expect(workqueue_start(&wq) != OM_OK);          /* 重复 start 被拒 */
+    expect(workqueue_start(&wq) != OM_OK); /* 重复 start 被拒 */
     expect(workqueue_stop(&wq) == OM_OK);
     expect(workqueue_get_state(&wq) == WORKQUEUE_STATE_IDLE);
-    expect(workqueue_stop(&wq) != OM_OK);           /* 重复 stop 被拒 */
-    expect(workqueue_start(&wq) == OM_OK);          /* stop 后可重新 start */
+    expect(workqueue_stop(&wq) != OM_OK);  /* 重复 stop 被拒 */
+    expect(workqueue_start(&wq) == OM_OK); /* stop 后可重新 start */
     expect(workqueue_get_state(&wq) == WORKQUEUE_STATE_RUNNING);
     expect(workqueue_stop(&wq) == OM_OK);
     expect(workqueue_deinit(&wq) == OM_OK);
@@ -128,13 +132,13 @@ static void t_lifecycle(void)
 static void t_basic(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 42, sem);
 
     expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
@@ -150,19 +154,19 @@ static void t_basic(void)
 static void t_dedup(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 0, sem);
 
     expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
-    expect(workqueue_enqueue(&wq, &t.w) == OM_ERROR_BUSY);  /* 去重 */
+    expect(workqueue_enqueue(&wq, &t.w) == OM_ERROR_BUSY); /* 去重 */
     expect(wait_sem(sem, 5000u));
-    expect(t.ex == 1);                                       /* 只执行一次 */
+    expect(t.ex == 1); /* 只执行一次 */
 
     /* 完成后可重新入队 */
     expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
@@ -176,7 +180,7 @@ static void t_dedup(void)
 static void t_cancel_pending(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
@@ -191,7 +195,7 @@ static void t_cancel_pending(void)
 
     /* 给 worker 线程一点时间排空队列（工作项已被移除） */
     osal_sleep_ms(100u);
-    expect(t.ex == 0);  /* 未执行 */
+    expect(t.ex == 0); /* 未执行 */
 
     expect(workqueue_stop(&wq) == OM_OK);
     expect(workqueue_deinit(&wq) == OM_OK);
@@ -201,13 +205,13 @@ static void t_cancel_pending(void)
 static void t_cancel_completed(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 0, sem);
 
     expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
@@ -226,23 +230,25 @@ static void t_cancel_completed(void)
 static void t_cancel_one_of_many(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t[5];
-    int      i;
-    for (i = 0; i < 5; i++) tw_init(&t[i], i, (i == 4) ? sem : NULL);
+    TW t[5];
+    int i;
+    for (i = 0; i < 5; i++)
+        tw_init(&t[i], i, (i == 4) ? sem : NULL);
 
-    for (i = 0; i < 5; i++) expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
-    expect(workqueue_cancel(&t[2].w) == OM_OK);  /* 取消第 3 个 */
+    for (i = 0; i < 5; i++)
+        expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    expect(workqueue_cancel(&t[2].w) == OM_OK); /* 取消第 3 个 */
 
     expect(wait_sem(sem, 5000u));
     expect(t[0].ex == 1);
     expect(t[1].ex == 1);
-    expect(t[2].ex == 0);  /* 已取消 */
+    expect(t[2].ex == 0); /* 已取消 */
     expect(t[3].ex == 1);
     expect(t[4].ex == 1);
 
@@ -255,7 +261,7 @@ static void t_cancel_one_of_many(void)
 static void t_cancel_reenqueue(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
@@ -283,20 +289,23 @@ static void t_cancel_reenqueue(void)
 static void t_multi(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t[5];
-    int      i;
-    for (i = 0; i < 5; i++) tw_init(&t[i], i, (i == 4) ? sem : NULL);
+    TW t[5];
+    int i;
+    for (i = 0; i < 5; i++)
+        tw_init(&t[i], i, (i == 4) ? sem : NULL);
 
-    for (i = 0; i < 5; i++) expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (i = 0; i < 5; i++)
+        expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
     expect(wait_sem(sem, 5000u));
 
-    for (i = 0; i < 5; i++) expect(t[i].ex == 1);
+    for (i = 0; i < 5; i++)
+        expect(t[i].ex == 1);
 
     expect(workqueue_stop(&wq) == OM_OK);
     expect(workqueue_deinit(&wq) == OM_OK);
@@ -308,21 +317,23 @@ static void t_stress(void)
 {
 #define N 20
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t[N];
-    int      i;
+    TW t[N];
+    int i;
     for (i = 0; i < N; i++)
         tw_init(&t[i], i, (i == N - 1) ? sem : NULL);
 
-    for (i = 0; i < N; i++) expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (i = 0; i < N; i++)
+        expect(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
     expect(wait_sem(sem, 10000u));
 
-    for (i = 0; i < N; i++) expect(t[i].ex == 1);
+    for (i = 0; i < N; i++)
+        expect(t[i].ex == 1);
 
     expect(workqueue_stop(&wq) == OM_OK);
     expect(workqueue_deinit(&wq) == OM_OK);
@@ -334,13 +345,13 @@ static void t_stress(void)
 static void t_stop_drain(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 42, sem);
 
     expect(workqueue_enqueue(&wq, &t.w) == OM_OK);
@@ -357,7 +368,7 @@ static void t_stop_drain(void)
 static void t_enq_stopped(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
@@ -365,7 +376,7 @@ static void t_enq_stopped(void)
 
     TW t;
     tw_init(&t, 0, NULL);
-    expect(workqueue_enqueue(&wq, &t.w) == OM_ERROR);  /* 非 RUNNING 状态 */
+    expect(workqueue_enqueue(&wq, &t.w) == OM_ERROR); /* 非 RUNNING 状态 */
 
     expect(workqueue_deinit(&wq) == OM_OK);
 }
@@ -374,13 +385,13 @@ static void t_enq_stopped(void)
 static void t_query(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 0, sem);
 
     expect(!work_is_busy(&t.w));
@@ -402,7 +413,7 @@ static void t_query(void)
 static void t_wait_idle(void)
 {
     Workqueue wq = {0};
-    WorkqueueConfig  cfg = {"t", 8192u, 2u};
+    WorkqueueConfig cfg = {"t", 8192u, 2u};
 
     expect(workqueue_init(&wq, &cfg) == OM_OK);
     expect(workqueue_start(&wq) == OM_OK);
@@ -411,7 +422,7 @@ static void t_wait_idle(void)
     expect(work_wait_idle(NULL, 100u) == OM_ERROR_PARAM);
 
     OsalSem *sem = make_sem();
-    TW       t;
+    TW t;
     tw_init(&t, 7, sem);
 
     /* IDLE 状态立即返回 OK，timeout=0 也 OK */
@@ -463,7 +474,8 @@ static void test_thread_entry(void *arg)
     t_wait_idle();
 
     g_result.done = 1u;
-    for (;;) osal_sleep_ms(1000u);
+    for (;;)
+        osal_sleep_ms(1000u);
 }
 
 /* --------------------------------------------------------------------------

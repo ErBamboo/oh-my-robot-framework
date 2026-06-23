@@ -13,62 +13,68 @@
 
 #include "async/workqueue.h"
 #include "data_struct/corelist.h"
+#include "osal/osal_config.h"
 #include "osal/osal_core.h"
 #include "osal/osal_sem.h"
 #include "osal/osal_thread.h"
-#include "osal/osal_config.h"
 #include "sync/completion.h"
 
 /* --------------------------------------------------------------------------
  * 测试结果追踪
  * -------------------------------------------------------------------------- */
 
-static int g_total  = 0;
+static int g_total = 0;
 static int g_failed = 0;
 static int g_current_test = 0;
 
-#define EXPECT(cond)                                          \
-    do {                                                      \
-        g_total++;                                            \
-        if (!(cond)) {                                        \
-            g_failed++;                                       \
+#define EXPECT(cond)                                               \
+    do                                                             \
+    {                                                              \
+        g_total++;                                                 \
+        if (!(cond))                                               \
+        {                                                          \
+            g_failed++;                                            \
             fprintf(stderr, "  FAIL %s:%d\n", __FILE__, __LINE__); \
-        }                                                     \
+        }                                                          \
     } while (0)
 
 #define TEST_BEGIN(name)                              \
-    do {                                              \
+    do                                                \
+    {                                                 \
         g_current_test++;                             \
         printf("[%2d] %-30s ", g_current_test, name); \
     } while (0)
 
-#define TEST_END()                                    \
-    do {                                              \
-        printf("OK\n");                               \
+#define TEST_END()      \
+    do                  \
+    {                   \
+        printf("OK\n"); \
     } while (0)
 
 /* --------------------------------------------------------------------------
  * 测试工作项
  * -------------------------------------------------------------------------- */
 
-typedef struct {
-    Work     w;
+typedef struct
+{
+    Work w;
     OsalSem *s;
-    int      ex;
-    int      id;
+    int ex;
+    int id;
 } TW;
 
 static void tw_handler(Work *w)
 {
     TW *t = container_of(w, TW, w);
     t->ex++;
-    if (t->s) osal_sem_post(t->s);
+    if (t->s)
+        osal_sem_post(t->s);
 }
 
 static void tw_init(TW *t, int id, OsalSem *s)
 {
     work_init(&t->w, tw_handler, NULL);
-    t->s  = s;
+    t->s = s;
     t->ex = 0;
     t->id = id;
 }
@@ -251,9 +257,11 @@ static void t_cancel_one_of_many(void)
 
     OsalSem *sem = make_sem();
     TW t[5];
-    for (int i = 0; i < 5; i++) tw_init(&t[i], i, (i == 4) ? sem : NULL);
+    for (int i = 0; i < 5; i++)
+        tw_init(&t[i], i, (i == 4) ? sem : NULL);
 
-    for (int i = 0; i < 5; i++) EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (int i = 0; i < 5; i++)
+        EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
     EXPECT(workqueue_cancel(&t[2].w) == OM_OK);
 
     EXPECT(wait_sem(sem, 5000u));
@@ -310,12 +318,15 @@ static void t_multi(void)
 
     OsalSem *sem = make_sem();
     TW t[5];
-    for (int i = 0; i < 5; i++) tw_init(&t[i], i, (i == 4) ? sem : NULL);
+    for (int i = 0; i < 5; i++)
+        tw_init(&t[i], i, (i == 4) ? sem : NULL);
 
-    for (int i = 0; i < 5; i++) EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (int i = 0; i < 5; i++)
+        EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
     EXPECT(wait_sem(sem, 5000u));
 
-    for (int i = 0; i < 5; i++) EXPECT(t[i].ex == 1);
+    for (int i = 0; i < 5; i++)
+        EXPECT(t[i].ex == 1);
 
     EXPECT(workqueue_stop(&wq) == OM_OK);
     EXPECT(workqueue_deinit(&wq) == OM_OK);
@@ -339,10 +350,12 @@ static void t_stress(void)
     for (int i = 0; i < N; i++)
         tw_init(&t[i], i, (i == N - 1) ? sem : NULL);
 
-    for (int i = 0; i < N; i++) EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (int i = 0; i < N; i++)
+        EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
     EXPECT(wait_sem(sem, 10000u));
 
-    for (int i = 0; i < N; i++) EXPECT(t[i].ex == 1);
+    for (int i = 0; i < N; i++)
+        EXPECT(t[i].ex == 1);
 
     EXPECT(workqueue_stop(&wq) == OM_OK);
     EXPECT(workqueue_deinit(&wq) == OM_OK);
@@ -436,14 +449,17 @@ static void t_flush(void)
 
     OsalSem *sem = make_sem();
     TW t[3];
-    for (int i = 0; i < 2; i++) tw_init(&t[i], i, NULL);
+    for (int i = 0; i < 2; i++)
+        tw_init(&t[i], i, NULL);
     tw_init(&t[2], 2, sem);
 
-    for (int i = 0; i < 3; i++) EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
+    for (int i = 0; i < 3; i++)
+        EXPECT(workqueue_enqueue(&wq, &t[i].w) == OM_OK);
 
     /* flush 应等待全部工作项完成 */
     EXPECT(workqueue_flush(&wq) == OM_OK);
-    for (int i = 0; i < 3; i++) EXPECT(t[i].ex == 1);
+    for (int i = 0; i < 3; i++)
+        EXPECT(t[i].ex == 1);
 
     /* flush 后队列为空 */
     EXPECT(workqueue_is_empty(&wq));
@@ -506,8 +522,8 @@ int main(void)
     printf("=== Workqueue Host Test ===\n\n");
 
     /** 显式归零：全局变量默认零初始化，但显式重置便于将来 main 被复用（如 host 框架重跑）。 */
-    g_total        = 0;
-    g_failed       = 0;
+    g_total = 0;
+    g_failed = 0;
     g_current_test = 0;
 
     t_null_params();
@@ -528,7 +544,8 @@ int main(void)
 
     printf("\n=== Results: %d/%d passed",
            g_total - g_failed, g_total);
-    if (g_failed) {
+    if (g_failed)
+    {
         printf(" (%d FAILED)", g_failed);
     }
     printf(" ===\n");
