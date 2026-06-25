@@ -12,6 +12,7 @@
 #include "drivers/peripheral/spi/pal_spi_dev.h"
 
 #include "osal/osal_core.h"
+#include "osal/osal_priority.h"
 #include <stddef.h>
 #include <string.h>
 
@@ -20,7 +21,7 @@
  *===========================================================================*/
 
 #define SPI_ASYNC_WQ_STACK_DEPTH     1024U
-#define SPI_ASYNC_WQ_PRIORITY        4U
+#define SPI_ASYNC_WQ_PRIORITY        (OSAL_PRIO_ABOVE_NORMAL_BASE + 0U)
 
 /*===========================================================================
  * 总线注册表（全局链表 + 关中断保护）
