@@ -7,13 +7,6 @@
  *   spi_transfer_async()  异步传输整条 SpiMessage
  *   spi_write/read/write_then_read()  便利层
  *
- * 删除的 API：hal_spi_transaction_begin/transfer/end（事务模型）
- *
- * 修复：
- *   ISSUE-001: 错误码改用 OM_ERR_* 通用码 + SPI 模块别名（不再有 SpiErrCode enum）
- *   ISSUE-002: 事务 API 删除，CS_CONFLICT 在设计层面消除
- *   ISSUE-004: busy=1 在 transferOne() 之前设置，关闭 ISR 早到达竞争窗口
- *   ISSUE-005: BSP 回调改名 transferOne，与框架 API spi_transfer 不再混淆
  */
 
 #include "drivers/peripheral/spi/pal_spi_dev.h"
@@ -28,6 +21,37 @@
 
 #define SPI_ASYNC_WQ_STACK_DEPTH     1024U
 #define SPI_ASYNC_WQ_PRIORITY        4U
+
+/*===========================================================================
+ * 总线注册表（全局链表 + 关中断保护）
+ *
+ * register/unregister/get 的链表操作耗时几个指针赋值，关中断（微秒级）
+ * 比互斥锁更轻量，且不依赖 OS 初始化状态。
+ *===========================================================================*/
+
+static ListHead gSpiBusList = LIST_HEAD_INIT(gSpiBusList);
+
+SpiBus *spi_bus_get(uint8_t idx)
+{
+    SpiBus  *found = NULL;
+    OsalIrqIsrState key;
+    osal_irq_lock(&key);
+
+    uint8_t   n = 0U;
+    ListHead *pos;
+    LIST_FOR_EACH(pos, &gSpiBusList)
+    {
+        SpiBus *bus = LIST_ENTRY(pos, SpiBus, busNode);
+        if (n == idx) {
+            found = bus;
+            break;
+        }
+        n++;
+    }
+
+    osal_irq_unlock(key);
+    return found;
+}
 
 /*===========================================================================
  * 内部辅助 — 锁
@@ -98,8 +122,8 @@ static inline bool spi_dbuf_enabled(SpiBus *bus)
 /*===========================================================================
  * 内部辅助 — 单段硬件传输
  *
- * ISSUE-004 FIX: busy=1 在 ops->transferOne() 之前设置，
- * 即使 DMA 在 transferOne 内部同步完成，ISR 到达时 busy 已为 1。
+ * busy=1 必须在 transferOne 之前设置：DMA 可能在 transferOne 内部同步完成，
+ * ISR 在 transferOne 返回前就已经触发，若 busy 还在 0 则 ISR 会被丢弃。
  *
  * 调用者持有锁、负责 CS。
  *===========================================================================*/
@@ -108,7 +132,7 @@ static OmRet spi_do_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx,
                                   size_t len, size_t *transferred_out,
                                   uint32_t timeout_ms)
 {
-    bus->busy = 1;  /* ISSUE-004 fix: set BEFORE transferOne */
+    bus->busy = 1;
 
     OmRet ret = bus->ops->transferOne(bus, tx, rx, len);
     if (ret != OM_OK) {
@@ -199,23 +223,45 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
         return ret;
     }
 
+    {
+        OsalIrqIsrState key;
+        osal_irq_lock(&key);
+        init_list_head(&bus->busNode);
+        list_add_tail(&bus->busNode, &gSpiBusList);
+        osal_irq_unlock(key);
+    }
+
     return OM_OK;
+}
+
+void spi_bus_unregister(SpiBus *bus)
+{
+    if (!bus)
+        return;
+
+    OsalIrqIsrState key;
+    osal_irq_lock(&key);
+    list_del(&bus->busNode);
+    osal_irq_unlock(key);
 }
 
 void spi_bus_deinit(SpiBus *bus)
 {
-    if (!bus)
+    if (!bus || bus->deviceCount > 0U)
         return;
+
+    spi_bus_lock(bus);
 
     workqueue_stop(&bus->asyncWq);
     workqueue_deinit(&bus->asyncWq);
     dbuf_free(&bus->txDbuf, NULL);
     completion_deinit(&bus->transferDone);
 
-    if (bus->lock) {
-        osal_mutex_delete(bus->lock);
-        bus->lock = NULL;
-    }
+    /* 先取走 mutex 指针再置 NULL，防止 unlock→delete 间隙被其他线程抢锁 */
+    OsalMutex *mtx = bus->lock;
+    bus->lock = NULL;
+    osal_mutex_unlock(mtx);
+    osal_mutex_delete(mtx);
 
     memset(bus, 0, sizeof(*bus));
 }
@@ -224,9 +270,10 @@ void spi_bus_deinit(SpiBus *bus)
  * 设备挂载 / 移除
  *===========================================================================*/
 
-OmRet spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
+OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
                          const char *name, const SpiDeviceCfg *cfg)
 {
+    SpiBus *bus = spi_bus_get(busIdx);
     if (!bus || !dev || !name || !cfg)
         return OM_ERR_NULL;
 
@@ -906,9 +953,8 @@ void hal_spi_isr(SpiBus *bus, OmRet status, size_t transferred)
     if (!bus)
         return;
 
-    /* ISSUE-004 context: busy is set BEFORE transferOne starts,
-     * so the race window is closed. This gate still protects
-     * against late ISR after timeout clears busy. */
+    /* busy 在 transferOne 之前置位，因此 DMA 提前完成的 ISR 不会丢失。
+     * 此处防御超时路径已将 busy 清零后仍然到达的迟到 ISR。 */
     if (!bus->busy)
         return;
 

@@ -9,6 +9,9 @@ extern "C"
 // 编译器类型检测
 #if defined(_MSC_VER)
 #define AW_COMPILER_MSVC
+#elif defined(__ICCARM__)
+#define AW_COMPILER_IAR
+#define AW_COMPILER AW_COMPILER_IAR
 #elif defined(__ARMCC_VERSION)
 // ARM Compiler 6 (基于 Clang)
 #if __ARMCC_VERSION >= 6000000
@@ -55,6 +58,15 @@ extern "C"
 #define __port_align(n) __port_attribute((aligned(n)))
 #define __port_noreturn __port_attribute((noreturn))
 #define __port_packed __port_attribute((packed))
+#elif defined(__ICCARM__)
+/* IAR EWARM — 使用原生语法 */
+#define __port_attribute(x)
+#define __port_used       __root
+#define __port_weak       __weak
+#define __port_section(x) @ x
+#define __port_align(n)   _Pragma(AW_STR(data_alignment=n))
+#define __port_noreturn   __noreturn
+#define __port_packed     __packed
 #elif defined(_MSC_VER)
 #define __port_attribute(x)
 #define __port_used

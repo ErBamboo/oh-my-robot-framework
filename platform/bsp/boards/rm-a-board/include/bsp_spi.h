@@ -105,9 +105,6 @@ typedef struct BspSpi
     uint8_t            dummyTx;      /* tx==NULL 时 DMA 源，固定 0xFF */
     uint8_t            dummyRx;      /* rx==NULL 时 DMA 目标，丢弃 */
     size_t             pendingLen;   /* 当前传输总长，abort 反算用 */
-
-    const char        *name;
-    uint32_t           regparams;
 } BspSpi_s;
 
 /**
@@ -129,8 +126,6 @@ typedef struct BspSpi
         .dummyTx         = 0xFFU,                                                  \
         .dummyRx         = 0x00U,                                                  \
         .pendingLen      = 0U,                                                     \
-        .name            = (NAME),                                                 \
-        .regparams       = (REGPARAMS),                                            \
     }
 
 /*===========================================================================

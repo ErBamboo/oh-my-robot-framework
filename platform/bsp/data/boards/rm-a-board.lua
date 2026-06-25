@@ -27,6 +27,7 @@ local board = {
     sources = {
         "boards/rm-a-board/source/core/bsp_cpu.c",
         "boards/rm-a-board/source/core/bsp_dwt.c",
+        "boards/rm-a-board/source/core/om_pre_init_boundary.c",
         "boards/rm-a-board/source/peripherals/can/bsp_can_impl.c",
         "boards/rm-a-board/source/peripherals/gpio/bsp_gpio_impl.c",
         "boards/rm-a-board/source/peripherals/serial/bsp_serial_impl.c",

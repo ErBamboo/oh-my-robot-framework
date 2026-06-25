@@ -309,7 +309,7 @@ void bsp_spi_register(void)
          *    因为 spi_bus_register 不做任何硬件工作，只分配 lock/completion） */
         bsp_spi_pre_init(&gBspSpi[i]);
 
-        /* 2. 注册 SpiBus 到框架（dbuf_page_size=0：IMU 不需要 DoubleBuf） */
+        /* 2. 注册 SpiBus 到框架（dbuf_page_size=0：不开启 DoubleBuf） */
         OmRet ret = spi_bus_register(&gBspSpi[i].parent,
                                          &gBspSpi[i],
                                          &gSpiOps,

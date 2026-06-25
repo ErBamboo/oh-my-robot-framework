@@ -198,6 +198,7 @@ typedef struct SpiBus {
     uint8_t            suspendedCount;   /* 已挂起的从设备数量 */
     uint8_t            deviceCount;      /* 总线上挂载的设备总数 */
     ListHead           deviceList;       /* 已挂载设备链表 */
+    ListHead           busNode;          /* 全局总线链表节点 */
 } SpiBus;
 
 /*===========================================================================
@@ -252,15 +253,24 @@ void spi_cs_deassert(HalSpiDevice *dev);
  * 总线生命周期
  *===========================================================================*/
 
-OmRet spi_bus_register(SpiBus *bus, void *hw_private,
+OmRet  spi_bus_register(SpiBus *bus, void *hw_private,
                         SpiControllerOps *ops, size_t dbuf_page_size);
-void  spi_bus_deinit(SpiBus *bus);
+
+/** @brief 从全局总线表中摘除（反操作：register），不释放内部资源 */
+void   spi_bus_unregister(SpiBus *bus);
+
+/** @brief 销毁总线全部内部资源
+ *  @pre   必须已调 spi_bus_unregister，且所有从设备已 detach（deviceCount==0） */
+void   spi_bus_deinit(SpiBus *bus);
+
+/** @brief 按注册序号获取 SpiBus 指针（0,1,...） */
+SpiBus *spi_bus_get(uint8_t idx);
 
 /*===========================================================================
  * 设备挂载 / 移除
  *===========================================================================*/
 
-OmRet spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
+OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
                          const char *name, const SpiDeviceCfg *cfg);
 void  spi_device_detach(HalSpiDevice *dev);
 
