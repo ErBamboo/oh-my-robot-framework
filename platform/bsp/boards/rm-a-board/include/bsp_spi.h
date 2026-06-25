@@ -119,13 +119,13 @@ typedef struct BspSpi
  * @note  dummyTx = 0xFF（SPI 约定 dummy 字节），dummyRx = 0（丢弃）。
  *        dummy 单字节配合 transferOne 内 MINC=0 循环读，len 无上限。
  */
-#define BSP_SPI_STATIC_INIT(INSTANCE, NAME, REGPARAMS)                            \
-    (BspSpi_s)                                                                     \
-    {                                                                              \
-        .handle.Instance = (INSTANCE),                                             \
-        .dummyTx         = 0xFFU,                                                  \
-        .dummyRx         = 0x00U,                                                  \
-        .pendingLen      = 0U,                                                     \
+#define BSP_SPI_STATIC_INIT(INSTANCE)                            \
+    (BspSpi_s)                                                     \
+    {                                                              \
+        .handle.Instance = (INSTANCE),                             \
+        .dummyTx         = 0xFFU,                                  \
+        .dummyRx         = 0x00U,                                  \
+        .pendingLen      = 0U,                                     \
     }
 
 /*===========================================================================

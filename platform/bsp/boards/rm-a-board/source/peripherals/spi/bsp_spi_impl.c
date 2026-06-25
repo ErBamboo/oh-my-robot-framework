@@ -296,7 +296,7 @@ static SpiControllerOps gSpiOps = {
 
 BspSpi_s gBspSpi[] = {
 #ifdef USE_SPI4
-    BSP_SPI_STATIC_INIT(SPI4, "spi4", 0U),
+    BSP_SPI_STATIC_INIT(SPI4),
 #endif
 };
 
