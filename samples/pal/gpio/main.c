@@ -54,7 +54,7 @@
 /* 测试参数 */
 #define TEST_LOOP_PERIOD_MS   (500U)
 #define TEST_TOGGLE_PERIOD_MS (100U)
-#define TEST_THREAD_PRIORITY  (4U)
+#define TEST_THREAD_PRIORITY  (OSAL_PRIO_LOW_BASE)
 #define TEST_THREAD_STACK     (512U)
 
 /* ===== 静态引脚描述符 ===== */

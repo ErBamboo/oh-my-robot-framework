@@ -296,8 +296,7 @@ static void mpsc_test_thread_entry(void* arg)
     mpsc_run_concurrent_test(2u);
 
     /* 组3：高优先级 Task 模拟 ISR 生产者 */
-    mpsc_run_concurrent_test(
-        (OSAL_PRIORITY_MAX > 2u) ? (OSAL_PRIORITY_MAX - 1u) : 2u);
+    mpsc_run_concurrent_test(OSAL_PRIO_HIGHEST);
 
     g_result.done = 1u;
 
@@ -310,7 +309,7 @@ int main(void)
     OsalThreadAttr test_attr = {
         "mpsc_test",
         768u * OSAL_STACK_WORD_BYTES,
-        2u,
+        OSAL_PRIO_IDLE_BASE + 2u,
     };
 
     if (osal_thread_create(&g_test_thread, &test_attr, mpsc_test_thread_entry, NULL) != OSAL_OK)

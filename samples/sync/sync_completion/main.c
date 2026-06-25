@@ -87,7 +87,7 @@ enum {
 
 enum {
     /* 组8/组9的 waiter 基准优先级 */
-    COMPLETION_STRESS_WAITER_PRIORITY_BASE = 3u,
+    COMPLETION_STRESS_WAITER_PRIORITY_BASE = OSAL_PRIO_IDLE_BASE + 3u,
 };
 
 typedef enum {

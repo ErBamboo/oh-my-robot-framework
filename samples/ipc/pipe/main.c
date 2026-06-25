@@ -397,12 +397,12 @@ static void pipe_test_thread_entry(void* arg)
         OsalThreadAttr isr_writer_attr = {
             "pipe_isr_w",
             512u * OSAL_STACK_WORD_BYTES,
-            OSAL_PRIORITY_MAX > 0u ? OSAL_PRIORITY_MAX - 1u : 0u,
+            OSAL_PRIO_HIGHEST,
         };
         OsalThreadAttr isr_reader_attr = {
             "pipe_isr_r",
             512u * OSAL_STACK_WORD_BYTES,
-            2u,
+            OSAL_PRIO_IDLE_BASE + 2u,
         };
 
         g_isr_writer_done = 0u;

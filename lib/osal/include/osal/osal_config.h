@@ -51,4 +51,7 @@
 #endif
 #endif
 
+/* 语义优先级带宽宏（依赖 OSAL_PRIORITY_MAX，须在此之后引入） */
+#include "osal_priority.h"
+
 #endif

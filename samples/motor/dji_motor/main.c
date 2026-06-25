@@ -21,8 +21,8 @@
 /* --- 1. 用户配置（USER CONFIGURATION） --- */
 
 /* 任务优先级配置（数值越大优先级越高，具体取决于 OSALConfig.h） */
-#define TASK_PRIO_CONTROL 7 // 控制任务高优先级
-#define TASK_PRIO_LOGIC 4   // 逻辑任务普通优先级
+#define TASK_PRIO_CONTROL (OSAL_PRIO_LOW_BASE + 3u) /* 控制任务 */
+#define TASK_PRIO_LOGIC   (OSAL_PRIO_LOW_BASE)       /* 逻辑任务 */
 
 /* 任务堆栈大小（字节，按平台 word 大小显式换算） */
 #define TASK_STACK_CONTROL (2048u * OSAL_STACK_WORD_BYTES)
