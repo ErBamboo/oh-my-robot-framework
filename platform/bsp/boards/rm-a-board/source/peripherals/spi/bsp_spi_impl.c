@@ -89,6 +89,16 @@ static OmRet bsp_spi_configure(SpiBus *bus, const SpiDeviceCfg *cfg)
     BspSpi_t          bsp_spi = (BspSpi_t)bus->hwPrivate;
     SPI_HandleTypeDef *hspi   = &bsp_spi->handle;
 
+    /* 正常 DMA 完成后 BSY 硬件收尾可能滞后于 ISR 回调。
+     * 必须在关 SPE 前等 BSY=0（SPE=0 后 SCLK 停振，在途帧永不完成）。
+     * 仅在 SPE=1 时等待：abort 恢复路径 SPE 已为 0，跳过。 */
+    if (hspi->Instance->CR1 & SPI_CR1_SPE) {
+        uint32_t bsy_timeout = 100000U;
+        while (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY) && --bsy_timeout) {}
+        if (!bsy_timeout)
+            return OM_ERR_IO;
+    }
+
     /* 关 SPI（CR1.SPE=0）才能写 BR/CPOL/CPHA/LSBFIRST/DFF */
     __HAL_SPI_DISABLE(hspi);
 
@@ -127,6 +137,15 @@ static OmRet bsp_spi_configure(SpiBus *bus, const SpiDeviceCfg *cfg)
         return OM_ERR_IO;
 
     __HAL_SPI_ENABLE(hspi);
+
+    /* 上一条传输（尤其是被 ABORT 的异步传输）在 SPE 禁止后 RXNE 不清零，
+     * 且 SPE=0 时读 DR 也无法清 RXNE（外设立于禁用态，内部状态机冻结）。
+     * 必须在 __HAL_SPI_ENABLE 后读 DR，此时外设已活跃，读 DR 能可靠清
+     * RXNE。否则 HAL_SPI_TransmitReceive_DMA 的 RXDMAEN 一开，残留 RXNE
+     * 抢在本次 TX 移位完成前触发虚假 DMA 读，NDTR 提前耗尽，rxb 收到旧数据。 */
+    if (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE))
+        (void)READ_REG(hspi->Instance->DR);
+
     return OM_OK;
 }
 
@@ -177,10 +196,18 @@ static OmRet bsp_spi_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx, s
         rx_dst = &bsp_spi->dummyRx;
     }
 
+    /* SPE=1 后 SPI 可能产生幽灵 RXNE（第二个或更多），出现在 configure 的
+     * flush 之后、HAL_SPI_TransmitReceive_DMA 开 RXDMAEN 之前。不在此处清掉，
+     * RXDMAEN 一开 DMA 就会预读旧 DR，rxb 收到错误数据。
+     * 必须在调用 HAL 前紧邻刷新（bsp_spi_configure 里已做过第一次）。 */
+    if (__HAL_SPI_GET_FLAG(&bsp_spi->handle, SPI_FLAG_RXNE))
+        (void)READ_REG(bsp_spi->handle.Instance->DR);
+
     /* 启动全双工 DMA。HAL_StatusTypeDef != HAL_OK 时返回错误码，
      * 此时**不得**调 hal_spi_isr（bsp_implementer_checklist.md §3.2）。 */
     HAL_StatusTypeDef hal_ret =
         HAL_SPI_TransmitReceive_DMA(&bsp_spi->handle, (uint8_t *)tx_src, rx_dst, (uint16_t)len);
+
     if (hal_ret != HAL_OK)
         return OM_ERR_IO;
 
@@ -221,7 +248,7 @@ static OmRet bsp_spi_control(SpiBus *bus, uint32_t cmd, void *arg)
                               ? (bsp_spi->pendingLen - remain)
                               : 0U;
         }
-        /* 4. 触发一次 hal_spi_isr，status=OM_ERR_IO（无专用 ABORTED 错误码），
+        /* 6. 触发一次 hal_spi_isr，status=OM_ERR_IO（无专用 ABORTED 错误码），
          *    transferred=已传字节数。框架 hal_spi_isr 会原样传给调用者。 */
         hal_spi_isr(bus, OM_ERR_IO, transferred);
         return OM_OK;

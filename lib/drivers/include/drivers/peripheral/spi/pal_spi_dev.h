@@ -197,6 +197,7 @@ typedef struct SpiBus {
     /* ---- 总线级 suspend ref-counting ---- */
     uint8_t            suspendedCount;   /* 已挂起的从设备数量 */
     uint8_t            deviceCount;      /* 总线上挂载的设备总数 */
+    ListHead           deviceList;       /* 已挂载设备链表 */
 } SpiBus;
 
 /*===========================================================================
@@ -209,6 +210,7 @@ typedef struct HalSpiDevice {
     SpiDeviceCfg   cfg;             /* 设备静态配置 */
     GpioPin        cs;              /* CS 引脚句柄（attach 时从 cfg.csSpec 解析） */
     uint8_t        suspended;       /* 是否已挂起 */
+    ListHead       busNode;         /* 挂载到 SpiBus.deviceList 的链表节点 */
 
     /* ---- 异步传输 slot（每设备同一时刻仅 1 个在途请求） ---- */
     Work           asyncWork;       /* 嵌入 workqueue 的 Work 节点 */

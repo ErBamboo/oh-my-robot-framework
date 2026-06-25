@@ -151,6 +151,7 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
     memset(bus, 0, sizeof(*bus));
     bus->hwPrivate = hw_private;
     bus->ops       = ops;
+    init_list_head(&bus->deviceList);
 
     OmRet ret;
 
@@ -232,8 +233,10 @@ OmRet spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
     if (cfg->maxHz == 0U)
         return OM_ERR_INVALID_ARG;
 
+    if (dev->bus)   // 已挂载
+        return OM_ERR_ALREADY;
+
     memset(dev, 0, sizeof(*dev));
-    dev->bus = bus;
     dev->cfg = *cfg;
 
     if (cfg->csSpec.controller != NULL) {
@@ -256,9 +259,35 @@ OmRet spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
     if (ret != OM_OK)
         return ret;
 
+    /* CS 线冲突检测：遍历 bus 上已挂载设备，同一 CS 线只能挂载一个设备 */
+    {
+        HalSpiDevice *iter;
+        LIST_FOR_EACH_ENTRY(iter, &bus->deviceList, busNode) {
+            bool cs_conflict = false;
+            if (cfg->csSpec.controller != NULL
+                && iter->cfg.csSpec.controller != NULL) {
+                cs_conflict = (strcmp(cfg->csSpec.controller,
+                                       iter->cfg.csSpec.controller) == 0
+                               && cfg->csSpec.offset
+                                      == iter->cfg.csSpec.offset);
+            } else if (cfg->csSpec.controller == NULL
+                       && iter->cfg.csSpec.controller == NULL) {
+                cs_conflict = (cfg->csSpec.offset
+                               == iter->cfg.csSpec.offset);
+            }
+            if (cs_conflict) {
+                spi_bus_unlock(bus);
+                return OM_ERR_ALREADY;
+            }
+        }
+    }
+
     ret = device_register(&dev->parent, (char *)name, 0U);
-    if (ret == OM_OK)
+    if (ret == OM_OK) {
+        dev->bus = bus;
         bus->deviceCount++;
+        list_add_tail(&dev->busNode, &bus->deviceList);
+    }
 
     spi_bus_unlock(bus);
     return ret;
@@ -276,8 +305,10 @@ void spi_device_detach(HalSpiDevice *dev)
     if (bus->lastCfgDev == dev)
         bus->lastCfgDev = NULL;
 
-    if (bus->deviceCount > 0U)
+    if (bus->deviceCount > 0U) {
         bus->deviceCount--;
+        list_del(&dev->busNode);
+    }
 
     spi_bus_unlock(bus);
 
@@ -744,6 +775,7 @@ static void spi_async_worker_func(Work *work)
 
         if (bus->lastStatus != OM_OK) {
             msg->status = bus->lastStatus;
+            bus->busy = 0;
             goto cleanup;
         }
 
@@ -786,8 +818,10 @@ static void spi_async_worker_func(Work *work)
 
 cleanup:
     if (dev->asyncCsHeld) {
-        if (!locked)
+        if (!locked) {
             spi_bus_lock(bus);
+            locked = true;
+        }
         spi_cs_deassert_dev(dev);
     }
     if (locked)
