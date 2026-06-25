@@ -1,13 +1,12 @@
 /**
  * @file   pal_spi_dev.h
- * @brief  SPI 外设抽象层：SpiBus（总线管理）+ HalSpiDevice（从设备 / Device 模型）
+ * @brief  SPI 外设抽象层（v2.0 — Linux message 模型）
  *
- * 架构：总线与设备分离
- *  - SpiBus: 基础设施，管理互斥/配置缓存/DoubleBuf/Completion/Workqueue，不注册为 Device
- *  - HalSpiDevice: 标准 Device，嵌入 Device 父类，注册到全局设备表
- *  - SpiInterface: BSP 硬件操作函数表（平台无关）
+ * 核心理念：SpiMessage 是最小原子传输单位。
+ * 应用层把"想要的全部行为"打包成 message（SpiTransfer 数组），
+ * 框架保证整条 message 原子执行，CS 行为通过 per-transfer flag 控制。
  *
- * 设计参考：Linux spi_summary / Zephyr spi.h / ESP-IDF spi_master.h
+ * 设计参考：Linux Kernel spi_summary / Zephyr spi.h / ESP-IDF spi_master.h
  */
 
 #ifndef __HAL_SPI_DEV_H__
@@ -30,10 +29,9 @@ extern "C" {
  *===========================================================================*/
 
 typedef struct SpiBus           SpiBus;
-typedef struct SpiInterface     SpiInterface;
+typedef struct SpiControllerOps SpiControllerOps;
 typedef struct SpiDeviceCfg     SpiDeviceCfg;
 typedef struct HalSpiDevice     HalSpiDevice;
-typedef struct SpiAsyncRequest  SpiAsyncRequest;
 
 /*===========================================================================
  * SPI 模式和常量
@@ -61,59 +59,90 @@ typedef struct SpiAsyncRequest  SpiAsyncRequest;
 #define SPI_CMD_ABORT           (0x11U)                  /* 中止当前异步传输 */
 
 /*===========================================================================
- * SPI 错误码
+ * SPI 错误码（模块别名 → 通用错误码）
+ *
+ * 设计：error_code_system.md
+ * 通用语义优先：所有别名均映射到 OM_ERR_* 通用码，共用数值不再冲突
  *===========================================================================*/
 
-typedef enum {
-    ERR_SPI_TRANSFER_TIMEOUT = 1U,  /* 传输超时 */
-    ERR_SPI_BUS_HW_ERROR,           /* MODF / OVR / CRC */
-    ERR_SPI_CS_CONFLICT,            /* 事务内调用自动 CS API */
-    ERR_SPI_BUSY,                   /* 硬件传输进行中 */
-    ERR_SPI_DEV_SUSPENDED,          /* 设备已挂起 */
-} SpiErrCode;
+#define OM_ERR_SPI_TRANSFER_TIMEOUT   OM_ERR_TIMEOUT         /* 传输超时 */
+#define OM_ERR_SPI_DMA_ERROR          OM_ERR_IO              /* DMA / 硬件错误 */
+#define OM_ERR_SPI_INVALID_CFG        OM_ERR_INVALID_ARG     /* 无效设备配置 */
+#define OM_ERR_SPI_DEV_BUSY           OM_ERR_BUSY            /* 硬件传输进行中 */
+#define OM_ERR_SPI_DEV_SUSPENDED      OM_ERR_NOT_SUPPORTED   /* 设备已挂起 */
+
+/* 模块特有码 BASE（0x1000+ 段，预留给未来无法映射到通用码的 SPI 专属错误） */
+#define OM_ERR_SPI_BASE              ((OmRet)0x1000)
 
 /*===========================================================================
- * SpiInterface —— BSP 硬件操作函数表（平台无关）
+ * SpiTransfer —— 单段传输描述符（caller 栈分配）
  *===========================================================================*/
 
-typedef struct SpiInterface {
+#define SPI_XFER_FLAG_CS_HOLD    (1U << 0)  /* 本段后保持 CS asserted */
+#define SPI_XFER_FLAG_DUAL       (1U << 1)  /* 预留：Dual-SPI (2-bit) */
+#define SPI_XFER_FLAG_QUAD       (1U << 2)  /* 预留：Quad-SPI (4-bit) */
+
+typedef struct {
+    const uint8_t *txBuf;           /* 发送缓冲区（NULL = 发 dummy 0xFF） */
+    uint8_t       *rxBuf;           /* 接收缓冲区（NULL = 丢弃 MISO）    */
+    size_t         len;             /* 传输字节数                        */
+    uint32_t       flags;           /* SPI_XFER_FLAG_*                   */
+    uint32_t       speedHz;         /* per-transfer 频率覆盖（0 = 使用设备默认值） */
+    uint8_t        bitsPerWord;     /* per-transfer 字宽覆盖（0 = 使用设备默认值） */
+} SpiTransfer;
+
+/*===========================================================================
+ * SpiMessage —— 多段传输原子消息（caller 栈分配）
+ *===========================================================================*/
+
+typedef struct {
+    SpiTransfer   *transfers;       /* IN:  传输描述符数组              */
+    size_t         count;           /* IN:  数组元素个数                */
+    size_t         transferred;     /* OUT: 全部传输总字节数             */
+    OmRet          status;          /* OUT: 整体传输结果                 */
+} SpiMessage;
+
+/*===========================================================================
+ * SpiControllerOps —— BSP 硬件操作函数表（平台无关）
+ *===========================================================================*/
+
+typedef struct SpiControllerOps {
 
     /**
      * @brief 配置 SPI 控制器寄存器（mode / 波特率 / 数据宽度 / 位序）
-     * @retval OM_OK           配置成功
-     * @retval OM_ERROR_PARAM  参数非法
+     * @retval OM_OK                   配置成功
+     * @retval OM_ERR_INVALID_ARG      参数非法
      */
     OmRet (*configure)(SpiBus *bus, const SpiDeviceCfg *cfg);
 
     /**
-     * @brief 发起 SPI 全双工传输（非阻塞）
+     * @brief 启动单段 SPI 全双工传输（非阻塞）
      * @param tx   发送缓冲区（NULL = 发 dummy 0xFF）
      * @param rx   接收缓冲区（NULL = 丢弃 MISO）
      * @param len  传输字节数
-     * @retval OM_OK           启动成功
-     * @retval OM_ERROR_PARAM  参数非法
-     * @note  BSP 内部根据硬件能力选择 poll / IRQ / DMA 路径
-     * @note  轮询模式内部死等完成后调 hal_spi_isr()
-     * @note  DMA / INT 模式启动后立即返回，ISR 回调 hal_spi_isr()
-     * @note  DMA 对框架完全透明，通道/IRQ/句柄全在 BSP private
+     * @retval OM_OK                   启动成功
+     * @retval OM_ERR_INVALID_ARG      参数非法
+     * @note  ASYNC contract: 必须启动 DMA/IRQ 后立即返回，不得轮询等待。
+     *        传输完成后 BSP 必须调用 hal_spi_isr() 通知框架。
+     *        BSP 内部根据硬件能力选择 poll / IRQ / DMA 路径。
      */
-    OmRet (*transfer)(SpiBus *bus, const uint8_t *tx, uint8_t *rx, size_t len);
+    OmRet (*transferOne)(SpiBus *bus, const uint8_t *tx, uint8_t *rx, size_t len);
 
     /**
-     * @brief 通用控制接口（SPI_CMD_ABORT 等）
+     * @brief 通用控制接口（SPI_CMD_ABORT / SUSPEND / RESUME 等）
      */
     OmRet (*control)(SpiBus *bus, uint32_t cmd, void *arg);
 
     /**
-     * @brief 硬件 CS 电平控制（仅硬件 CS 模式）
+     * @brief 硬件 CS 电平控制（仅硬件 CS 模式才实现，GPIO CS 模式置 NULL）
      * @param csId   CS 线编号，来自 cfg.csSpec.offset
-     * @param level  0 = 选中(assert), 1 = 释放(deassert)
+     * @param assert true = 选中(active), false = 释放(inactive)
      * @note  仅当 dev->cfg.csSpec.controller == NULL 时走此路径
-     * @note  GPIO CS 由框架直接调用 gpio_pin_write()，不经过此接口
+     * @note  GPIO CS 由框架直接调用 gpio_pin_write()，不经过此回调
      */
-    OmRet (*cs_control)(SpiBus *bus, uint8_t csId, uint8_t level);
+    void  (*setCs)(SpiBus *bus, uint8_t cs_id, bool assert);
 
-} SpiInterface;
+} SpiControllerOps;
 
 /*===========================================================================
  * SpiDeviceCfg —— 从设备静态配置（平台无关）
@@ -125,37 +154,10 @@ typedef struct SpiDeviceCfg {
     uint32_t        maxHz;              /* 最大 SCLK 频率 (Hz) */
     uint8_t         dataWidth;          /* SPI_DATA_WIDTH_8 / SPI_DATA_WIDTH_16 */
     uint8_t         bitOrder;           /* SPI_MSB_FIRST / SPI_LSB_FIRST */
-    uint32_t        transferOverheadMs; /* 传输超时附加余量（ms），补偿 BSP 启动/ISR/调度延迟 */
+    uint32_t        transferOverheadMs; /* 除 SCLK 纯传输时间外的额外预算（ms）。
+                                           补偿 BSP DMA 启动/ISR 延迟/调度抖动。
+                                           建议值 ≥ 5 ms，高频小数据适当增大。 */
 } SpiDeviceCfg;
-
-/*===========================================================================
- * SpiAsyncRequest —— 异步传输请求（调用者分配，携带 per-request 回调）
- *===========================================================================*/
-
-typedef struct SpiAsyncRequest {
-    HalSpiDevice    *dev;           /* 所属设备（框架填充） */
-    const uint8_t   *tx;            /* 发送缓冲区（调用者填充） */
-    uint8_t         *rx;            /* 接收缓冲区（调用者填充） */
-    size_t           len;           /* 传输长度（调用者填充） */
-    size_t           transferred;   /* 实际传输字节数（ISR→bus→worker 填入） */
-    OmRet            status;        /* 传输结果（ISR→bus→worker 填入） */
-    void           (*asyncCb)(void *param, struct SpiAsyncRequest *req);
-    void            *asyncParam;    /* 回调参数 */
-    uint32_t         epoch;         /* 入队时的 bus->asyncEpoch 快照（防悬垂复用） */
-    Work             work;          /* workqueue 调度单元 */
-} SpiAsyncRequest;
-
-/*===========================================================================
- * SpiXfer —— 同步传输描述符（栈上临时构造）
- *===========================================================================*/
-
-typedef struct SpiXfer {
-    const uint8_t *txBuf;       /* 发送缓冲区（NULL = 发 dummy） */
-    uint8_t       *rxBuf;       /* 接收缓冲区（NULL = 丢弃）     */
-    size_t         txLen;       /* 发送字节数                    */
-    size_t         rxLen;       /* 接收字节数                    */
-    size_t         transferred; /* 实际传输总字节数（框架填充）   */
-} SpiXfer;
 
 /*===========================================================================
  * SpiBus —— 总线控制器（不注册为 Device）
@@ -163,37 +165,40 @@ typedef struct SpiXfer {
 
 typedef struct SpiBus {
     /* ---- BSP 接口 ---- */
-    void            *hwPrivate;        /* BSP 私有数据（不透明指针） */
-    SpiInterface    *interface;        /* 硬件操作函数表 */
+    void              *hwPrivate;     /* BSP 私有数据（不透明指针） */
+    SpiControllerOps  *ops;           /* 硬件操作函数表 */
 
     /* ---- 并发控制 ---- */
-    OsalMutex       *lock;             /* 总线互斥锁（非递归） */
+    OsalMutex         *lock;          /* 总线互斥锁（非递归） */
 
     /* ---- 配置缓存 ---- */
-    HalSpiDevice    *cachedDevice;     /* 当前配置对应的设备指针 */
+    HalSpiDevice      *lastCfgDev;    /* 当前已配置的设备指针 */
+    uint32_t           actualHz;      /* 当前 SCLK 实际频率（分频后的真实值，由 configure 填充） */
 
     /* ---- 双缓冲（TX-only，dbuf_page_size > 0 时启用） ---- */
-    DoubleBuf        txDbuf;
+    DoubleBuf          txDbuf;
 
     /* ---- 同步传输完成信号 ---- */
-    Completion       transferDone;
-    size_t           lastTransferred;  /* ISR 写入，同步路径读取 */
-    OmRet            lastStatus;       /* ISR 写入的传输结果 */
+    Completion         transferDone;
+    size_t             lastTransferred;  /* ISR 写入，同步路径读取 */
+    OmRet              lastStatus;       /* ISR 写入的传输结果 */
 
     /* ---- 硬件传输状态 ---- */
-    volatile uint8_t busy;             /* 硬件传输进行中（ISR 读 / 线程写，需 volatile） */
+    volatile uint8_t   busy;             /* 硬件传输进行中（ISR 门控，需 volatile） */
 
     /* ---- Peek 预填充追踪 ---- */
-    SpiAsyncRequest *prefillTarget;    /* 预填充目标请求（NULL=无预填） */
-    uint32_t         prefillEpoch;     /* 预填充时的请求 epoch（防悬垂复用） */
+    SpiMessage        *prefillMsg;       /* 预填充目标消息（NULL=无预填） */
+    uint32_t           prefillEpoch;     /* 预填充时的请求 epoch（防悬垂复用） */
 
     /* ---- 异步调度（框架自建 per-bus workqueue） ---- */
-    Workqueue        asyncWq;
-    uint32_t         asyncEpoch;       /* 异步请求递增序号（每个 transfer_async +1） */
+    Workqueue          asyncWq;
+    uint32_t           asyncEpoch;       /* 异步请求递增序号 */
 
     /* ---- 总线级 suspend ref-counting ---- */
-    uint8_t          suspendedCount;   /* 已挂起的从设备数量 */
-    uint8_t          deviceCount;      /* 总线上挂载的设备总数 */
+    uint8_t            suspendedCount;   /* 已挂起的从设备数量 */
+    uint8_t            deviceCount;      /* 总线上挂载的设备总数 */
+    ListHead           deviceList;       /* 已挂载设备链表 */
+    ListHead           busNode;          /* 全局总线链表节点 */
 } SpiBus;
 
 /*===========================================================================
@@ -201,159 +206,116 @@ typedef struct SpiBus {
  *===========================================================================*/
 
 typedef struct HalSpiDevice {
-    Device            parent;          /* 设备父类（标准 Device 模型） */
-    SpiBus           *bus;             /* 所属 SPI 总线 */
-    SpiDeviceCfg      cfg;             /* 设备静态配置 */
-    GpioPin           cs;              /* CS 引脚句柄（attach 时从 cfg.csSpec 解析） */
-    uint8_t           inTransaction;   /* 是否处于手动 CS 事务中 */
-    uint8_t           suspended;       /* 是否已挂起 */
+    Device         parent;          /* 设备父类（标准 Device 模型） */
+    SpiBus        *bus;             /* 所属 SPI 总线（detach 时置 NULL） */
+    SpiDeviceCfg   cfg;             /* 设备静态配置 */
+    GpioPin        cs;              /* CS 引脚句柄（attach 时从 cfg.csSpec 解析） */
+    uint8_t        suspended;       /* 是否已挂起 */
+    ListHead       busNode;         /* 挂载到 SpiBus.deviceList 的链表节点 */
+
+    /* ---- 异步传输 slot（每设备同一时刻仅 1 个在途请求） ---- */
+    Work           asyncWork;       /* 嵌入 workqueue 的 Work 节点 */
+    SpiMessage    *asyncMsg;        /* 当前异步 message */
+    void         (*asyncCb)(void *param, SpiMessage *msg);
+    void          *asyncCbParam;
+    uint32_t       asyncEpoch;      /* 排入时快照 bus->asyncEpoch */
+    bool           asyncCsHeld;     /* worker 内跨 transfer 的 CS 保持状态 */
+    uint8_t        asyncBusy;       /* 异步 slot 是否被占用（irq_lock 保护） */
 } HalSpiDevice;
 
 /*===========================================================================
- * 内部辅助 — CS 双路径封装
+ * 内部辅助 — CS 双路径封装（仅供 hal_spi.c 使用）
  *===========================================================================*/
 
-static inline void spi_cs_assert(HalSpiDevice *dev)
+static inline void spi_cs_assert_dev(HalSpiDevice *dev)
 {
     if (gpio_pin_valid(dev->cs))
         gpio_pin_write(dev->cs, 0);
-    else if (dev->bus->interface->cs_control)
-        dev->bus->interface->cs_control(dev->bus, dev->cfg.csSpec.offset, 0);
+    else if (dev->bus->ops->setCs)
+        dev->bus->ops->setCs(dev->bus, dev->cfg.csSpec.offset, true);
 }
 
-static inline void spi_cs_deassert(HalSpiDevice *dev)
+static inline void spi_cs_deassert_dev(HalSpiDevice *dev)
 {
     if (gpio_pin_valid(dev->cs))
         gpio_pin_write(dev->cs, 1);
-    else if (dev->bus->interface->cs_control)
-        dev->bus->interface->cs_control(dev->bus, dev->cfg.csSpec.offset, 1);
+    else if (dev->bus->ops->setCs)
+        dev->bus->ops->setCs(dev->bus, dev->cfg.csSpec.offset, false);
 }
+
+/*===========================================================================
+ * 公共 CS 控制（供 CS_HOLD 结束后的手动释放）
+ *===========================================================================*/
+
+void spi_cs_deassert(HalSpiDevice *dev);
 
 /*===========================================================================
  * 总线生命周期
  *===========================================================================*/
 
-/**
- * @brief 注册 SPI 总线（内部分配 lock + completion + workqueue + 可选 DoubleBuf）
- * @param bus           调用者分配的 SpiBus 实例
- * @param hwPrivate     BSP 私有数据指针（生命周期由调用者管理）
- * @param interface     硬件操作函数表
- * @param dbuf_page_size 双缓冲 page 大小（> 0 启用 DoubleBuf，0 禁用）
- * @retval OM_OK             成功
- * @retval OM_ERROR_MEMORY   动态分配失败
- * @retval OM_ERROR_PARAM    参数非法
- */
-OmRet hal_spi_bus_register(SpiBus *bus, void *hwPrivate,
-                           SpiInterface *interface,
-                           size_t dbuf_page_size);
+OmRet  spi_bus_register(SpiBus *bus, void *hw_private,
+                        SpiControllerOps *ops, size_t dbuf_page_size);
 
-/**
- * @brief 反初始化 SPI 总线（确保无活跃传输时调用）
- */
-void hal_spi_bus_deinit(SpiBus *bus);
+/** @brief 从全局总线表中摘除（反操作：register），不释放内部资源 */
+void   spi_bus_unregister(SpiBus *bus);
+
+/** @brief 销毁总线全部内部资源
+ *  @pre   必须已调 spi_bus_unregister，且所有从设备已 detach（deviceCount==0） */
+void   spi_bus_deinit(SpiBus *bus);
+
+/** @brief 按注册序号获取 SpiBus 指针（0,1,...） */
+SpiBus *spi_bus_get(uint8_t idx);
 
 /*===========================================================================
  * 设备挂载 / 移除
  *===========================================================================*/
 
-/**
- * @brief 将从设备挂载到 SPI 总线并注册为 Device
- * @param bus   SPI 总线
- * @param dev   从设备实例
- * @param name  设备名称（注册到全局设备表）
- * @param cfg   从设备静态配置
- * @retval OM_OK             成功
- * @retval OM_ERROR_PARAM    参数非法（name/dev/cfg 为 NULL，或 maxHz == 0）
- */
-OmRet hal_spi_device_attach(SpiBus *bus, HalSpiDevice *dev,
-                            const char *name, const SpiDeviceCfg *cfg);
-
-/**
- * @brief 从总线移除从设备（清理 cachedDevice 引用）
- */
-void hal_spi_device_detach(HalSpiDevice *dev);
+OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
+                         const char *name, const SpiDeviceCfg *cfg);
+void  spi_device_detach(HalSpiDevice *dev);
 
 /*===========================================================================
  * 标准 Device 接口（DevInterface 6 个函数）
  *===========================================================================*/
 
-OmRet  hal_spi_dev_init(Device *dev);
-OmRet  hal_spi_dev_open(Device *dev, uint32_t oparam);
-OmRet  hal_spi_dev_close(Device *dev);
-
-/**
- * @brief Zephyr 风格"主收" — 发 dummy 接收 len 字节
- * @param ctrl_info  NULL 纯发 dummy；非 NULL 视为 const uint8_t* 先发 1 字节命令前缀
- */
-size_t hal_spi_dev_read(Device *dev, void *ctrl_info, void *data, size_t len);
-
-/**
- * @brief Zephyr 风格"主发" — 发送 data 的 len 字节，丢弃接收
- * @param ctrl_info  NULL 纯发数据；非 NULL 视为 const uint8_t* 先发 1 字节命令前缀
- */
-size_t hal_spi_dev_write(Device *dev, void *ctrl_info, void *data, size_t len);
-
-OmRet  hal_spi_dev_control(Device *dev, size_t cmd, void *arg);
+OmRet  spi_dev_init(Device *dev);
+OmRet  spi_dev_open(Device *dev, uint32_t oparam);
+OmRet  spi_dev_close(Device *dev);
+size_t spi_dev_read(Device *dev, void *ctrl_info, void *data, size_t len);
+size_t spi_dev_write(Device *dev, void *ctrl_info, void *data, size_t len);
+OmRet  spi_dev_control(Device *dev, size_t cmd, void *arg);
 
 /*===========================================================================
- * SPI 扩展 API
+ * 核心数据传输 API（仅 2 个）
  *===========================================================================*/
 
-/**
- * @brief 同步全双工传输（自动 CS）
- * @param xfer  txLen == rxLen 全双工传输描述符，结果写入 xfer->transferred
- * @retval OM_OK             成功
- * @retval OM_ERROR_PARAM    参数非法
- * @retval ERR_SPI_BUSY      异步传输进行中
- * @retval ERR_SPI_CS_CONFLICT  处于手动事务中
- * @retval ERR_SPI_DEV_SUSPENDED 设备已挂起
- * @retval ERR_SPI_TRANSFER_TIMEOUT 传输超时
- */
-OmRet hal_spi_transfer(HalSpiDevice *dev, SpiXfer *xfer);
+OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg);
 
-/**
- * @brief 一问一答（单 CS 周期内先写命令再读数据）
- * @param xfer  txLen = 命令字节数，rxLen = 读取字节数，结果写入 xfer->transferred
- */
-OmRet hal_spi_write_then_read(HalSpiDevice *dev, SpiXfer *xfer);
-
-/**
- * @brief 异步传输（调用者提供 SpiAsyncRequest，携带 per-request 回调）
- * @param req  调用者分配，填充 tx/rx/len/asyncCb/asyncParam，框架填充 dev/status/transferred
- * @retval OM_OK             入队成功
- * @retval OM_ERROR_PARAM    参数非法
- * @retval ERR_SPI_DEV_SUSPENDED 设备已挂起
- * @note  req 需保持存活直到 asyncCb 被调用
- * @note  若 DoubleBuf 启用且 req->len > dbuf_page_size 则返回 OM_ERROR_PARAM
- */
-OmRet hal_spi_transfer_async(HalSpiDevice *dev, SpiAsyncRequest *req);
+OmRet spi_transfer_async(HalSpiDevice *dev, SpiMessage *msg,
+                          void (*callback)(void *param, SpiMessage *msg),
+                          void *param);
 
 /*===========================================================================
- * 手动 CS 事务 API
+ * 便利层（内部组装 message，覆盖 90% 场景）
  *===========================================================================*/
 
-OmRet  hal_spi_transaction_begin(HalSpiDevice *dev);
-OmRet  hal_spi_transaction_transfer(HalSpiDevice *dev, SpiXfer *xfer);
-OmRet  hal_spi_transaction_end(HalSpiDevice *dev);
+OmRet spi_write(HalSpiDevice *dev, const uint8_t *buf, size_t len);
+OmRet spi_read(HalSpiDevice *dev, uint8_t *buf, size_t len);
+OmRet spi_write_then_read(HalSpiDevice *dev,
+                           const uint8_t *tx, size_t tx_len,
+                           uint8_t *rx, size_t rx_len);
 
 /*===========================================================================
  * 低功耗
  *===========================================================================*/
 
-OmRet  hal_spi_device_suspend(HalSpiDevice *dev);
-OmRet  hal_spi_device_resume(HalSpiDevice *dev);
+OmRet spi_device_suspend(HalSpiDevice *dev);
+OmRet spi_device_resume(HalSpiDevice *dev);
 
 /*===========================================================================
  * 框架 ISR 入口（由 BSP 的 DMA / 中断处理函数调用）
  *===========================================================================*/
 
-/**
- * @brief SPI 硬件传输完成 ISR 入口
- * @param bus         SPI 总线
- * @param status      传输结果（OM_OK / OM_ERROR_TIMEOUT / OM_ERROR_DMA）
- * @param transferred 实际传输字节数
- * @note  ISR 上下文调用，先检查 busy（传输是否已被放弃），再写状态 + completion_done
- */
 void hal_spi_isr(SpiBus *bus, OmRet status, size_t transferred);
 
 #ifdef __cplusplus

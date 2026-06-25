@@ -52,6 +52,25 @@ OmRet device_register(Device *dev, char *name, uint32_t regparams)
     return OM_OK;
 }
 
+OmRet device_unregister(Device *dev)
+{
+    if (!dev)
+        return OM_ERROR_PARAM;
+
+    osal_irq_lock_task();
+    list_del(&dev->list);
+    osal_irq_unlock_task();
+
+    dev->priv.name      = NULL;
+    dev->priv.refCount  = 0;
+    dev->priv.cFlags    = 0;
+    dev->priv.status    = 0;
+    dev->priv.oparams   = 0;
+    dev->priv.regparams = 0;
+
+    return OM_OK;
+}
+
 OmRet device_init(Device *dev)
 {
     OmRet ret = OM_OK;

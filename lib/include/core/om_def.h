@@ -33,23 +33,56 @@ typedef enum
     OM_ENABLE = !OM_DISABLE
 } OmAction;
 
-/* 返回值定义(标准错误码) */
-typedef enum
-{
-    OM_OK = 0U,           // 成功
-    OM_ERROR,             // 通用错误
-    OM_ERR_CONFLICT,      // 参数冲突
-    OM_ERR_OVERFLOW,      // 溢出错误
-    OM_ERROR_TIMEOUT,     // 超时错误
-    OM_ERROR_DMA,         // DMA错误
-    OM_ERROR_MEMORY,      // 内存错误
-    OM_ERROR_PARAM,       // 参数错误
-    OM_ERROR_NULL,        // 参数为NULL
-    OM_ERROR_BUSY,        // 忙错误
-    OM_ERROR_WOULD_BLOCK, // 非阻塞条件不满足
-    OM_ERROR_EMPTY,       // 空转错误
-    OM_ERROR_NOT_SUPPORT, // 不支持的操作
-} OmRet;
+/*===========================================================================
+ * 错误码体系（v2.0 — Linux errno 风格 + 模块前缀别名 + 模块特有码保留段）
+ *
+ * 设计文档：docs/error_code_system.md
+ * - 通用码 0x001-0x0FF：跨模块共用语义
+ * - 模块别名 0x001-0x0FF：OM_ERR_<MODULE>_<NAME> 宏映射到通用码
+ * - 模块特有码 0x1000+：极少数无通用语义对应的模块专属错误
+ * - 不设 OM_ERR_FAIL / OM_ERR_UNKNOWN 兜底：强制开发者明确错误归因
+ *===========================================================================*/
+
+typedef int32_t OmRet;   /* 正值错误码：0=成功，>0=失败 */
+
+/* === 成功 === */
+#define OM_OK    ((OmRet)0)
+
+/* === 通用错误码 === */
+#define OM_ERR_INVALID_ARG     ((OmRet)1)    /* 参数非法 */
+#define OM_ERR_TIMEOUT         ((OmRet)2)    /* 超时 */
+#define OM_ERR_NO_MEM          ((OmRet)3)    /* 内存不足 */
+#define OM_ERR_BUSY            ((OmRet)4)    /* 资源忙 */
+#define OM_ERR_NOT_SUPPORTED   ((OmRet)5)    /* 不支持的操作 */
+#define OM_ERR_OVERFLOW        ((OmRet)6)    /* 溢出 */
+#define OM_ERR_EMPTY           ((OmRet)7)    /* 资源为空 */
+#define OM_ERR_FULL            ((OmRet)8)    /* 资源已满 */
+#define OM_ERR_NOT_FOUND       ((OmRet)9)    /* 未找到 */
+#define OM_ERR_CONFLICT        ((OmRet)10)   /* 状态冲突 */
+#define OM_ERR_IO              ((OmRet)11)   /* IO / 硬件错误 */
+#define OM_ERR_PERMISSION      ((OmRet)12)   /* 权限不足 */
+#define OM_ERR_INTERRUPTED     ((OmRet)13)   /* 被中断 */
+#define OM_ERR_AGAIN           ((OmRet)14)   /* 需重试 */
+#define OM_ERR_NULL            ((OmRet)15)   /* NULL 指针 */
+#define OM_ERR_ALREADY         ((OmRet)16)   /* 已是目标状态 */
+#define OM_ERR_RANGE           ((OmRet)17)   /* 超出范围 */
+#define OM_ERR_PROTOCOL        ((OmRet)18)   /* 协议错误 */
+
+/* === 0x13 - 0xFF 预留给未来通用码扩展 === */
+
+/* === 过渡期兼容宏（阶段 1-6，阶段 7 删除） === */
+#define OM_ERROR              OM_ERR_IO              /* deprecated */
+#define OM_ERR_CONFLICT_OLD   OM_ERR_CONFLICT        /* deprecated */
+#define OM_ERR_OVERFLOW_OLD   OM_ERR_OVERFLOW        /* deprecated */
+#define OM_ERROR_TIMEOUT      OM_ERR_TIMEOUT          /* deprecated */
+#define OM_ERROR_DMA          OM_ERR_IO               /* deprecated */
+#define OM_ERROR_MEMORY       OM_ERR_NO_MEM           /* deprecated */
+#define OM_ERROR_PARAM        OM_ERR_INVALID_ARG      /* deprecated */
+#define OM_ERROR_NULL         OM_ERR_NULL             /* deprecated */
+#define OM_ERROR_BUSY         OM_ERR_BUSY             /* deprecated */
+#define OM_ERROR_WOULD_BLOCK  OM_ERR_AGAIN            /* deprecated */
+#define OM_ERROR_EMPTY        OM_ERR_EMPTY            /* deprecated */
+#define OM_ERROR_NOT_SUPPORT  OM_ERR_NOT_SUPPORTED    /* deprecated */
 
 typedef enum
 {

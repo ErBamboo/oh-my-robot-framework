@@ -61,6 +61,16 @@ SECTIONS
     . = ALIGN(4);
   } >ROM
 
+  /* OM pre-init callback table — iterated by om_pre_init_run() */
+  .om_pre_init :
+  {
+    . = ALIGN(4);
+    PROVIDE(__om_pre_init_start = .);
+    KEEP(*(.om_pre_init))
+    PROVIDE(__om_pre_init_end = .);
+    . = ALIGN(4);
+  } >ROM
+
   /* The program code and other data into "ROM" Rom type memory */
   .text :
   {
@@ -206,4 +216,3 @@ SECTIONS
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 }
-

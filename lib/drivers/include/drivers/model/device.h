@@ -67,6 +67,7 @@ size_t device_read(Device* dev, void *pos, void *data, size_t len);
 size_t device_write(Device* dev, void *pos, void *data, size_t len);
 OmRet device_ctrl(Device* dev, size_t cmd, void *args);
 OmRet device_register(Device* dev, char *name, uint32_t regparams);
+OmRet device_unregister(Device* dev);
 
 /* Callback helpers */
 static inline void device_set_read_cb(Device* dev, void (*callback)(Device* dev, void *params, size_t paramsz))
