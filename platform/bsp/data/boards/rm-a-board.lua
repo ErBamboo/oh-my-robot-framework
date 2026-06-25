@@ -31,6 +31,8 @@ local board = {
         "boards/rm-a-board/source/peripherals/gpio/bsp_gpio_impl.c",
         "boards/rm-a-board/source/peripherals/serial/bsp_serial_impl.c",
         "boards/rm-a-board/source/peripherals/serial/bsp_serial_init.c",
+        "boards/rm-a-board/source/peripherals/spi/bsp_spi_impl.c",
+        "boards/rm-a-board/source/peripherals/spi/bsp_spi_init.c",
         "boards/rm-a-board/source/port/om_port_hw.c",
     },
     override_sources = {
@@ -38,6 +40,7 @@ local board = {
         "boards/rm-a-board/source/peripherals/can/bsp_can_it.c",
         "boards/rm-a-board/source/peripherals/gpio/bsp_gpio_it.c",
         "boards/rm-a-board/source/peripherals/serial/serial_it.c",
+        "boards/rm-a-board/source/peripherals/spi/bsp_spi_it.c",
     },
     osal = {
         freertos = "boards/rm-a-board/osal/freertos",

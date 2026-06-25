@@ -1,0 +1,292 @@
+/**
+ * @file    bsp_spi_impl.c
+ * @brief   A 板 SPI BSP 实现（SpiControllerOps 4 回调 + 全局实例 + 注册入口）
+ * @details 实现 SpiControllerOps 的 configure / transferOne / control / setCs，
+ *          并提供 gBspSpi[] 全局实例数组与 bsp_spi_register() 注册入口。
+ *
+ *          关键约束（bsp_implementer_checklist.md §1）：
+ *          - configure ：持 bus->lock，线程上下文，按 cfg 字段重配 SPI 寄存器
+ *          - transferOne：持 bus->lock，线程上下文，**异步**——启动 DMA 后立即
+ *                        返回 OM_OK，DMA 完成 IRQ 触发 hal_spi_isr
+ *          - control   ：持 bus->lock，线程上下文，处理 ABORT/SUSPEND/RESUME
+ *          - setCs     ：A 板 CS 默认走 GPIO 路径，故置 NULL
+ *
+ * @note    不写 poll 路径（任务约束 #1）。
+ */
+
+#include "bsp_spi.h"
+#include "core/om_def.h"
+
+/*===========================================================================
+ * 内部辅助：根据 maxHz 计算 BR 分频（取 <= maxHz 的最大分频）
+ *===========================================================================*/
+
+/**
+ * @brief 由期望 SCLK 频率反算 SPI_CR1.BR 分频位
+ * @param  spi_clk_hz  SPI 外设输入时钟（SPI4 在 APB2，90MHz）
+ * @param  max_hz      从设备期望最大 SCLK 频率（来自 SpiDeviceCfg.maxHz）
+ * @retval SPI_BAUDRATEPRESCALER_xxx
+ *
+ * STM32F4 SPI BR 分频序列：fpclk / {2,4,8,16,32,64,128,256}，
+ * 对应 BAUDRATEPRESCALER_2.._256。
+ * 策略：选使实际频率 <= max_hz 的最小分频（即最大实际频率）。
+ *
+ * @note  HAL 的 BAUDRATEPRESCALER_xxx 是 CR1.BR 位段掩码（非 0,1,2... 线性序号），
+ *        必须用 lookup table 映射，不能直接左移。
+ */
+static const uint32_t gSpiBaudrateTable[8] = {
+    SPI_BAUDRATEPRESCALER_2,   /* fpclk/2   */
+    SPI_BAUDRATEPRESCALER_4,   /* fpclk/4   */
+    SPI_BAUDRATEPRESCALER_8,   /* fpclk/8   */
+    SPI_BAUDRATEPRESCALER_16,  /* fpclk/16  */
+    SPI_BAUDRATEPRESCALER_32,  /* fpclk/32  */
+    SPI_BAUDRATEPRESCALER_64,  /* fpclk/64  */
+    SPI_BAUDRATEPRESCALER_128, /* fpclk/128 */
+    SPI_BAUDRATEPRESCALER_256, /* fpclk/256 */
+};
+
+static uint32_t bsp_spi_compute_baudrate(uint32_t spi_clk_hz, uint32_t max_hz,
+                                          uint32_t *actual_hz_out)
+{
+    if (max_hz == 0U) {
+        if (actual_hz_out)
+            *actual_hz_out = spi_clk_hz / 2U;
+        return SPI_BAUDRATEPRESCALER_2;
+    }
+
+    /* 从最小分频（fpclk/2，索引0）枚举到最大分频（fpclk/256，索引7），
+     * 取首个使 actual <= max_hz 的项。 */
+    for (uint32_t i = 0U; i < 8U; i++)
+    {
+        uint32_t div    = 2UL << i; /* 分频系数 2,4,8,...,256 */
+        uint32_t actual = spi_clk_hz / div;
+        if (actual <= max_hz) {
+            if (actual_hz_out)
+                *actual_hz_out = actual;
+            return gSpiBaudrateTable[i];
+        }
+    }
+    if (actual_hz_out)
+        *actual_hz_out = spi_clk_hz / 256U;
+    return SPI_BAUDRATEPRESCALER_256;
+}
+
+/*===========================================================================
+ * SpiControllerOps 4 回调
+ *===========================================================================*/
+
+/**
+ * @brief 配置 SPI 控制寄存器（CPOL/CPHA/BR/DFF/LSBFIRST）
+ * @note  必须先 __HAL_SPI_DISABLE，否则 CR1/CR2 写入无效。
+ *        SPI_Mode / NSS / FirstBit 等基础字段在首次 HAL_SPI_Init 时固定，
+ *        此处仅重配 dev-specific 字段（bsp_implementer_checklist.md §1.1）。
+ */
+static OmRet bsp_spi_configure(SpiBus *bus, const SpiDeviceCfg *cfg)
+{
+    if (!bus || !cfg)
+        return OM_ERR_INVALID_ARG;
+
+    BspSpi_t          bsp_spi = (BspSpi_t)bus->hwPrivate;
+    SPI_HandleTypeDef *hspi   = &bsp_spi->handle;
+
+    /* 关 SPI（CR1.SPE=0）才能写 BR/CPOL/CPHA/LSBFIRST/DFF */
+    __HAL_SPI_DISABLE(hspi);
+
+    /* 固定字段（不随 cfg 变，但必须在每次 HAL_SPI_Init 前显式设置——
+     * BSP_SPI_STATIC_INIT 只填了 Instance，默认 0 = SLAVE 模式 + 硬件 NSS，
+     * 会导致 SCLK 不被驱动 + NSS 浮空触发 MODF 错误）。 */
+    hspi->Init.Mode           = SPI_MODE_MASTER;
+    hspi->Init.Direction      = SPI_DIRECTION_2LINES;
+    hspi->Init.NSS            = SPI_NSS_SOFT;
+    hspi->Init.TIMode         = SPI_TIMODE_DISABLE;
+    hspi->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    hspi->Init.CRCPolynomial  = 7U;  /* HAL 默认值，CRC 禁用时无电气意义 */
+
+    /* CPOL/CPHA：SPI_MODE_0..3 直接映射到 CR1.CPOL | CR1.CPHA 位序 */
+    hspi->Init.CLKPhase  = (cfg->mode & 0x1U) ? SPI_PHASE_2EDGE : SPI_PHASE_1EDGE;
+    hspi->Init.CLKPolarity = (cfg->mode & 0x2U) ? SPI_POLARITY_HIGH : SPI_POLARITY_LOW;
+
+    /* BR 分频，同时回写实际频率供框架超时计算 */
+    uint32_t actual_hz;
+    hspi->Init.BaudRatePrescaler =
+        bsp_spi_compute_baudrate(SPI4_INPUT_CLOCK_HZ, cfg->maxHz, &actual_hz);
+    bus->actualHz = actual_hz;
+
+    /* 数据宽度 DFF：8/16 */
+    hspi->Init.DataSize = (cfg->dataWidth == SPI_DATA_WIDTH_16)
+                              ? SPI_DATASIZE_16BIT
+                              : SPI_DATASIZE_8BIT;
+
+    /* 位序 LSBFIRST */
+    hspi->Init.FirstBit = (cfg->bitOrder == SPI_LSB_FIRST)
+                              ? SPI_FIRSTBIT_LSB
+                              : SPI_FIRSTBIT_MSB;
+
+    /* 应用配置（HAL 内部会重新计算 CR1/CR2） */
+    if (HAL_SPI_Init(hspi) != HAL_OK)
+        return OM_ERR_IO;
+
+    __HAL_SPI_ENABLE(hspi);
+    return OM_OK;
+}
+
+/**
+ * @brief 启动全双工 DMA 传输（异步）
+ * @note  tx==NULL → DMA 源指向 &bsp_spi->dummyTx（单字节 0xFF），DMA MINC=0 循环读
+ *        rx==NULL → DMA 目标指向 &bsp_spi->dummyRx（单字节），DMA MINC=0 循环写
+ *        返回 OM_OK 表示 DMA 已启动，真正的完成信号由 DMA RX IRQ 触发。
+ *
+ *        HAL_SPI_TransmitReceive_DMA 内部会配置两个 DMA stream 的方向/
+ *        对齐/长度并启动，最终 RX stream TC 触发 HAL_SPI_TxRxCpltCallback。
+ *
+ *        DMA_SxCR.MINC 切换契约（RM0090 §9.5.5）：
+ *          - MINC 位写入要求 EN=0
+ *          - Normal 模式下，前次传输 NDTR=0 时硬件自动清 EN
+ *          - HAL_DMA_Start_IT / DMA_SetConfig 全程不写 CR.MINC
+ *          - 故 transferOne 入口时 EN=0 恒成立，可自由切 MINC，len 无上限
+ */
+static OmRet bsp_spi_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx, size_t len)
+{
+    if (!bus)
+        return OM_ERR_INVALID_ARG;
+
+    BspSpi_t bsp_spi = (BspSpi_t)bus->hwPrivate;
+
+    /* 记录 pendingLen 供 abort 反算与 ISR 上报 */
+    bsp_spi->pendingLen = len;
+
+    /* tx/rx NULL 处理：DMA_SxCR.MINC 按 NULL 切换。
+     * 非 NULL → MINC=1（连续 buffer），NULL → MINC=0（单字节循环）。 */
+    const uint8_t *tx_src;
+    DMA_Stream_TypeDef *stream_tx = bsp_spi->handle.hdmatx->Instance;
+    if (tx) {
+        SET_BIT(stream_tx->CR, DMA_SxCR_MINC);
+        tx_src = tx;
+    } else {
+        CLEAR_BIT(stream_tx->CR, DMA_SxCR_MINC);
+        tx_src = &bsp_spi->dummyTx;
+    }
+
+    uint8_t        *rx_dst;
+    DMA_Stream_TypeDef *stream_rx = bsp_spi->handle.hdmarx->Instance;
+    if (rx) {
+        SET_BIT(stream_rx->CR, DMA_SxCR_MINC);
+        rx_dst = rx;
+    } else {
+        CLEAR_BIT(stream_rx->CR, DMA_SxCR_MINC);
+        rx_dst = &bsp_spi->dummyRx;
+    }
+
+    /* 启动全双工 DMA。HAL_StatusTypeDef != HAL_OK 时返回错误码，
+     * 此时**不得**调 hal_spi_isr（bsp_implementer_checklist.md §3.2）。 */
+    HAL_StatusTypeDef hal_ret =
+        HAL_SPI_TransmitReceive_DMA(&bsp_spi->handle, (uint8_t *)tx_src, rx_dst, (uint16_t)len);
+    if (hal_ret != HAL_OK)
+        return OM_ERR_IO;
+
+    return OM_OK;
+}
+
+/**
+ * @brief 控制：ABORT / SUSPEND / RESUME
+ * @note  ABORT 必须立即停 DMA+SPI 并同步触发一次 hal_spi_isr，
+ *        否则框架同步路径会等到超时（bsp_implementer_checklist.md §1.3）。
+ */
+static OmRet bsp_spi_control(SpiBus *bus, uint32_t cmd, void *arg)
+{
+    (void)arg;
+    if (!bus)
+        return OM_ERR_INVALID_ARG;
+
+    BspSpi_t          bsp_spi = (BspSpi_t)bus->hwPrivate;
+    SPI_HandleTypeDef *hspi   = &bsp_spi->handle;
+
+    switch (cmd)
+    {
+    case SPI_CMD_ABORT:
+    {
+        /* 1. 关闭 DMA（防止继续传输），HAL 内部会 abort 两个 stream */
+        if (hspi->hdmatx)
+            HAL_DMA_Abort(hspi->hdmatx);
+        if (hspi->hdmarx)
+            HAL_DMA_Abort(hspi->hdmarx);
+        /* 2. 关 SPI */
+        __HAL_SPI_DISABLE(hspi);
+        /* 3. 反算已传输字节数：pendingLen - RX DMA 剩余计数 */
+        size_t transferred = 0U;
+        if (hspi->hdmarx)
+        {
+            size_t remain = __HAL_DMA_GET_COUNTER(hspi->hdmarx);
+            transferred = (bsp_spi->pendingLen >= remain)
+                              ? (bsp_spi->pendingLen - remain)
+                              : 0U;
+        }
+        /* 4. 触发一次 hal_spi_isr，status=OM_ERR_IO（无专用 ABORTED 错误码），
+         *    transferred=已传字节数。框架 hal_spi_isr 会原样传给调用者。 */
+        hal_spi_isr(bus, OM_ERR_IO, transferred);
+        return OM_OK;
+    }
+
+    case SPI_CMD_SUSPEND:
+    {
+        /* 关 SPI 时钟：所有设备都 suspended 时由框架触发（hal_spi.c:839-841） */
+        __HAL_RCC_SPI4_CLK_DISABLE();
+        return OM_OK;
+    }
+
+    case SPI_CMD_RESUME:
+    {
+        /* 开 SPI 时钟：第一个设备 resume 时由框架触发（hal_spi.c:864-866） */
+        __HAL_RCC_SPI4_CLK_ENABLE();
+        /* resume 后配置缓存失效（框架自己在 hal_spi.c:872 已清 cachedDevice） */
+        return OM_OK;
+    }
+
+    default:
+        /* SET_CFG / GET_CFG 由框架自己处理，不会转给 BSP */
+        return OM_ERR_INVALID_ARG;
+    }
+}
+
+/* A 板 CS 默认走 GPIO 路径（cfg->csSpec.controller 非 NULL），
+ * 硬件 CS 模式不实现，setCs 置 NULL。
+ * 框架在 spi_cs_assert_dev/deassert_dev 中检查 setCs != NULL 才调用。 */
+
+/*===========================================================================
+ * SpiControllerOps 实例
+ *===========================================================================*/
+
+static SpiControllerOps gSpiOps = {
+    .configure   = bsp_spi_configure,
+    .transferOne = bsp_spi_transfer_one,
+    .control     = bsp_spi_control,
+    .setCs       = NULL,   /* 硬件 CS 不实现，A 板 CS 走 GPIO 路径 */
+};
+
+/*===========================================================================
+ * 全局实例数组 + 注册入口
+ *===========================================================================*/
+
+BspSpi_s gBspSpi[] = {
+#ifdef USE_SPI4
+    BSP_SPI_STATIC_INIT(SPI4, "spi4", 0U),
+#endif
+};
+
+void bsp_spi_register(void)
+{
+    uint8_t cnt = (uint8_t)(sizeof(gBspSpi) / sizeof(gBspSpi[0]));
+    for (uint8_t i = 0U; i < cnt; i++)
+    {
+        /* 1. 硬件预初始化：GPIO/AF/DMA link/NVIC（必须先于 bus_register，
+         *    因为 spi_bus_register 不做任何硬件工作，只分配 lock/completion） */
+        bsp_spi_pre_init(&gBspSpi[i]);
+
+        /* 2. 注册 SpiBus 到框架（dbuf_page_size=0：IMU 不需要 DoubleBuf） */
+        OmRet ret = spi_bus_register(&gBspSpi[i].parent,
+                                         &gBspSpi[i],
+                                         &gSpiOps,
+                                         0U);
+        (void)ret; /* TODO: 失败处理策略待框架层统一 */
+    }
+}
