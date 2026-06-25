@@ -10,9 +10,10 @@ typedef void (*OsalThreadEntryFunction)(void* arg);
 
 typedef struct
 {
-    const char* name;    /* 线程名称，用于调试*/
-    uint32_t stackSize; /* 栈大小（字节）*/
-    uint32_t priority;   /* 线程优先级*/
+    const char* name;    /* 线程名称，用于调试 */
+    uint32_t stackSize;  /* 栈大小（字节） */
+    uint32_t priority;   /* 线程优先级，使用 OSAL_PRIO_<band>_BASE + offset 构造
+                          * （见 osal_priority.h）。直接填裸数值已不推荐。 */
 } OsalThreadAttr;
 
 /**

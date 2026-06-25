@@ -4,7 +4,7 @@
 #include "task.h"
 
 #define OSAL_THREAD_DEFAULT_STACK_DEPTH (512u)
-#define OSAL_THREAD_DEFAULT_PRIORITY (1u)
+#define OSAL_THREAD_DEFAULT_PRIORITY (OSAL_PRIO_IDLE_BASE + 1u)
 
 static inline TaskHandle_t osal_thread_to_native(OsalThread* thread)
 {
