@@ -118,11 +118,27 @@ typedef struct BspSpi
  * @brief 静态初始化宏（用于全局 gBspSpi[] 数组）
  * @note  dummyTx = 0xFF（SPI 约定 dummy 字节），dummyRx = 0（丢弃）。
  *        dummy 单字节配合 transferOne 内 MINC=0 循环读，len 无上限。
+ *        固定 Init 字段（Mode/Direction/NSS/TIMode/CRCCalculation/CRCPolynomial）
+ *        在此静态赋初值，configure 中不再重复设置：
+ *        - Mode           = MASTER
+ *        - Direction      = 2LINES（全双工）
+ *        - NSS            = SOFT（GPIO CS 由框架直控）
+ *        - TIMode         = DISABLE
+ *        - CRCCalculation = DISABLE
+ *        - CRCPolynomial  = 7（HAL 默认值，CRC 禁用时无电气意义）
  */
 #define BSP_SPI_STATIC_INIT(INSTANCE)                            \
     (BspSpi_s)                                                     \
     {                                                              \
         .handle.Instance = (INSTANCE),                             \
+        .handle.Init     = {                                       \
+            .Mode           = SPI_MODE_MASTER,                     \
+            .Direction      = SPI_DIRECTION_2LINES,                \
+            .NSS            = SPI_NSS_SOFT,                        \
+            .TIMode         = SPI_TIMODE_DISABLE,                  \
+            .CRCCalculation = SPI_CRCCALCULATION_DISABLE,          \
+            .CRCPolynomial  = 7U,                                  \
+        },                                                         \
         .dummyTx         = 0xFFU,                                  \
         .dummyRx         = 0x00U,                                  \
         .pendingLen      = 0U,                                     \

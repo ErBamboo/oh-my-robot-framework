@@ -102,15 +102,8 @@ static OmRet bsp_spi_configure(SpiBus *bus, const SpiDeviceCfg *cfg)
     /* 关 SPI（CR1.SPE=0）才能写 BR/CPOL/CPHA/LSBFIRST/DFF */
     __HAL_SPI_DISABLE(hspi);
 
-    /* 固定字段（不随 cfg 变，但必须在每次 HAL_SPI_Init 前显式设置——
-     * BSP_SPI_STATIC_INIT 只填了 Instance，默认 0 = SLAVE 模式 + 硬件 NSS，
-     * 会导致 SCLK 不被驱动 + NSS 浮空触发 MODF 错误）。 */
-    hspi->Init.Mode           = SPI_MODE_MASTER;
-    hspi->Init.Direction      = SPI_DIRECTION_2LINES;
-    hspi->Init.NSS            = SPI_NSS_SOFT;
-    hspi->Init.TIMode         = SPI_TIMODE_DISABLE;
-    hspi->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    hspi->Init.CRCPolynomial  = 7U;  /* HAL 默认值，CRC 禁用时无电气意义 */
+    /* 固定字段（Mode/Direction/NSS/TIMode/CRCCalculation/CRCPolynomial）
+     * 已在 BSP_SPI_STATIC_INIT 中静态赋值，此处无需重复设置。 */
 
     /* CPOL/CPHA：SPI_MODE_0..3 直接映射到 CR1.CPOL | CR1.CPHA 位序 */
     hspi->Init.CLKPhase  = (cfg->mode & 0x1U) ? SPI_PHASE_2EDGE : SPI_PHASE_1EDGE;
