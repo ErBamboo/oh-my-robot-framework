@@ -334,7 +334,53 @@ target("tar_board")
 target_end()
 ```
 
-### 11.5 新增 OS
+### 11.5 链接脚本 `.om_pre_init` 段
+
+`om_pre_init` 是 OM 框架的极早期预初始化机制：模块通过 `OM_PRE_INIT(func)` 将回调函数指针注册到 `.om_pre_init` 段，`main()` 开头调用 `om_pre_init_run()` 在 `om_board_init()` 之前遍历执行。典型场景：ICM42688 需要在 POR 2ms 内拉低 CS 线以选择 SPI 协议。
+
+新板移植时，链接脚本必须包含该段的定义。框架通过两个外部符号定位段边界：
+
+| 符号 | 说明 |
+|------|------|
+| `__om_pre_init_start` | 回调表起始地址 |
+| `__om_pre_init_end` | 回调表结束地址 |
+
+**GCC LD 模板：**
+
+```ld
+.om_pre_init :
+{
+  . = ALIGN(4);
+  PROVIDE(__om_pre_init_start = .);
+  KEEP(*(.om_pre_init))
+  PROVIDE(__om_pre_init_end = .);
+  . = ALIGN(4);
+} >ROM
+```
+
+`KEEP` 防止链接器在 `--gc-sections` 下丢弃回调指针。
+
+**armlink scatter 模板：**
+
+```sct
+LR_IROM1 0x08000000 ...  {
+  ER_PRE 0x08000000  {            ; 向量表 + C 运行时
+   *.o (RESET, +First)
+   *(InRoot$$Sections)
+  }
+  ER_OM_PRE_INIT +0  {            ; OM_PRE_INIT 回调列表
+   *(.om_pre_init)
+  }
+  ER_RO +0  { ... }
+  ...
+}
+```
+
+armlink 自动为每个执行域生成 `Image$$<region>$$Base` / `Image$$<region>$$Limit` 符号。板级需提供汇编别名文件将这两个符号映射为框架期望的 `__om_pre_init_start` / `__om_pre_init_end`。模板见 `platform/bsp/boards/rm-a-board/source/core/om_pre_init_boundary.c`，复制到新板对应目录即可。
+
+**校验：** 若链接时报告 `undefined symbol: __om_pre_init_start`，说明链接脚本未定义该段或符号别名文件缺失。
+
+### 11.6 新增 OS
 目录：`oh-my-robot/platform/osal/myos/`，编写 `xmake.lua`：
 ```lua
 target("tar_os")
@@ -349,7 +395,7 @@ osal = { myos = "boards/my-board/osal/myos" }
 ```
 新增 OS 时需同步更新 [`oh-my-robot/platform/osal/index.lua`](../../platform/osal/index.lua)。
 
-### 11.6 新增 Sync 加速后端
+### 11.7 新增 Sync 加速后端
 目录：`oh-my-robot/platform/sync/myos/`，编写 `sync_accel.lua`：
 ```lua
 function get_accel_info()
@@ -360,7 +406,7 @@ function get_accel_info()
 end
 ```
 
-### 11.7 新增 Toolchain
+### 11.8 新增 Toolchain
 在 [`oh-my-robot/build/toolchains/data.lua`](../../build/toolchains/data.lua) 中添加：
 ```lua
 ["my-gcc"] = {
