@@ -37,4 +37,21 @@
 #define OM_OSAL_TASK_NAME_MAX             16u
 #endif
 
+/*---------------------------------------------------------------------------
+ * sync 加速后端能力声明
+ *
+ * 本段声明该 OS 端口**提供**了哪些加速后端能力。
+ * 应用层通过 om_config.h 中的 OM_SYNC_ACCEL 开关**选择**是否启用。
+ *
+ * 逻辑链：
+ *   om_osal_portdef.h  →  声明 CAP_* = 1  (OS 端口能做)
+ *   om_config.h        →  OM_SYNC_ACCEL 开关 (应用要开)
+ *   completion.c       →  两者同时为 1 时走加速路径，否则回退 reference
+ *---------------------------------------------------------------------------*/
+
+/* FreeRTOS CAS + Task Notification (index 1) */
+#ifndef OM_SYNC_ACCEL_CAP_COMPLETION
+#define OM_SYNC_ACCEL_CAP_COMPLETION      1
+#endif
+
 #endif /* OM_OSAL_PORTDEF_H */
