@@ -46,8 +46,25 @@ include 顺序:  om_port_compiler.h → om_port_hw.h → om_osal_portdef.h → o
 #define OM_OSAL_TASK_NAME_MAX             16u
 #endif
 
+/* sync 加速后端能力声明 — OS 端口自报'我能做什么' */
+#ifndef OM_SYNC_ACCEL_CAP_COMPLETION
+#define OM_SYNC_ACCEL_CAP_COMPLETION      1
+#endif
+
 #endif
 ```
+
+### 职责边界：能力声明 vs. 策略开关
+
+`om_osal_portdef.h` 中的 `CAP_*` 宏声明的是**能力**——OS 端口能做什么。应用层通过 `om_config.h` 的 `OM_SYNC_ACCEL` **策略开关**决定要不要用。
+
+```
+om_osal_portdef.h  →  CAP_COMPLETION = 1    (FreeRTOS 能做 CAS+TaskNotify)
+om_config.h        →  OM_SYNC_ACCEL = 1      (应用要开加速)
+completion.c       →  两者皆为 1 时走加速路径，否则回退 reference
+```
+
+应用开发者只需要关心 `OM_SYNC_ACCEL` 一个开关。如果开了但端口不支持——`#if` 检查会 fall through 到 reference，不会出错。
 
 ### 工作机制
 
