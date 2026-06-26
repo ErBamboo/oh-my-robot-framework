@@ -47,7 +47,7 @@ local toolchain_config = {
             },
         },
         ["tiarmclang"] = {
-            kind = "builtin",
+            kind = "custom",
             plat = "cross",
             linker_flag = "-Wl,-T",
             linker_accepts_arch_flags = false,

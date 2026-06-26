@@ -12,12 +12,18 @@ local freertos_event_flags_usable_mask = "0x00FFFFFFu"
 ---@param arch string 架构名称
 ---@return table|nil freertos_paths 路径信息
 ---@return string|nil err_msg 错误信息
+local freertos_port_toolchain_aliases = {
+    ["tiarmclang"] = "gnu-rm",  -- TI Clang 兼容 GCC 内联汇编，复用 gnu-rm 端口
+}
+
 local function resolve_freertos_paths(board_config_dir, toolchain_name, arch)
+    -- 将工具链名映射到实际端口目录（Clang 系复用 GCC 端口）
+    local port_toolchain = freertos_port_toolchain_aliases[toolchain_name] or toolchain_name
     local config_path = path.join(board_config_dir, "FreeRTOSConfig.h")
     if not os.isfile(config_path) then
         return nil, "FreeRTOSConfig.h not found: " .. config_path
     end
-    local portable_dir = path.join(freertos_root, "portable", toolchain_name, arch)
+    local portable_dir = path.join(freertos_root, "portable", port_toolchain, arch)
     local port_file = path.join(portable_dir, "port.c")
     local portmacro_file = path.join(portable_dir, "portmacro.h")
     if not os.isfile(port_file) then

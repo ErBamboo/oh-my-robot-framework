@@ -89,7 +89,7 @@ local function parse_tiarmclang_version(output)
     if type(output) ~= "string" or output == "" then
         return nil
     end
-    return output:match("TI ARM Clang Compiler Tools version%s+(%d+%.%d+%.?%d*)")
+    return output:match("TI Arm Clang Compiler%s+(%d+%.%d+%.%d+)")
 end
 
 --- 读取 tiarmclang 版本号
