@@ -144,62 +144,84 @@ static OmRet bsp_spi_configure(SpiBus *bus, const SpiDeviceCfg *cfg)
 
 /**
  * @brief 启动全双工 DMA 传输（异步）
- * @note  tx==NULL → DMA 源指向 &bsp_spi->dummyTx（单字节 0xFF），DMA MINC=0 循环读
- *        rx==NULL → DMA 目标指向 &bsp_spi->dummyRx（单字节），DMA MINC=0 循环写
+ * @note  tx==NULL → DMA 源指向 &bsp_spi->dummyTx（MINC=0 循环读）
+ *        rx==NULL → DMA 目标指向 &bsp_spi->dummyRx（MINC=0 循环写）
+ *        DMA MSIZE/PSIZE 在 8/16-bit 模式间动态切换，NDTR 同步调整。
  *        返回 OM_OK 表示 DMA 已启动，真正的完成信号由 DMA RX IRQ 触发。
  *
  *        HAL_SPI_TransmitReceive_DMA 内部会配置两个 DMA stream 的方向/
  *        对齐/长度并启动，最终 RX stream TC 触发 HAL_SPI_TxRxCpltCallback。
  *
- *        DMA_SxCR.MINC 切换契约（RM0090 §9.5.5）：
- *          - MINC 位写入要求 EN=0
+ *        DMA_SxCR.MINC/MSIZE/PSIZE 切换契约（RM0090 §9.5.5）：
+ *          - CR 配置位写入要求 EN=0
  *          - Normal 模式下，前次传输 NDTR=0 时硬件自动清 EN
- *          - HAL_DMA_Start_IT / DMA_SetConfig 全程不写 CR.MINC
- *          - 故 transferOne 入口时 EN=0 恒成立，可自由切 MINC，len 无上限
+ *          - HAL_DMA_Start_IT / DMA_SetConfig 全程不写 CR.MINC/MSIZE/PSIZE
+ *          - 故 transferOne 入口时 EN=0 恒成立，可自由切 MINC/MSIZE/PSIZE，len 无上限
  */
 static OmRet bsp_spi_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx, size_t len)
 {
     if (!bus)
         return OM_ERR_INVALID_ARG;
 
-    BspSpi_t bsp_spi = (BspSpi_t)bus->hwPrivate;
+    BspSpi_t          bsp_spi = (BspSpi_t)bus->hwPrivate;
+    SPI_HandleTypeDef *hspi   = &bsp_spi->handle;
+    bool              is16bit = (hspi->Init.DataSize == SPI_DATASIZE_16BIT);
 
-    /* 记录 pendingLen 供 abort 反算与 ISR 上报 */
+    /* 记录 pendingLen（字节数）供 abort 反算与 ISR 上报 */
     bsp_spi->pendingLen = len;
 
+    /* DMA 数据宽度：8-bit 模式用 BYTE，16-bit 模式用 HALFWORD。
+     * NDTR 在 16-bit 时为 len/2（半字数），8-bit 时为 len（字节数）。
+     * MSIZE/PSIZE 切换要求 EN=0，Normal 模式前次传输完成后硬件已自动清 EN。 */
+    uint32_t dma_width_mask = DMA_SxCR_MSIZE | DMA_SxCR_PSIZE;
+    uint32_t dma_width_val;
+    uint16_t dma_size;
+
+    DMA_Stream_TypeDef *stream_tx = hspi->hdmatx->Instance;
+    DMA_Stream_TypeDef *stream_rx = hspi->hdmarx->Instance;
+
+    if (is16bit) {
+        dma_width_val = DMA_SxCR_MSIZE_0 | DMA_SxCR_PSIZE_0; /* HALFWORD */
+        dma_size      = (uint16_t)(len / 2U);
+    } else {
+        dma_width_val = 0U; /* BYTE */
+        dma_size      = (uint16_t)len;
+    }
+
+    MODIFY_REG(stream_tx->CR, dma_width_mask, dma_width_val);
+    MODIFY_REG(stream_rx->CR, dma_width_mask, dma_width_val);
+
     /* tx/rx NULL 处理：DMA_SxCR.MINC 按 NULL 切换。
-     * 非 NULL → MINC=1（连续 buffer），NULL → MINC=0（单字节循环）。 */
+     * 非 NULL → MINC=1（连续 buffer），NULL → MINC=0（单元素循环）。 */
     const uint8_t *tx_src;
-    DMA_Stream_TypeDef *stream_tx = bsp_spi->handle.hdmatx->Instance;
     if (tx) {
         SET_BIT(stream_tx->CR, DMA_SxCR_MINC);
         tx_src = tx;
     } else {
         CLEAR_BIT(stream_tx->CR, DMA_SxCR_MINC);
-        tx_src = &bsp_spi->dummyTx;
+        tx_src = (const uint8_t *)&bsp_spi->dummyTx;
     }
 
-    uint8_t        *rx_dst;
-    DMA_Stream_TypeDef *stream_rx = bsp_spi->handle.hdmarx->Instance;
+    uint8_t *rx_dst;
     if (rx) {
         SET_BIT(stream_rx->CR, DMA_SxCR_MINC);
         rx_dst = rx;
     } else {
         CLEAR_BIT(stream_rx->CR, DMA_SxCR_MINC);
-        rx_dst = &bsp_spi->dummyRx;
+        rx_dst = (uint8_t *)&bsp_spi->dummyRx;
     }
 
     /* SPE=1 后 SPI 可能产生幽灵 RXNE（第二个或更多），出现在 configure 的
      * flush 之后、HAL_SPI_TransmitReceive_DMA 开 RXDMAEN 之前。不在此处清掉，
      * RXDMAEN 一开 DMA 就会预读旧 DR，rxb 收到错误数据。
      * 必须在调用 HAL 前紧邻刷新（bsp_spi_configure 里已做过第一次）。 */
-    if (__HAL_SPI_GET_FLAG(&bsp_spi->handle, SPI_FLAG_RXNE))
-        (void)READ_REG(bsp_spi->handle.Instance->DR);
+    if (__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_RXNE))
+        (void)READ_REG(hspi->Instance->DR);
 
     /* 启动全双工 DMA。HAL_StatusTypeDef != HAL_OK 时返回错误码，
      * 此时**不得**调 hal_spi_isr（bsp_implementer_checklist.md §3.2）。 */
     HAL_StatusTypeDef hal_ret =
-        HAL_SPI_TransmitReceive_DMA(&bsp_spi->handle, (uint8_t *)tx_src, rx_dst, (uint16_t)len);
+        HAL_SPI_TransmitReceive_DMA(hspi, (uint8_t *)tx_src, rx_dst, dma_size);
 
     if (hal_ret != HAL_OK)
         return OM_ERR_IO;
@@ -232,11 +254,14 @@ static OmRet bsp_spi_control(SpiBus *bus, uint32_t cmd, void *arg)
             HAL_DMA_Abort(hspi->hdmarx);
         /* 2. 关 SPI */
         __HAL_SPI_DISABLE(hspi);
-        /* 3. 反算已传输字节数：pendingLen - RX DMA 剩余计数 */
+        /* 3. 反算已传输字节数：pendingLen - RX DMA 剩余计数。
+         *    16-bit 模式下 NDTR 是半字数，需 ×2 转为字节数。 */
         size_t transferred = 0U;
         if (hspi->hdmarx)
         {
             size_t remain = __HAL_DMA_GET_COUNTER(hspi->hdmarx);
+            if (hspi->Init.DataSize == SPI_DATASIZE_16BIT)
+                remain *= 2U;
             transferred = (bsp_spi->pendingLen >= remain)
                               ? (bsp_spi->pendingLen - remain)
                               : 0U;
@@ -302,11 +327,10 @@ void bsp_spi_register(void)
          *    因为 spi_bus_register 不做任何硬件工作，只分配 lock/completion） */
         bsp_spi_pre_init(&gBspSpi[i]);
 
-        /* 2. 注册 SpiBus 到框架（dbuf_page_size=0：不开启 DoubleBuf） */
+        /* 2. 注册 SpiBus 到框架 */
         OmRet ret = spi_bus_register(&gBspSpi[i].parent,
                                          &gBspSpi[i],
-                                         &gSpiOps,
-                                         0U);
+                                         &gSpiOps);
         (void)ret; /* TODO: 失败处理策略待框架层统一 */
     }
 }
