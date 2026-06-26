@@ -112,15 +112,6 @@ static uint32_t spi_calc_timeout_ms(size_t len, uint32_t actual_hz, uint32_t ove
 }
 
 /*===========================================================================
- * 内部辅助 — DoubleBuf 开关
- *===========================================================================*/
-
-static inline bool spi_dbuf_enabled(SpiBus *bus)
-{
-    return dbuf_capacity(&bus->txDbuf) > 0U;
-}
-
-/*===========================================================================
  * 内部辅助 — 单段硬件传输
  *
  * busy=1 必须在 transferOne 之前设置：DMA 可能在 transferOne 内部同步完成，
@@ -168,7 +159,7 @@ static void spi_async_worker_func(Work *work);
  *===========================================================================*/
 
 OmRet spi_bus_register(SpiBus *bus, void *hw_private,
-                        SpiControllerOps *ops, size_t dbuf_page_size)
+                        SpiControllerOps *ops)
 {
     if (!bus || !ops)
         return OM_ERR_NULL;
@@ -192,15 +183,6 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
         return ret;
     }
 
-    if (dbuf_page_size > 0U) {
-        if (!dbuf_alloc(&bus->txDbuf, dbuf_page_size, NULL)) {
-            completion_deinit(&bus->transferDone);
-            osal_mutex_delete(bus->lock);
-            bus->lock = NULL;
-            return OM_ERR_NO_MEM;
-        }
-    }
-
     WorkqueueConfig wq_cfg = {
         .name        = "spi_async",
         .stack_depth = SPI_ASYNC_WQ_STACK_DEPTH,
@@ -208,7 +190,6 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
     };
     ret = workqueue_init(&bus->asyncWq, &wq_cfg);
     if (ret != OM_OK) {
-        dbuf_free(&bus->txDbuf, NULL);
         completion_deinit(&bus->transferDone);
         osal_mutex_delete(bus->lock);
         bus->lock = NULL;
@@ -217,7 +198,6 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
     ret = workqueue_start(&bus->asyncWq);
     if (ret != OM_OK) {
         workqueue_deinit(&bus->asyncWq);
-        dbuf_free(&bus->txDbuf, NULL);
         completion_deinit(&bus->transferDone);
         osal_mutex_delete(bus->lock);
         bus->lock = NULL;
@@ -255,7 +235,6 @@ void spi_bus_deinit(SpiBus *bus)
 
     workqueue_stop(&bus->asyncWq);
     workqueue_deinit(&bus->asyncWq);
-    dbuf_free(&bus->txDbuf, NULL);
     completion_deinit(&bus->transferDone);
 
     /* 先取走 mutex 指针再置 NULL，防止 unlock→delete 间隙被其他线程抢锁 */
@@ -762,20 +741,6 @@ static void spi_async_worker_func(Work *work)
         }
 
         const uint8_t *tx_src = xfer->txBuf;
-        if (spi_dbuf_enabled(bus) && xfer->txBuf) {
-            if (dbuf_is_pending(&bus->txDbuf) && msg == bus->prefillMsg
-                && dev->asyncEpoch == bus->prefillEpoch) {
-                dbuf_swap(&bus->txDbuf);
-                bus->prefillMsg = NULL;
-            } else {
-                if (dbuf_is_pending(&bus->txDbuf))
-                    dbuf_flush(&bus->txDbuf);
-                bus->prefillMsg = NULL;
-                memcpy(dbuf_get_write_ptr(&bus->txDbuf), xfer->txBuf, xfer->len);
-                dbuf_commit(&bus->txDbuf, xfer->len);
-            }
-            tx_src = dbuf_get_read_ptr(&bus->txDbuf, NULL);
-        }
 
         uint32_t timeout = spi_calc_timeout_ms(xfer->len, bus->actualHz,
                                                 dev->cfg.transferOverheadMs);
@@ -790,21 +755,6 @@ static void spi_async_worker_func(Work *work)
 
         spi_bus_unlock(bus);
         locked = false;
-
-        if (spi_dbuf_enabled(bus)) {
-            OsalIrqIsrState k;
-            osal_irq_lock(&k);
-            if (i + 1U < msg->count) {
-                SpiTransfer *next = &msg->transfers[i + 1U];
-                if (next->txBuf) {
-                    memcpy(dbuf_get_write_ptr(&bus->txDbuf), next->txBuf, next->len);
-                    dbuf_mark_written(&bus->txDbuf, next->len);
-                    bus->prefillMsg   = msg;
-                    bus->prefillEpoch = dev->asyncEpoch;
-                }
-            }
-            osal_irq_unlock(k);
-        }
 
         ret = completion_wait(&bus->transferDone, timeout);
         if (ret == OM_ERR_TIMEOUT) {
@@ -855,8 +805,6 @@ static void spi_async_worker_func(Work *work)
         } else {
             spi_bus_lock(bus);
             bus->busy = 0;
-            if (spi_dbuf_enabled(bus))
-                dbuf_consume(&bus->txDbuf);
             spi_bus_unlock(bus);
         }
     }

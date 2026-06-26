@@ -3,7 +3,7 @@
 > 版本：v4.0
 > 日期：2026-06-26
 > 基于：Linux kernel spi_summary / Zephyr spi.h / ESP-IDF spi_master.h
-> 项目约束：Device 模型、DoubleBuf/Completion/OsalMutex/Workqueue 基础设施
+> 项目约束：Device 模型、Completion/OsalMutex/Workqueue 基础设施
 
 ---
 
@@ -37,11 +37,10 @@
 +====================================================================+
 |  SpiBus (Bus Controller — NOT registered as Device)                |
 |  - hwPrivate / ops / lock / lastCfgDev / actualHz                  |
-|  - txDbuf / transferDone / busy / asyncWq (framework-builtin wq)  |
-|  - prefillMsg / prefillEpoch (peek prefill tracking)                |
+|  - transferDone / busy / asyncWq (framework-builtin wq)             |
 |  - suspendedCount / deviceCount (suspend ref-counting)              |
 |  - deviceList / busNode (linked list membership)                    |
-|  Responsibilities: Mutex, reconfig cache, DoubleBuf, Completion    |
+|  Responsibilities: Mutex, reconfig cache, Completion, workqueue     |
 |                    workqueue serialization, suspend gate             |
 +====================================================================+
            |
@@ -112,10 +111,6 @@
             │  │  lastCfgDev        (config cache, ptr)   │ │
             │  │  actualHz           (feedback from BSP)   │ │
             │  ├─────────────────────────────────────────┤ │
-            │  │  txDbuf: DoubleBuf  (TX ping-pong buffer) │ │
-            │  │  prefillMsg         (peek prefill target) │ │
-            │  │  prefillEpoch       (anti-dangle epoch)   │ │
-            │  ├─────────────────────────────────────────┤ │
             │  │  transferDone: Completion (ISR→thread)    │ │
             │  │  lastStatus / lastTransferred             │ │
             │  │  busy: volatile     (ISR gate)            │ │
@@ -138,7 +133,7 @@
 
 **关键关系**：
 - HalSpiDevice **引用** SpiBus（多对一），不拥有
-- SpiBus **拥有** OsalMutex、Completion、DoubleBuf、Workqueue
+- SpiBus **拥有** OsalMutex、Completion、Workqueue
 - SpiBus 通过 `ops` 函数表 **委托** BSP 执行硬件操作
 - SpiBus 通过 `hwPrivate` 不透明指针持有 BSP 私有数据
 - Device 父类通过全局链表 `parent.list` 注册到设备表
@@ -229,9 +224,6 @@ typedef struct SpiBus {
     HalSpiDevice      *lastCfgDev;    /* 当前已配置的设备指针 */
     uint32_t           actualHz;      /* 当前 SCLK 实际频率（分频后真实值，由 configure 填充） */
 
-    /* ---- 双缓冲（TX-only，dbuf_page_size > 0 时启用） ---- */
-    DoubleBuf          txDbuf;
-
     /* ---- 同步传输完成信号 ---- */
     Completion         transferDone;
     size_t             lastTransferred;  /* ISR 写入，同步路径读取 */
@@ -239,10 +231,6 @@ typedef struct SpiBus {
 
     /* ---- 硬件传输状态 ---- */
     volatile uint8_t   busy;             /* 硬件传输进行中（ISR 门控） */
-
-    /* ---- Peek 预填充追踪 ---- */
-    SpiMessage        *prefillMsg;       /* 预填充目标 message（NULL=无预填） */
-    uint32_t           prefillEpoch;     /* 预填充时的请求 epoch（防悬垂复用） */
 
     /* ---- 异步调度（框架自建 per-bus workqueue） ---- */
     Workqueue          asyncWq;
@@ -314,9 +302,8 @@ typedef struct HalSpiDevice {
 
 ```c
 OmRet   spi_bus_register(SpiBus *bus, void *hw_private,
-                        SpiControllerOps *ops, size_t dbuf_page_size);
-/* dbuf_page_size > 0: 分配 2×dbuf_page_size 并初始化 txDbuf，启用 CPU/DMA 并行
- * dbuf_page_size == 0: 跳过 DoubleBuf，transfer_async 仍可用 */
+                        SpiControllerOps *ops);
+/* 分配 lock + completion + workqueue，将 bus 注册到全局总线链表 */
 
 void    spi_bus_unregister(SpiBus *bus);
 /* 从全局总线表摘除，不释放内部资源（反操作 register），可 re-register */
@@ -401,15 +388,14 @@ void hal_spi_isr(SpiBus *bus, OmRet status, size_t transferred);
 | 2 | **CS 管理** | 双路径：GPIO（框架直控 gpio_pin_write）+ 硬件 CS（setCs 回调降级） | Linux gpiod / Zephyr gpio_dt_spec | GPIO 子系统复用，ACTIVE_LOW 自动反转；硬件 CS 走 controller==NULL 路径 |
 | 3 | **异步调度** | Per-bus 单 worker workqueue + per-device async slot | Linux per-controller kthread | ISR 极薄（写 lastStatus/lastTransferred + completion_done）；框架内部化，调用者无感知 |
 | 4 | **异步 slot** | HalSpiDevice 内嵌 async Work/SpiMessage*/callback，irq_lock 保护 asyncBusy | — | 消除 SpiAsyncRequest 动态分配，零 malloc；同一设备仅 1 个在途请求 |
-| 5 | **双缓冲** | 框架内部 TX DoubleBuf，dbuf_page_size 控制启停 | Linux/ESP-IDF | dbuf_page_size>0 启用 Peek 预填充并行优化（CPU 预填下一段数据与 DMA 并行） |
-| 6 | **DMA 集成** | BSP Private 完全透明 | ESP-IDF/NuttX | DMA 通道/IRQ/句柄全在 BSP；框架只通过 transferOne 契约间接驱动 |
-| 7 | **错误模型** | SPI 别名 → OM 通用码（OM_ERR_TIMEOUT/IO/INVALID_ARG/BUSY/NOT_SUPPORTED） | OM OmRet 体系 | 无模块专属错误枚举，统一命名空间，通用语义优先 |
-| 8 | **配置缓存** | lastCfgDev 指针比较 | RT-Thread | 单指令，无哈希，IMU 1kHz 无效重配全部消除 |
-| 9 | **actualHz 反馈** | configure 回写 bus->actualHz，超时公式用实际频率 | Linux spi_controller.min_speed_hz | 分频器离散量化可能导致实际频率偏离 maxHz，超时必须基于真实值 |
-| 10 | **总线发现** | spi_bus_get(idx) — 纯逻辑序号，全局链表 + irq_lock 保护 | Linux spi_bus_num | 上层零 BSP 依赖；无硬编码容量上限；链表操作微秒级 |
-| 11 | **生命周期** | register / unregister / deinit 三态分离 | — | unregister 可逆（摘表不销毁），deinit 不可逆（前提 deviceCount==0，持锁销毁） |
-| 12 | **SpiBus 不可见** | 不注册为 Device | Linux/ESP-IDF | 用户永远操作从设备，总线是内部基础设施 |
-| 13 | **超时** | 动态计算 = (len × 8 × 1000 / actualHz) + transferOverheadMs | Linux/ESP-IDF | 每次传输根据实际长度和 actualHz 计算，短传输短超时 |
+| 5 | **DMA 集成** | BSP Private 完全透明 | ESP-IDF/NuttX | DMA 通道/IRQ/句柄全在 BSP；框架只通过 transferOne 契约间接驱动 |
+| 6 | **错误模型** | SPI 别名 → OM 通用码（OM_ERR_TIMEOUT/IO/INVALID_ARG/BUSY/NOT_SUPPORTED） | OM OmRet 体系 | 无模块专属错误枚举，统一命名空间，通用语义优先 |
+| 7 | **配置缓存** | lastCfgDev 指针比较 | RT-Thread | 单指令，无哈希，IMU 1kHz 无效重配全部消除 |
+| 8 | **actualHz 反馈** | configure 回写 bus->actualHz，超时公式用实际频率 | Linux spi_controller.min_speed_hz | 分频器离散量化可能导致实际频率偏离 maxHz，超时必须基于真实值 |
+| 9 | **总线发现** | spi_bus_get(idx) — 纯逻辑序号，全局链表 + irq_lock 保护 | Linux spi_bus_num | 上层零 BSP 依赖；无硬编码容量上限；链表操作微秒级 |
+| 10 | **生命周期** | register / unregister / deinit 三态分离 | — | unregister 可逆（摘表不销毁），deinit 不可逆（前提 deviceCount==0，持锁销毁） |
+| 11 | **SpiBus 不可见** | 不注册为 Device | Linux/ESP-IDF | 用户永远操作从设备，总线是内部基础设施 |
+| 12 | **超时** | 动态计算 = (len × 8 × 1000 / actualHz) + transferOverheadMs | Linux/ESP-IDF | 每次传输根据实际长度和 actualHz 计算，短传输短超时 |
 
 ---
 
@@ -489,21 +475,14 @@ spi_transfer_async(dev, msg, callback, param)
   ├─ spi_ensure_configured(bus, dev)
   │
   ├─ for each SpiTransfer in msg:
-  │    ├─ DoubleBuf 数据就位:
-  │    │    ├─ [预填命中] msg==prefillMsg && epoch==prefillEpoch → dbuf_swap (零拷贝)
-  │    │    └─ [未命中] dbuf_flush 丢弃失效预填 → memcpy + commit → 更新写指针
+  │    ├─ tx_src = xfer->txBuf（零拷贝，DMA 直接从 caller buffer 读取）
   │    ├─ busy=1 → ops->transferOne() → [失败] busy=0, goto cleanup
   │    ├─ unlock → completion_wait(timeout)
-  │    │    ├─ Peek 预填充 (DoubleBuf 启用时):
-  │    │    │    irq_lock → 查看下一段 transfer
-  │    │    │    memcpy(write_page, next->txBuf, next->len)
-  │    │    │    dbuf_mark_written → prefillMsg=msg, prefillEpoch=asyncEpoch
-  │    │    └─ irq_unlock
   │    ├─ [超时] irq_lock→busy=0, drain completion, lock, msg->status=TIMEOUT, goto cleanup
   │    ├─ msg->transferred += bus->lastTransferred
   │    ├─ [硬件错误] bus->lastStatus != OK → goto cleanup
   │    ├─ CS_HOLD? asyncCsHeld=true : deassert, asyncCsHeld=false
-  │    └─ 最后一段? busy=0 + dbuf_consume : lock 重检 suspend/detach
+  │    └─ lock 重检 suspend/detach
   │
   ├─ msg->status = OM_OK
   │

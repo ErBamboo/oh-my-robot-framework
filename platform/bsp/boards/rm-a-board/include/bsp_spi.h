@@ -100,10 +100,10 @@ typedef struct BspSpi
     SpiBus             parent;       /* 第 1 字段：框架 SpiBus */
     SPI_HandleTypeDef  handle;       /* 第 2 字段：HAL 句柄（含 hdmatx/hdmarx 链接） */
 
-    /* DMA dummy 单字节缓冲：tx/rx==NULL 时 DMA 源/目标。
-     * 配合运行时切 DMA_SxCR.MINC（MINC=0 循环读单字节），支持任意 len。 */
-    uint8_t            dummyTx;      /* tx==NULL 时 DMA 源，固定 0xFF */
-    uint8_t            dummyRx;      /* rx==NULL 时 DMA 目标，丢弃 */
+    /* DMA dummy 缓冲：tx/rx==NULL 时 DMA 源/目标。uint16_t 兼容 8/16-bit
+     * 两种数据宽度（16-bit 模式下 DMA HALFWORD 访问需 2 字节对齐）。 */
+    uint16_t           dummyTx;      /* tx==NULL 时 DMA 源，固定 0xFFFF */
+    uint16_t           dummyRx;      /* rx==NULL 时 DMA 目标，丢弃 */
     size_t             pendingLen;   /* 当前传输总长，abort 反算用 */
 } BspSpi_s;
 
@@ -116,8 +116,8 @@ typedef struct BspSpi
 
 /**
  * @brief 静态初始化宏（用于全局 gBspSpi[] 数组）
- * @note  dummyTx = 0xFF（SPI 约定 dummy 字节），dummyRx = 0（丢弃）。
- *        dummy 单字节配合 transferOne 内 MINC=0 循环读，len 无上限。
+ * @note  dummyTx = 0xFFFF（SPI 约定 dummy），dummyRx = 0（丢弃）。
+ *        uint16_t 兼容 8/16-bit DMA 宽度，MINC=0 循环读，len 无上限。
  *        固定 Init 字段（Mode/Direction/NSS/TIMode/CRCCalculation/CRCPolynomial）
  *        在此静态赋初值，configure 中不再重复设置：
  *        - Mode           = MASTER
@@ -139,8 +139,8 @@ typedef struct BspSpi
             .CRCCalculation = SPI_CRCCALCULATION_DISABLE,          \
             .CRCPolynomial  = 7U,                                  \
         },                                                         \
-        .dummyTx         = 0xFFU,                                  \
-        .dummyRx         = 0x00U,                                  \
+        .dummyTx         = 0xFFFFU,                                \
+        .dummyRx         = 0x0000U,                                \
         .pendingLen      = 0U,                                     \
     }
 

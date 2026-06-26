@@ -14,7 +14,6 @@
 
 #include "async/workqueue.h"
 #include "core/om_def.h"
-#include "data_struct/double_buf.h"
 #include "drivers/model/device.h"
 #include "drivers/peripheral/gpio/pal_gpio_dev.h"
 #include "osal/osal_mutex.h"
@@ -175,9 +174,6 @@ typedef struct SpiBus {
     HalSpiDevice      *lastCfgDev;    /* 当前已配置的设备指针 */
     uint32_t           actualHz;      /* 当前 SCLK 实际频率（分频后的真实值，由 configure 填充） */
 
-    /* ---- 双缓冲（TX-only，dbuf_page_size > 0 时启用） ---- */
-    DoubleBuf          txDbuf;
-
     /* ---- 同步传输完成信号 ---- */
     Completion         transferDone;
     size_t             lastTransferred;  /* ISR 写入，同步路径读取 */
@@ -185,10 +181,6 @@ typedef struct SpiBus {
 
     /* ---- 硬件传输状态 ---- */
     volatile uint8_t   busy;             /* 硬件传输进行中（ISR 门控，需 volatile） */
-
-    /* ---- Peek 预填充追踪 ---- */
-    SpiMessage        *prefillMsg;       /* 预填充目标消息（NULL=无预填） */
-    uint32_t           prefillEpoch;     /* 预填充时的请求 epoch（防悬垂复用） */
 
     /* ---- 异步调度（框架自建 per-bus workqueue） ---- */
     Workqueue          asyncWq;
@@ -254,7 +246,7 @@ void spi_cs_deassert(HalSpiDevice *dev);
  *===========================================================================*/
 
 OmRet  spi_bus_register(SpiBus *bus, void *hw_private,
-                        SpiControllerOps *ops, size_t dbuf_page_size);
+                        SpiControllerOps *ops);
 
 /** @brief 从全局总线表中摘除（反操作：register），不释放内部资源 */
 void   spi_bus_unregister(SpiBus *bus);
