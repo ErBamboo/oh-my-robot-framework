@@ -34,9 +34,7 @@ local board = {
     },
     startup = {},
     linkerscript = {},
-    components = {
-        "device",
-    },
+    components = {},
     component_overrides = {},
 }
 
