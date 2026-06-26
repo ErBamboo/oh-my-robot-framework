@@ -16,6 +16,10 @@ local preset = {
       sdk = "D:/Program Files/ProgramTools/Keil_v5/ARM/ARMCLANG",
       bin = "D:/Program Files/ProgramTools/Keil_v5/ARM/ARMCLANG/bin",
     },
+    ["tiarmclang"] = {
+      sdk = "D:/ProgramFiles/ProgramTools/TI/CCS/ccs/tools/compiler/ti-cgt-armllvm_4.0.2.LTS",
+      bin = "D:/ProgramFiles/ProgramTools/TI/CCS/ccs/tools/compiler/ti-cgt-armllvm_4.0.2.LTS/bin",
+    },
   },
   flash = {
     flasher = "jlink",                -- 默认烧录器：jlink / daplink
