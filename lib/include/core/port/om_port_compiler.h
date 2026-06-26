@@ -27,6 +27,11 @@ extern "C"
 // ARM Compiler 5 (标准宏)
 #define AW_COMPILER_AC5
 #define AW_COMPILER AW_COMPILER_AC5
+#elif defined(__TI_COMPILER_VERSION__) || defined(__ti_version__)
+/* TI Arm Clang (tiarmclang) — Clang 系，继承 GCC_LIKE 兼容性 */
+#define AW_COMPILER_TICLANG
+#define AW_COMPILER_GCC_LIKE
+#define AW_COMPILER AW_COMPILER_TICLANG
 #elif defined(__clang__) || defined(__GNUC__)
 #define AW_COMPILER_GCC_LIKE
 #define AW_COMPILER AW_COMPILER_GCC_LIKE

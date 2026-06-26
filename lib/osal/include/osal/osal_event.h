@@ -10,11 +10,14 @@ typedef struct OsalEventFlagsHandle_s OsalEventFlags;
 /*
  * event_flags 可用业务位掩码（稳定合同）：
  * - 对外接口统一使用 uint32_t
- * - 由端口层通过构建系统注入 OM_OSAL_EVENT_FLAGS_USABLE_MASK
+ * - 应由 OS 端口的 om_osal_portdef.h 提供，或通过构建系统 -D 注入
  * - OSAL 公共头不做端口分支与默认兜底，避免平台语义泄漏
  */
 #ifndef OM_OSAL_EVENT_FLAGS_USABLE_MASK
-#error "OM_OSAL_EVENT_FLAGS_USABLE_MASK is not defined. It must be injected by the active OSAL port."
+#error \
+    "OM_OSAL_EVENT_FLAGS_USABLE_MASK is not defined. " \
+    "It should be provided by your OS port's om_osal_portdef.h, " \
+    "or injected via -D at build time."
 #endif
 
 #define OSAL_EVENT_FLAGS_USABLE_MASK OM_OSAL_EVENT_FLAGS_USABLE_MASK

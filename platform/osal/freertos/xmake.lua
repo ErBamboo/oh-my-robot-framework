@@ -38,6 +38,7 @@ end
 --- @details 公共头仅消费该宏，不在头文件中做端口分支与默认兜底。
 target("tar_awapi_osal")
     add_cxflags("-DOM_OSAL_EVENT_FLAGS_USABLE_MASK=" .. freertos_event_flags_usable_mask, {public = true})
+    add_includedirs(freertos_root, {public = true})  -- om_osal_portdef.h
 target_end()
 
 --- @target tar_os
@@ -48,6 +49,7 @@ target("tar_os")
     add_rules("oh_my_robot.context")
     add_deps("tar_awapi_osal", {public = false})
     add_includedirs(include_dir, {public = false})
+    add_includedirs(freertos_root, {public = true})  -- om_osal_portdef.h
     add_files("osal_*_freertos.c")
     add_files("FreeRTOS/*.c")
     add_files("FreeRTOS/portable/*.c")

@@ -6,6 +6,14 @@
 #include "core/om_config.h"
 #include "osal_port.h" /* OSAL 端口选择与校验*/
 
+/*
+ * 强制引入 OS 端口定义文件。
+ * 每个 OS 端口必须在其 platform/osal/<os>/ 目录下提供 om_osal_portdef.h。
+ * 该文件包含该 OS 下 OSAL 层的硬性参数，无框架级默认值。
+ * 若缺失，编译器将报 "file not found" 错误。
+ */
+#include "om_osal_portdef.h"
+
 /* 等待无限时长的超时值*/
 #ifndef OSAL_WAIT_FOREVER
 #ifdef OM_OSAL_WAIT_FOREVER
