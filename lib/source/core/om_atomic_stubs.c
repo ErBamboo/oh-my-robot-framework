@@ -43,12 +43,16 @@ uint8_t __atomic_compare_exchange_1(volatile void *ptr, void *expected,
     CRITICAL_ENTER(k);
     uint8_t *exp = (uint8_t *)expected;
     uint8_t  cur = *(volatile uint8_t *)ptr;
-    if (cur == *exp)
+    uint8_t  ok;
+    if (cur == *exp) {
         *(volatile uint8_t *)ptr = desired;
-    else
+        ok = 1;
+    } else {
         *exp = cur;
+        ok = 0;
+    }
     CRITICAL_EXIT(k);
-    return (cur == *exp);
+    return ok;
 }
 
 /* --- 4-byte atomics --- */
