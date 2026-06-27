@@ -699,8 +699,6 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
     case SERIAL_EVENT_DMA_TXDONE: /* 发送完*/
     {
         SerialFifo *tx_fifo;
-        size_t liner_size;
-        void *tx_buf;
         if (arg_size == 0)
             return OM_ERROR_PARAM;
         tx_fifo = serial_get_txfifo(serial);
@@ -709,22 +707,42 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
         /* 1. 状态更新*/
         ringbuf_update_out(&tx_fifo->rb, arg_size); // 更新 FIFO 读指针
         tx_fifo->loadSize -= arg_size;              // 更新FIFO加载数据大小
-        if (tx_fifo->loadSize == 0)                 // loadSize 为 0，则说明一轮数据已经传输完成
-            tx_fifo->status = SERIAL_FIFO_IDLE;
 
-        /*  2. 回调
-            这里将回调放在transmit之前，是考虑到回调中可能会调用write接口往rb中塞数据，个人认为在操作之后再进行transmit会更灵活和安全
-        */
-        device_write_cb(&serial->parent, ringbuf_avail(&tx_fifo->rb));
-
-        /* 3. 处理发送任务*/
-        if (tx_fifo->status != SERIAL_FIFO_IDLE)
+        /* 回绕残留检测与连锁发送 */
         {
-            liner_size = ringbuf_get_item_linear_space(&tx_fifo->rb, &tx_buf); // 获取 FIFO 的 item 线性空间
-            tx_fifo->loadSize = liner_size;
-            if (liner_size > 0U)
+            void  *next_buf  = NULL;
+            size_t next_len  = 0U;
+            int    from_wrap = 0;
+
+            if (tx_fifo->loadSize == 0)
             {
-                size_t tx_start_len = serial->interface->transmit(serial, tx_buf, liner_size);
+                next_len = ringbuf_get_item_linear_space(&tx_fifo->rb, &next_buf);
+                if (next_len > 0U)
+                {
+                    tx_fifo->loadSize = next_len;  /* 回绕残留 */
+                    from_wrap = 1;
+                }
+                else
+                {
+                    tx_fifo->status = SERIAL_FIFO_IDLE;
+                }
+            }
+
+            /*  2. 回调 */
+            device_write_cb(&serial->parent, ringbuf_avail(&tx_fifo->rb));
+
+            /* 3. 连锁发送入口 */
+            if (tx_fifo->status != SERIAL_FIFO_IDLE)
+            {
+                if (!from_wrap)
+                {
+                    next_len = ringbuf_get_item_linear_space(&tx_fifo->rb, &next_buf);
+                    tx_fifo->loadSize = next_len;
+                }
+                /* from_wrap 时 next_buf/next_len/loadSize 已在上面设置好 */
+                if (next_len > 0U)
+                {
+                    size_t tx_start_len = serial->interface->transmit(serial, next_buf, next_len);
                 if (tx_start_len == 0U)
                 {
                     tx_fifo->status = SERIAL_FIFO_IDLE;
@@ -735,7 +753,7 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
                         (void)completion_done(&tx_fifo->cpt);
                     }
                     device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
-                    device_err_cb(&serial->parent, ERR_SERIAL_TX_TIMEOUT, liner_size);
+                    device_err_cb(&serial->parent, ERR_SERIAL_TX_TIMEOUT, next_len);
                 }
             }
         }
@@ -750,6 +768,7 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
             }
             device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
         }
+        } /* 回绕残留检测与连锁发送 end */
     }
     break;
 
