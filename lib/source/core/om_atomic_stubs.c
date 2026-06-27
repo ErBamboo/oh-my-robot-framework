@@ -1,12 +1,13 @@
 /**
  * @file      om_atomic_stubs.c
- * @brief     Cortex-M0+ __atomic_* 兼容桩（ARMv6-M 无 ldrex/strex）
+ * @brief     __atomic_* 编译器内置函数的软件兼容实现
  *
- * TI Clang (LLVM) 对 Cortex-M0+ 不提供 __atomic_* 库函数。
- * M0+ 为单核，原子性通过关全局中断保证，替代硬件独占访问指令。
+ * 当目标平台缺乏硬件原子指令时，编译器会将 __atomic_* 调用降级为
+ * 库函数调用。本文件提供这些库函数的实现：通过临界区保护（关中断 →
+ * 读-改-写 → 恢复中断）保证单核场景下的原子性。
  *
  * 使用 om_hw_disable_interrupt() / om_hw_restore_interrupt() 作为
- * 平台无关的临界区入口，不直接依赖 port_* 或 CMSIS。
+ * 临界区入口——这两个接口由平台 port 层提供具体的中断屏蔽策略。
  */
 
 #include <stdint.h>
