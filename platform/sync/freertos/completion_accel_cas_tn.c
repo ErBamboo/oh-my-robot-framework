@@ -16,6 +16,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* TN 后端占用通知 index 1，index 0 留给 FreeRTOS 内置 API */
+#if configTASK_NOTIFICATION_ARRAY_ENTRIES < 2
+#error "COMPLETION TN backend requires configTASK_NOTIFICATION_ARRAY_ENTRIES >= 2. \
+        Set it in FreeRTOSConfig.h."
+#endif
+
 static TickType_t cas_tn_timeout_to_ticks(size_t timeout_ms)
 {
     if (timeout_ms >= (size_t)0xFFFFFFFFu)

@@ -26,9 +26,9 @@
 #define configUSE_TIME_SLICING           0
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION  0
 #define configUSE_TICKLESS_IDLE          1
-#define configMAX_PRIORITIES             (10UL)
+#define configMAX_PRIORITIES             (32UL)
 #define configMINIMAL_STACK_SIZE         ((unsigned short) 128)
-#define configMAX_TASK_NAME_LEN          12
+#define configMAX_TASK_NAME_LEN          16
 
 /*
  * V11.1.0: configTICK_TYPE_WIDTH_IN_BITS 替代 configUSE_16_BIT_TICKS
@@ -36,7 +36,7 @@
 #define configTICK_TYPE_WIDTH_IN_BITS    TICK_TYPE_WIDTH_32_BITS
 
 #define configIDLE_SHOULD_YIELD          0
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES  1
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES  2  /* index 1 used by Completion TN backend */
 #define configQUEUE_REGISTRY_SIZE        0
 #define configENABLE_BACKWARD_COMPATIBILITY    1  /* OSAL port uses V10 type names */
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS  2  /* TI 需要 TLS */
