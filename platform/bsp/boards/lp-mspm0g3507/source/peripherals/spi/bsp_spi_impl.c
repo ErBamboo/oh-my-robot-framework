@@ -6,7 +6,6 @@
 #include "bsp_spi.h"
 #include "ti/driverlib/dl_spi.h"
 #include "ti/driverlib/dl_dma.h"
-#include "ti/driverlib/dl_gpio.h"
 
 /* --- 内部辅助 ------------------------------------------------------------ */
 
@@ -210,30 +209,11 @@ static OmRet bsp_spi_control(SpiBus *bus, uint32_t cmd, void *arg)
 /* SpiControllerOps 函数表                                                    */
 /*---------------------------------------------------------------------------*/
 
-/* --- CS 引脚表（每路 SPI 总线的片选脚）--- */
-static const struct {
-    GPIO_Regs *port;
-    uint32_t   pin;
-} g_spi_cs_pins[] = {
-    { GPIOB, DL_GPIO_PIN_5 },  /* cs_id 0: ICM42688 on PB5 */
-};
-
-static void bsp_spi_setCs(SpiBus *bus, uint8_t cs_id, bool assert)
-{
-    (void)bus;
-    if (cs_id >= (uint8_t)(sizeof(g_spi_cs_pins) / sizeof(g_spi_cs_pins[0])))
-        return;
-    if (assert)
-        DL_GPIO_clearPins(g_spi_cs_pins[cs_id].port, g_spi_cs_pins[cs_id].pin);
-    else
-        DL_GPIO_setPins(g_spi_cs_pins[cs_id].port, g_spi_cs_pins[cs_id].pin);
-}
-
 static SpiControllerOps bsp_spi_ops = {
     .configure   = bsp_spi_configure,
     .transferOne = bsp_spi_transferOne,
     .control     = bsp_spi_control,
-    .setCs       = bsp_spi_setCs,
+    .setCs       = NULL,  /* 通过 csSpec GPIO 框架控制 */
 };
 
 /*---------------------------------------------------------------------------*/

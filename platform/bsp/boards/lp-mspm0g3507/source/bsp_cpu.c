@@ -7,7 +7,9 @@
  * TODO: 替换为基于 TIMG12 的实际时间测量实现
  */
 
+#include "bsp_gpio.h"
 #include "bsp_serial.h"
+#include "bsp_spi.h"
 #include "core/om_cpu.h"
 #include "core/om_interrupt.h"
 
@@ -61,6 +63,8 @@ void om_board_init(void)
     };
     om_cpu_register(32U, &iface);
 
-    /* 串口外设注册 */
+    /* 外设注册 */
+    bsp_gpio_register();
     bsp_serial_register();
+    bsp_spi_register();
 }
