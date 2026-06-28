@@ -7,15 +7,13 @@
  */
 
 #include "bsp_spi.h"
-#include <string.h>
 #include "ti/driverlib/dl_spi.h"
 #include "ti/driverlib/dl_dma.h"
 #include "ti/driverlib/m0p/dl_core.h"
 
 void bsp_spi_pre_init(BspSpi_t s)
 {
-    /* 哑字节缓冲区填充 0xFF */
-    memset(s->dummyTx, 0xFF, sizeof(s->dummyTx));
+    (void)s;
 
     /* 初始化为 Master, Motorola 3-pin 模式 */
     DL_SPI_Config cfg = {

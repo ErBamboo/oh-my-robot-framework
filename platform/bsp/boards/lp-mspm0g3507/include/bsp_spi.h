@@ -36,14 +36,15 @@ typedef struct BspSpi {
     SPI_Regs    *handle;         /* SPI 外设基地址 */
     /* DMA 状态 */
     size_t       pendingLen;     /* 当前传输总长度 (abort 时反算) */
-    uint8_t      dummyTx[256];   /* tx==NULL 时 DMA 源 (0xFF 填充) */
-    uint8_t      dummyRx[256];   /* rx==NULL 时 DMA 目标 (丢弃) */
+    uint16_t     dummyTx;        /* tx==NULL 时 DMA 源 (0xFFFF, MINC=0 固定地址) */
+    uint16_t     dummyRx;        /* rx==NULL 时 DMA 目标 (丢弃) */
 } BspSpi_s, *BspSpi_t;
 
 #define BSP_SPI_STATIC_INIT()                                           \
     (BspSpi_s) {                                                        \
-        .handle    = SPI1,                                              \
-    } /* dummyTx/dummyRx 零初始化 (0x00); 在 pre_init 中填充 0xFF */
+        .handle  = SPI1,                                                \
+        .dummyTx = 0xFFFFU,                                             \
+    }
 
 extern BspSpi_s gBspSpi[];
 
