@@ -157,7 +157,8 @@
 /*---------------------------------------------------------------------------*/
 
 #if defined(__TI_COMPILER_VERSION__) || defined(__ti_version__)
-    #include <ti/posix/freertos/PTLS.h>
+    /* PTLS_taskDeleteHook 由应用层提供桩实现 */
+    void PTLS_taskDeleteHook(void *tcb);
     #define traceTASK_DELETE(pxTCB)  PTLS_taskDeleteHook(pxTCB)
 
     #define configNUM_THREAD_LOCAL_STORAGE_POINTERS  2
