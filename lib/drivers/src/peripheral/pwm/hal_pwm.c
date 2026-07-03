@@ -46,15 +46,12 @@ static OmRet pwm_dev_close(Device *dev)
 {
     /* 控制器级关闭：停止全部正在输出的通道，保护硬件安全 */
     PwmController *ctrl = (PwmController *)dev;
-    OsalIrqIsrState key;
-    osal_irq_lock(&key);
     for (uint8_t i = 0; i < ctrl->cap->numChannels; i++) {
         if (ctrl->chState[i].enabled) {
             ctrl->ops->channelDisable(ctrl, i);
             ctrl->chState[i].enabled = false;
         }
     }
-    osal_irq_unlock(key);
     return OM_OK;
 }
 
@@ -124,6 +121,7 @@ OmRet pwm_controller_register(PwmController *ctrl, const char *name,
     ctrl->parent.interface = &pwm_dev_interface;
     ctrl->ops              = ops;
     ctrl->cap               = cap;
+    ctrl->priv              = priv;
     ctrl->chState           = chState;
 
     /* 初始化所有通道状态为"未配置" */
@@ -139,16 +137,6 @@ OmRet pwm_controller_register(PwmController *ctrl, const char *name,
     if (ret != OM_OK)
         return ret;
 
-    return OM_OK;
-}
-
-/* ===== 内部辅助 ===== */
-
-/** 校验通道句柄有效性（ctrl 非空 + channel 在范围内） */
-static inline OmRet pwm_channel_validate(PwmChannel ch)
-{
-    if (!ch.ctrl) return OM_ERR_INVALID_ARG;
-    if (ch.channel >= ch.ctrl->cap->numChannels) return OM_ERR_RANGE;
     return OM_OK;
 }
 
@@ -175,9 +163,7 @@ OmRet pwm_channel_get(const PwmChannelSpec *spec, PwmChannel *ch)
 
 OmRet pwm_channel_config(PwmChannel ch, const PwmChannelConfig *cfg)
 {
-    OmRet v = pwm_channel_validate(ch);
-    if (v != OM_OK) return v;
-    if (!cfg) return OM_ERR_INVALID_ARG;
+    if (!ch.ctrl || !cfg) return OM_ERR_INVALID_ARG;
 
     const PwmCapability *cap = ch.ctrl->cap;
 
@@ -228,8 +214,7 @@ OmRet pwm_channel_config(PwmChannel ch, const PwmChannelConfig *cfg)
 
 OmRet pwm_channel_enable(PwmChannel ch)
 {
-    OmRet v = pwm_channel_validate(ch);
-    if (v != OM_OK) return v;
+    if (!ch.ctrl) return OM_ERR_INVALID_ARG;
 
     PwmChannelState *s = &ch.ctrl->chState[ch.channel];
 
@@ -249,8 +234,7 @@ OmRet pwm_channel_enable(PwmChannel ch)
 
 OmRet pwm_channel_disable(PwmChannel ch)
 {
-    OmRet v = pwm_channel_validate(ch);
-    if (v != OM_OK) return v;
+    if (!ch.ctrl) return OM_ERR_INVALID_ARG;
 
     PwmChannelState *s = &ch.ctrl->chState[ch.channel];
 
@@ -268,8 +252,7 @@ OmRet pwm_channel_disable(PwmChannel ch)
 
 OmRet pwm_channel_set_pulse(PwmChannel ch, uint32_t pulse_ns)
 {
-    OmRet v = pwm_channel_validate(ch);
-    if (v != OM_OK) return v;
+    if (!ch.ctrl) return OM_ERR_INVALID_ARG;
 
     PwmChannelState *s = &ch.ctrl->chState[ch.channel];
 
@@ -299,7 +282,7 @@ OmRet pwm_channel_set_pulse(PwmChannel ch, uint32_t pulse_ns)
 
 const PwmChannelState *pwm_channel_get_state(PwmChannel ch)
 {
-    if (pwm_channel_validate(ch) != OM_OK) return NULL;
+    if (!ch.ctrl) return NULL;
     return &ch.ctrl->chState[ch.channel];
 }
 
