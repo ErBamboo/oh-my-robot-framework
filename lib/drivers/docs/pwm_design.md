@@ -2,30 +2,30 @@
 
 > 版本：v1.0
 > 日期：2026-07-03
-> 基于：Linux kernel pwm.h / Zephyr pwm.h / RT-Thread rt_drv_pwm.h / ESP-IDF mcpwm.h
+> 基于：Linux kernel pwm.h / Zephyr pwm.h / RT-Thread rt\_drv\_pwm.h / ESP-IDF mcpwm.h
 > 项目约束：Device 模型、OsalIrqLock、静态分配
 
----
+***
 
 ## 1. 架构分层
 
 ```
-+====================================================================+
-|  Application                                                        |
-|  e.g. led.c, servo.c, motor_foc.c                                   |
-|  Operates through: pwm_channel_config / enable / disable / set_pulse |
++=======================================================================+
+|  Application                                                          |
+|  e.g. led.c, servo.c, motor_foc.c                                     |
+|  Operates through: pwm_channel_config / enable / disable / set_pulse  |
 |                    pwm_channel_get_state / pwm_channel_get_capability |
-+====================================================================+
++=======================================================================+
            |                              |
-           | Direct typed API              | Device API (system integration)
+           | Direct typed API             | Device API (system integration)
            | (channel-level ops)          | (controller lifecycle)
            v                              v
-+====================================================================+
++=====================================================================+
 |  PwmChannel (Lightweight Handle — NOT a Device)                     |
 |  - ctrl: PwmController*   (resolved once at pwm_channel_get)        |
 |  - channel: uint8_t       (0-based index)                           |
 |  Size: 12 bytes. Passed by value. ISR-friendly.                     |
-+====================================================================+
++=====================================================================+
            |
            | points to
            v
@@ -54,18 +54,18 @@
 +====================================================================+
 |  BSP Private (Platform-specific)                                    |
 |  e.g. BspPwm { TIM_HandleTypeDef tim; PwmController parent; ... }   |
-|  GPIO AF config in bsp_pwm_init_gpio()                              |
+|  Pin alternate function config in bsp_pwm_init_gpio()               |
 |  BDTR/MOE for advanced timers configured once in bsp_pwm_register() |
 |  HAL_TIM_PWM_Init called once in register, not per channelConfig    |
 +====================================================================+
            |
            v
 +====================================================================+
-|  MCU Hardware (TIM peripheral + GPIO AF + RCC)                      |
+|  MCU Hardware (TIM peripheral + pin alternate function + RCC)       |
 +====================================================================+
 ```
 
----
+***
 
 ## 2. 对象关系图解
 
@@ -78,16 +78,16 @@
                          ▼
               ┌──────────────────────┐
               │    PwmController     │  1 个控制器 = 1 个 Device
-              │   (IS a Device)     │  BSP 静态分配, 生命周期 = 程序生命周期
-              │                     │
-              │  chState[] ─────────┼──→ PwmChannelState[0]  (per-channel)
-              │                     │    PwmChannelState[1]
-              │                     │    PwmChannelState[2]
-              │                     │    PwmChannelState[3]
-              │                     │
-              │  ops ───────────────┼──→ PwmOps (4 BSP callbacks)
-              │  cap ───────────────┼──→ PwmCapability (read-only)
-              └──────────┬─────────┘
+              │   (IS a Device)      │  BSP 静态分配, 生命周期 = 程序生命周期
+              │                      │
+              │  chState[] ──────────┼──→ PwmChannelState[0]  (per-channel)
+              │                      │    PwmChannelState[1]
+              │                      │    PwmChannelState[2]
+              │                      │    PwmChannelState[3]
+              │                      │
+              │  ops ────────────────┼──→ PwmOps (4 BSP callbacks)
+              │  cap ────────────────┼──→ PwmCapability (read-only)
+              └──────────┬───────────┘
                          │
               ┌──────────┘
               │  PwmChannelSpec { "pwm1", 0 }
@@ -97,14 +97,9 @@
 
 ### 2.2 PwmChannel 为何不是 Device
 
-与 GpioPin 相同的理由：通道共享定时器硬件资源（ARR/PSC），不是独立的物理外设。如果每个通道是独立 Device，配置 ch0 的周期会静默覆盖 ch3——违反 Device 模型的独立性假设。
+硬件约束：同一定时器的所有通道共享 ARR/PSC 时基单元。如果每个通道都是独立 Device，配置 ch0 的周期会静默覆盖 ch3——违反 Device 模型的独立性假设。控制器作为 Device、通道作为轻量句柄的设计直接反映了这一硬件现实。
 
-```
-GpioController (Device)  ≈  PwmController (Device)     ← 控制器是 Device
-GpioPin (handle)         ≈  PwmChannel (handle)        ← 子资源是轻量句柄
-```
-
----
+***
 
 ## 3. 数据结构
 
@@ -121,6 +116,7 @@ typedef struct {
 ```
 
 **设计要点**：
+
 - `periodNs == 0` 作为"未配置"哨兵值（注册时初始化为 0）
 - `periodCycles` 与 `periodNs` 配对，为 `set_pulse` 提供 ns→cycles 比例
 - `enabled` 由框架管理，`channelEnable/Disable` 幂等性不依赖 BSP
@@ -142,7 +138,7 @@ typedef struct {
 } PwmChannel;
 ```
 
-与 GPIO 的 `GpioPinSpec`/`GpioPin` 双类型模式一致。`pwm_channel_get()` 调用 `device_find()` 解析 Spec → Handle，后续操作零字符串查找。
+编译时声明 + 运行时解析：`PwmChannelSpec` 可声明为 `static const`，零运行时构建开销。`pwm_channel_get()` 调用 `device_find()` 解析 Spec → Handle，后续操作零字符串查找。
 
 ### 3.3 PwmCapability — 能力声明
 
@@ -188,7 +184,7 @@ struct PwmController {
 
 5 个字段，无冗余。BSP 通过 `ctrl->parent.handle` 访问私有数据。
 
----
+***
 
 ## 4. API 函数签名
 
@@ -226,61 +222,61 @@ OmRet pwm_controller_register(PwmController *ctrl, const char *name,
 ### 4.5 Device 接口（系统集成）
 
 ```c
-// DevInterface:
-//   init    = pwm_dev_init     — 验证 chState 已就绪
-//   open    = pwm_dev_open     — 声明控制器使用权
-//   close   = pwm_dev_close    — 停止全部通道 (osal_irq_lock 保护)
-//   read    = NULL             — PWM 非数据流外设
-//   write   = NULL             — 使用 pwm_channel_set_pulse 直接 API
-//   control = pwm_dev_control  — SUSPEND / RESUME / GET_CAPABILITY
+DevInterface:
+   init    = pwm_dev_init     — 验证 chState 已就绪
+   open    = pwm_dev_open     — 声明控制器使用权
+   close   = pwm_dev_close    — 停止全部通道 (osal_irq_lock 保护)
+   read    = NULL             — PWM 非数据流外设
+   write   = NULL             — 使用 pwm_channel_set_pulse 直接 API
+   control = pwm_dev_control  — SUSPEND / RESUME / GET_CAPABILITY
 ```
 
----
+***
 
 ## 5. 关键设计决策
 
-### D1: PwmChannel 不作为 Device — 对标 GPIO 的 GpioPin
+### D1: PwmController 作为 Device，PwmChannel 不作为 Device
 
-| 决策 | 理由 |
-|------|------|
-| PwmChannel 是轻量句柄 | 通道共享 TIM ARR/PSC，不是独立物理资源。Device 模型会假造独立性。 |
-| GpioPin 模式一致 | GPIO 也是 GpioController(Device) + GpioPin(handle)。PWM 天然对标。 |
-| ISR 性能 | 值传递 12 bytes，零间接调用。 |
+| 决策               | 理由                                                         |
+| ---------------- | ---------------------------------------------------------- |
+| PwmChannel 是轻量句柄 | 通道共享 TIM ARR/PSC，不是独立物理资源。Device 模型会假造独立性。                 |
+| PwmController 是 Device | 控制器是独立物理外设，有 init/open/close 生命周期，适合 Device 模型。 |
+| ISR 性能           | 值传递 12 bytes，零间接调用。                                        |
 
-### D2: 框架持有 per-channel 状态 — 对标 Linux pwm_device.state
+### D2: 框架持有 per-channel 状态 — 对标 Linux pwm\_device.state
 
-| 决策 | 理由 |
-|------|------|
-| chState[] 归框架管理 | 框架是真相源——enable 幂等、pulse 校验、get_state 都靠它 |
-| BSP 仅提供存储 | BSP 声明 `PwmChannelState chState[4]`，内容由框架维护 |
-| periodNs==0 作为"未配置"哨兵 | 零开销语义，不需要额外 bool 字段 |
+| 决策                    | 理由                                          |
+| --------------------- | ------------------------------------------- |
+| chState\[] 归框架管理      | 框架是真相源——enable 幂等、pulse 校验、get\_state 都靠它   |
+| BSP 仅提供存储             | BSP 声明 `PwmChannelState chState[4]`，内容由框架维护 |
+| periodNs==0 作为"未配置"哨兵 | 零开销语义，不需要额外 bool 字段                         |
 
-### D3: 三级 config 与 HAL_TIM_PWM_Init 的一次性调用
+### D3: 三级 config 与 HAL\_TIM\_PWM\_Init 的一次性调用
 
-| 层级 | 操作 | 何时执行 |
-|------|------|---------|
-| bsp_pwm_register() | HAL_TIM_PWM_Init（一次性时基初始化） | 启动时一次 |
-| channelConfig() | 直接写 PSC/ARR/CCR 寄存器（无 TIM_EGR_UG） | 每次配置 |
-| channelEnable() | HAL_TIM_PWM_Start（CCxE + CEN） | 每次启动 |
+| 层级                   | 操作                                  | 何时执行  |
+| -------------------- | ----------------------------------- | ----- |
+| bsp\_pwm\_register() | HAL\_TIM\_PWM\_Init（一次性时基初始化）       | 启动时一次 |
+| channelConfig()      | 直接写 PSC/ARR/CCR 寄存器（无 TIM\_EGR\_UG） | 每次配置  |
+| channelEnable()      | HAL\_TIM\_PWM\_Start（CCxE + CEN）    | 每次启动  |
 
 `HAL_TIM_PWM_Init` 内部写 `TIM_EGR_UG` 会复位所有通道的计数器。在运行时调用会在其他通道上产生毛刺。因此移到 register 阶段一次性执行。
 
 ### D4: config + enable 分离 — 对标 STM32 HAL 三步模型
 
-| 决策 | 理由 |
-|------|------|
-| 分离 config 和 enable | 允许多通道先配好再统一启动，避免中间态毛刺 |
-| 对标 HAL Init→Config→Start | STM32 原生的三步分离模型，硬件预装载保证无毛刺 |
-| 区别于 Zephyr 的 set_cycles | Zephyr 每次设周期+脉宽一步到位，不适合我们"先配后启"的用例 |
+| 决策                       | 理由                                 |
+| ------------------------ | ---------------------------------- |
+| 分离 config 和 enable       | 允许多通道先配好再统一启动，避免中间态毛刺              |
+| 对标 HAL Init→Config→Start | STM32 原生的三步分离模型，硬件预装载保证无毛刺         |
+| 区别于 Zephyr 的 set\_cycles | Zephyr 每次设周期+脉宽一步到位，不适合我们"先配后启"的用例 |
 
 ### D5: channelSetPulse 是 ISR 安全的
 
-| 决策 | 理由 |
-|------|------|
-| 直接写 CCR 寄存器 | `__HAL_TIM_SET_COMPARE` 是单条 MMIO store |
-| 预计算 timerHz | BSP 在 register 时计算一次，存入 BspPwm.timerHz |
-| 无 HAL 调用 | ISR 路径零 `HAL_RCC_GetXXXFreq()` 调用 |
-| 框架层无阻塞 | `pulse_ns * cachedCycles / cachedNs` 是纯整数运算 |
+| 决策          | 理由                                          |
+| ----------- | ------------------------------------------- |
+| 直接写 CCR 寄存器 | `__HAL_TIM_SET_COMPARE` 是单条 MMIO store      |
+| 预计算 timerHz | BSP 在 register 时计算一次，存入 BspPwm.timerHz      |
+| 无 HAL 调用    | ISR 路径零 `HAL_RCC_GetXXXFreq()` 调用           |
+| 框架层无阻塞      | `pulse_ns * cachedCycles / cachedNs` 是纯整数运算 |
 
 ### D6: BDTR 和 MOE 在 register 阶段一次性配置
 
@@ -290,11 +286,11 @@ OmRet pwm_controller_register(PwmController *ctrl, const char *name,
 
 STM32 TIM 的所有通道共享 ARR/PSC。同一控制器的不同 `channelConfig` 调用若传入不同 periodNs，后者覆盖前者。框架不阻止（过于侵入），但 API 文档明确说明此约束。
 
----
+***
 
 ## 6. 关键流程
 
-### 6.1 通道配置 (pwm_channel_config)
+### 6.1 通道配置 (pwm\_channel\_config)
 
 ```
 pwm_channel_config(ch, cfg)
@@ -317,7 +313,7 @@ pwm_channel_config(ch, cfg)
   └── osal_irq_unlock
 ```
 
-### 6.2 通道使能 (pwm_channel_enable) — 框架级幂等
+### 6.2 通道使能 (pwm\_channel\_enable) — 框架级幂等
 
 ```
 pwm_channel_enable(ch)
@@ -331,7 +327,7 @@ pwm_channel_enable(ch)
   └── chState[ch].enabled = true
 ```
 
-### 6.3 运行时脉宽更新 (pwm_channel_set_pulse) — ISR 路径
+### 6.3 运行时脉宽更新 (pwm\_channel\_set\_pulse) — ISR 路径
 
 ```
 pwm_channel_set_pulse(ch, pulse_ns)
@@ -359,33 +355,34 @@ pwm_dev_close(dev)
   └── osal_irq_unlock
 ```
 
----
+***
 
 ## 7. 设计决策对照开源方案
 
-| 决策 | OM | Linux | Zephyr | RT-Thread | STM32 HAL |
-|------|-----|-------|--------|-----------|-----------|
-| **通道状态归属** | 框架层 (chState) | 框架层 (pwm_device.state) | 驱动层 | BSP 层 | HAL 层 (hdma/ChannelState) |
-| **控制器模型** | PwmController (Device) | pwm_chip (device) | struct device | rt_device_pwm | TIM_HandleTypeDef |
-| **通道模型** | PwmChannel (轻量句柄) | pwm_device (独立对象) | uint32_t channel | int channel | TIM_CHANNEL_x 宏 |
-| **enable 幂等** | 框架级 | 驱动 apply 层 | 不适用（无独立 enable） | 依赖 BSP | 无保护 |
-| **config+enable** | 分离 | 原子 apply | set_cycles 打包 | 完全分离 | 分离 |
-| **能力声明** | PwmCapability struct | ops 函数指针判空 | DT + Kconfig | 无（BSP 私有） | 无 |
-| **ISR 脉宽更新** | channelSetPulse | apply (atomic) | set_cycles | 无专用 API | __HAL_TIM_SET_COMPARE |
+| 决策                | OM                     | Linux                   | Zephyr            | RT-Thread       | STM32 HAL                  |
+| ----------------- | ---------------------- | ----------------------- | ----------------- | --------------- | -------------------------- |
+| **通道状态归属**        | 框架层 (chState)          | 框架层 (pwm\_device.state) | 驱动层               | BSP 层           | HAL 层 (hdma/ChannelState)  |
+| **控制器模型**         | PwmController (Device) | pwm\_chip (device)      | struct device     | rt\_device\_pwm | TIM\_HandleTypeDef         |
+| **通道模型**          | PwmChannel (轻量句柄)      | pwm\_device (独立对象)      | uint32\_t channel | int channel     | TIM\_CHANNEL\_x 宏          |
+| **enable 幂等**     | 框架级                    | 驱动 apply 层              | 不适用（无独立 enable）   | 依赖 BSP          | 无保护                        |
+| **config+enable** | 分离                     | 原子 apply                | set\_cycles 打包    | 完全分离            | 分离                         |
+| **能力声明**          | PwmCapability struct   | ops 函数指针判空              | DT + Kconfig      | 无（BSP 私有）       | 无                          |
+| **ISR 脉宽更新**      | channelSetPulse        | apply (atomic)          | set\_cycles       | 无专用 API         | \_\_HAL\_TIM\_SET\_COMPARE |
 
----
+***
 
 ## 8. 相关文件
 
-| 文件 | 说明 |
-|------|------|
-| `lib/drivers/include/drivers/peripheral/pwm/pal_pwm_dev.h` | PAL 接口定义 |
-| `lib/drivers/src/peripheral/pwm/hal_pwm.c` | 框架实现 |
-| `lib/drivers/include/drivers/model/device.h` | Device 模型 + DEVICE_TYPE_PWM |
-| `lib/include/core/om_config.h` | OM_USE_HAL_PWM 裁剪宏 |
-| `lib/drivers/include/drivers/peripheral/pal_dev.h` | PAL 聚合入口 |
-| `platform/bsp/boards/rm-a-board/include/bsp_pwm.h` | A 板 BSP 头文件 |
-| `platform/bsp/boards/rm-a-board/source/peripherals/pwm/bsp_pwm_impl.c` | A 板 BSP 实现 |
-| `platform/bsp/boards/rm-c-board/include/bsp_pwm.h` | C 板 BSP 头文件 |
-| `platform/bsp/boards/rm-c-board/source/peripherals/pwm/bsp_pwm_impl.c` | C 板 BSP 实现 |
-| `docs/03_pwm_pal_interface_design.md` | PAL 接口设计规格（workspace） |
+| 文件                                                                     | 说明                            |
+| ---------------------------------------------------------------------- | ----------------------------- |
+| `lib/drivers/include/drivers/peripheral/pwm/pal_pwm_dev.h`             | PAL 接口定义                      |
+| `lib/drivers/src/peripheral/pwm/hal_pwm.c`                             | 框架实现                          |
+| `lib/drivers/include/drivers/model/device.h`                           | Device 模型 + DEVICE\_TYPE\_PWM |
+| `lib/include/core/om_config.h`                                         | OM\_USE\_HAL\_PWM 裁剪宏         |
+| `lib/drivers/include/drivers/peripheral/pal_dev.h`                     | PAL 聚合入口                      |
+| `platform/bsp/boards/rm-a-board/include/bsp_pwm.h`                     | A 板 BSP 头文件                   |
+| `platform/bsp/boards/rm-a-board/source/peripherals/pwm/bsp_pwm_impl.c` | A 板 BSP 实现                    |
+| `platform/bsp/boards/rm-c-board/include/bsp_pwm.h`                     | C 板 BSP 头文件                   |
+| `platform/bsp/boards/rm-c-board/source/peripherals/pwm/bsp_pwm_impl.c` | C 板 BSP 实现                    |
+| `docs/03_pwm_pal_interface_design.md`                                  | PAL 接口设计规格（workspace）         |
+
