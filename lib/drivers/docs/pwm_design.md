@@ -72,27 +72,43 @@
 ### 2.1 结构关系：所有权与引用
 
 ```
-                    Device 注册表
-                    device_find("pwm1")
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │    PwmController     │  1 个控制器 = 1 个 Device
-              │   (IS a Device)      │  BSP 静态分配, 生命周期 = 程序生命周期
-              │                      │
-              │  chState[] ──────────┼──→ PwmChannelState[0]  (per-channel)
-              │                      │    PwmChannelState[1]
-              │                      │    PwmChannelState[2]
-              │                      │    PwmChannelState[3]
-              │                      │
-              │  ops ────────────────┼──→ PwmOps (4 BSP callbacks)
-              │  cap ────────────────┼──→ PwmCapability (read-only)
-              └──────────┬───────────┘
-                         │
-              ┌──────────┘
-              │  PwmChannelSpec { "pwm1", 0 }
-              │  → pwm_channel_get() → PwmChannel { ctrl, 0 }
+                         ┌─────────────────────────┐
+                         │     Device 注册表         │
+                         │   device_find("pwm1")    │
+                         └────────────┬────────────┘
+                                      │ 按名称查找
+                                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        BSP (Static)                              │
+│                                                                  │
+│  struct BspPwm {                                                 │
+│    TIM_HandleTypeDef tim;     ←── BSP 硬件句柄                   │
+│    PwmController     parent;  ←── 嵌入框架控制器                  │
+│    PwmChannelState   chState[4]; ───────────────────────┐        │
+│  };                                                      │        │
+│                                                          │        │
+│  ┌───────────────────────────────────────────────────┐   │        │
+│  │ PwmController (IS a Device)                        │   │        │
+│  │                                                    │   │        │
+│  │  parent: Device  ←── 设备链表节点                   │   │        │
+│  │  ops: PwmOps*    ────────────→ 4 个 BSP 回调        │   │        │
+│  │  cap: PwmCapability* ────────→ 只读能力声明          │   │        │
+│  │  chState: PwmChannelState* ──→ chState[0] ──────────┼───┘        │
+│  │                               chState[1]  (per-channel 状态)     │
+│  │                               chState[2]                         │
+│  │                               chState[3]                         │
+│  └───────────────────────┬───────────────────────────┘              │
+└──────────────────────────┼──────────────────────────────────────────┘
+                           │
+              PwmChannelSpec { "pwm1", 0 }
+                  │
+                  │ pwm_channel_get()
+                  ▼
+         PwmChannel { ctrl → &parent, channel = 0 }
               │
+              │ 传递到所有通道级 API
+              ▼
+    pwm_channel_config / enable / disable / set_pulse / get_state
 ```
 
 ### 2.2 PwmChannel 为何不是 Device
