@@ -23,4 +23,13 @@
 #define OM_SYNC_ACCEL 0
 #endif
 
+/*
+ * 应用覆写入口：用户可在工程中放置 om_appcfg.h 以覆盖上述默认值。
+ * 该文件不是必须的。启用方式：在包含 om_config.h 之前定义 OM_USE_APPCFG，
+ * 或通过构建系统注入 -DOM_USE_APPCFG。
+ */
+#ifdef OM_USE_APPCFG
+#include "om_appcfg.h"
+#endif
+
 #endif // __OM_CONFIG_H__

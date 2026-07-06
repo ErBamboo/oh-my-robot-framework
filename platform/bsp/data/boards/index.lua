@@ -5,4 +5,5 @@
 om_board_index = {
     "rm-a-board",
     "rm-c-board",
+    "lp-mspm0g3507",
 }

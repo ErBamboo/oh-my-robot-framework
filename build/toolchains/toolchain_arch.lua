@@ -104,6 +104,7 @@ end
 local toolchain_mappers = {
     ["gnu-rm"] = map_gnu_rm,
     ["armclang"] = map_armclang,
+    ["tiarmclang"] = map_armclang,  -- Clang 系，与 armclang 相同
 }
 
 --- 解析工具链条目

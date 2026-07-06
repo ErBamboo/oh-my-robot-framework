@@ -64,8 +64,15 @@ OsalStatus osal_thread_create(OsalThread** thread, const OsalThreadAttr* attr, O
 
     if (!thread || !entry)
         return OSAL_INVALID;
-    if (!osal_thread_check_task_context())
-        return OSAL_INVALID;
+    /*
+     * 调度器启动前豁免 ISR 检查：TI Clang `_c_int00` 在进入 main() 时
+     * 可能尚未退出 Reset handler 上下文，IPSR 非零，导致 osal_is_in_isr()
+     * 误判。调度器启动后恢复严格检查（任务中创建合法，ISR 中创建拒绝）。
+     */
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+        if (!osal_thread_check_task_context())
+            return OSAL_INVALID;
+    }
     if (!osal_thread_stack_bytes_to_depth(stack_size_bytes, &stack_depth))
         return OSAL_INVALID;
 
@@ -135,7 +142,8 @@ OsalStatus osal_thread_terminate(OsalThread* thread)
 
 OsalStatus osal_kernel_start(void)
 {
-    if (!osal_thread_check_task_context())
+    /* 仅允许在调度器未启动时调用，同时规避 TI Clang IPSR 误判问题。 */
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
         return OSAL_INVALID;
 
     vTaskStartScheduler();

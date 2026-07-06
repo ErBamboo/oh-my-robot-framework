@@ -126,6 +126,18 @@ openocd --version
 期望结果：
 - 能输出版本信息（建议 `0.12.0` 及以上）。
 
+
+DAPLink 配置文件准备：
+- 模板文件位于 `tools/openocd/daplink.cfg.example`。
+- 复制到项目根 `.vscode/daplink.cfg` 并按以下步骤修改：
+  1. 查找探针序列号：
+     ```powershell
+     openocd -c "adapter driver cmsis-dap; init; exit" 2>&1 | findstr /I "serial"
+     ```
+     或直接启动 openocd 后观察启动日志中的 `Info : CMSIS-DAP: ... (serial: 5627220232)` 行。
+  2. 将序列号填入 `adapter serial` 行（去掉行首的 `#` 注释）。
+  3. 若芯片不是 STM32F4 系列，修改 `source [find target/stm32f4x.cfg]` 为对应目标配置。
+- 单探针环境可省略 `adapter serial` 行。
 DAPLink 探针要求：
 - 支持 CMSIS-DAP 协议的调试探针（如 DAP-WL-HS、Segger J-Link CMSIS-DAP 模式等）。
 - 若有多探针，需在 OpenOCD 配置文件中通过 `adapter serial` 指定目标探针序列号。

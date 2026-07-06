@@ -58,8 +58,42 @@ local function adjust_armclang(selection, paths)
     return ensure_armclang_toolset(selection.raw, paths.sdkdir, paths.bindir)
 end
 
+--- tiarmclang (TI Clang) 强制使用集成汇编器
+---@param selection table 选中信息
+---@param paths table 路径信息
+---@return string toolchain_raw
+local function adjust_tiarmclang(selection, paths)
+    local function ensure_tiarmclang_toolset(toolchain_raw, sdkdir, bindir)
+        local explicit_toolset_as = parse_explicit_toolset_as(toolchain_raw)
+        if explicit_toolset_as then
+            if explicit_toolset_as ~= "tiarmclang" then
+                raise(
+                    "tiarmclang toolset_as unsupported: " .. explicit_toolset_as ..
+                    ". default chain only supports tiarmclang integrated assembler (toolset_as=tiarmclang)"
+                )
+            end
+            return toolchain_raw
+        end
+        if not toolchain_raw or toolchain_raw == "" then
+            return "tiarmclang[toolset_as=tiarmclang]"
+        end
+        if not toolchain_raw:find("%[", 1, true) then
+            return toolchain_raw .. "[toolset_as=tiarmclang]"
+        end
+        if toolchain_raw:match("%[%s*%]$") then
+            return toolchain_raw:gsub("%[%s*%]$", "[toolset_as=tiarmclang]")
+        end
+        if toolchain_raw:sub(-1) == "]" then
+            return toolchain_raw:sub(1, -2) .. ",toolset_as=tiarmclang]"
+        end
+        raise("invalid toolchain expression: " .. tostring(toolchain_raw))
+    end
+    return ensure_tiarmclang_toolset(selection.raw, paths.sdkdir, paths.bindir)
+end
+
 local toolchain_adjusters = {
     armclang = adjust_armclang,
+    tiarmclang = adjust_tiarmclang,
 }
 
 --- 应用工具链差异化处理

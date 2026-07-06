@@ -3,6 +3,7 @@
 --- @details 负责工具链相关校验逻辑。
 
 local MIN_ARMCLANG_VERSION = "6.14"
+local MIN_TIARMCLANG_VERSION = "3.2"
 local version_check_cache = {}
 
 --- 归一化工具链名称（去掉参数后缀）
@@ -81,13 +82,57 @@ local function ensure_armclang_version_supported(toolchain_instance)
     version_check_cache.armclang = version
 end
 
+--- 解析 tiarmclang 版本号
+---@param output string|nil `tiarmclang --version` 输出
+---@return string|nil version
+local function parse_tiarmclang_version(output)
+    if type(output) ~= "string" or output == "" then
+        return nil
+    end
+    return output:match("TI Arm Clang Compiler%s+(%d+%.%d+%.%d+)")
+end
+
+--- 读取 tiarmclang 版本号
+---@param toolchain_instance toolchain 工具链实例
+---@return string version tiarmclang 版本
+local function resolve_tiarmclang_version(toolchain_instance)
+    local cc_program = toolchain_instance:tool("cc")
+    if not cc_program then
+        raise("tiarmclang compiler not found after toolchain check")
+    end
+    local output_or_error = os.iorunv(cc_program, {"--version"})
+    local version = parse_tiarmclang_version(output_or_error)
+    if not version then
+        raise("tiarmclang version parse failed from --version output")
+    end
+    return version
+end
+
+--- 校验 tiarmclang 版本下界
+---@param toolchain_instance toolchain 工具链实例
+---@return nil
+local function ensure_tiarmclang_version_supported(toolchain_instance)
+    if version_check_cache.tiarmclang ~= nil then
+        return
+    end
+    local semver = import("core.base.semver")
+    local version = resolve_tiarmclang_version(toolchain_instance)
+    if semver.compare(version, MIN_TIARMCLANG_VERSION) < 0 then
+        raise("tiarmclang version not supported: " .. version .. ", require >= " .. MIN_TIARMCLANG_VERSION)
+    end
+    version_check_cache.tiarmclang = version
+end
+
 --- 统一校验工具版本
 ---@param toolchain_name string|nil 工具链名称
 ---@param toolchain_instance toolchain 工具链实例
 ---@return nil
 local function ensure_tool_versions_supported(toolchain_name, toolchain_instance)
-    if normalize_toolchain_name(toolchain_name) == "armclang" then
+    local base_name = normalize_toolchain_name(toolchain_name)
+    if base_name == "armclang" then
         ensure_armclang_version_supported(toolchain_instance)
+    elseif base_name == "tiarmclang" then
+        ensure_tiarmclang_version_supported(toolchain_instance)
     end
 end
 

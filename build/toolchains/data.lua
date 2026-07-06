@@ -46,6 +46,25 @@ local toolchain_config = {
                 bin = {kind = "objcopy", tool = "arm-none-eabi-objcopy", format = "binary"},
             },
         },
+        ["tiarmclang"] = {
+            kind = "custom",
+            plat = "cross",
+            linker_flag = "-Wl,-T",
+            linker_accepts_arch_flags = false,
+            toolset = {
+                cc = "tiarmclang",
+                cxx = "tiarmclang",
+                as = "tiarmclang",
+                ld = "tiarmclang",
+                ar = "tiarmar",
+                ranlib = "tiarmar",
+                objcopy = "tiarmobjcopy",
+            },
+            image = {
+                hex = {kind = "objcopy", tool = "tiarmobjcopy", format = "ihex"},
+                bin = {kind = "objcopy", tool = "tiarmobjcopy", format = "binary"},
+            },
+        },
         ["armclang"] = {
             kind = "builtin",
             plat = "cross",
