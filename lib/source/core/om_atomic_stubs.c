@@ -111,4 +111,24 @@ uint32_t __atomic_fetch_and_4(volatile void *ptr, uint32_t val, int memorder)
     return old;
 }
 
+uint32_t __atomic_fetch_add_4(volatile void *ptr, uint32_t val, int memorder)
+{
+    (void)memorder;
+    CRITICAL_ENTER(k);
+    uint32_t old = *(volatile uint32_t *)ptr;
+    *(volatile uint32_t *)ptr = old + val;
+    CRITICAL_EXIT(k);
+    return old;
+}
+
+uint32_t __atomic_fetch_sub_4(volatile void *ptr, uint32_t val, int memorder)
+{
+    (void)memorder;
+    CRITICAL_ENTER(k);
+    uint32_t old = *(volatile uint32_t *)ptr;
+    *(volatile uint32_t *)ptr = old - val;
+    CRITICAL_EXIT(k);
+    return old;
+}
+
 #endif /* OM_PORT_SOFTWARE_ATOMICS */
