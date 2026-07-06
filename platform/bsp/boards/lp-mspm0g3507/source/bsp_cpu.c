@@ -8,10 +8,13 @@
  */
 
 #include "bsp_gpio.h"
+#include "bsp_pwm.h"
+#include "bsp_tima_pwm.h"
 #include "bsp_serial.h"
 #include "bsp_spi.h"
 #include "core/om_cpu.h"
 #include "core/om_interrupt.h"
+#include "ti_msp_dl_config.h"
 
 static void mspm0g3507_errhandler(void)
 {
@@ -52,6 +55,13 @@ static void mspm0g3507_delay_ms(float ms)
 
 void om_board_init(void)
 {
+    /* 1. 硬件初始化（SysConfig 生成：时钟 + GPIO + UART + SPI pinmux）*/
+    SYSCFG_DL_init();
+
+    /* 2. ICM42688 CS 拉低，确保 SPI 模式（POR 协议检测窗口）*/
+    DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_5);
+
+    /* 3. CPU 注册 */
     static OmBoardInterface iface = {
         .errhandler      = mspm0g3507_errhandler,
         .reset           = mspm0g3507_reset,
@@ -63,8 +73,10 @@ void om_board_init(void)
     };
     om_cpu_register(32U, &iface);
 
-    /* 外设注册 */
+    /* 4. 外设注册 */
     bsp_gpio_register();
+    bsp_pwm_register();
+    bsp_tima_pwm_register();
     bsp_serial_register();
     bsp_spi_register();
 }
