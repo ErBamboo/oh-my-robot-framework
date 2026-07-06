@@ -99,6 +99,26 @@ extern "C"
 #define PORT_NORETURN __port_noreturn
 #define PORT_PACKED __port_packed
 
+/*===========================================================================
+ * 架构能力声明
+ *
+ * 本段声明目标架构的**硬件能力缺失项**，供核心库按需启用软件补偿。
+ *
+ * 新增架构时在此添加对应条件。
+ *===========================================================================*/
+
+/** @brief 目标架构缺乏硬件原子指令，需软件原子桩 */
+#if defined(__ARM_ARCH_6M__)
+/* Cortex-M0/M0+: 无 ldrex/strex, TI Clang 不提供 libatomic */
+#define OM_PORT_SOFTWARE_ATOMICS  1
+#endif
+
+/* 未来:
+ * #if defined(__riscv) && !defined(__riscv_atomic)
+ * #define OM_PORT_SOFTWARE_ATOMICS  1
+ * #endif
+ */
+
 #ifdef __cplusplus
 }
 #endif

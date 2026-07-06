@@ -6,16 +6,16 @@
  * 库函数调用。本文件提供这些库函数的实现：通过临界区保护（关中断 →
  * 读-改-写 → 恢复中断）保证单核场景下的原子性。
  *
- * 编译守卫（白名单）：
- *   仅当目标架构明确缺乏硬件原子指令时，本文件才产出符号。
- *   当前白名单：
- *   - __ARM_ARCH_6M__ (Cortex-M0/M0+)  — 无 ldrex/strex
+ * 编译守卫：OM_PORT_SOFTWARE_ATOMICS
+ *   该宏由 port 层（om_port_compiler.h）根据目标架构声明。
+ *   仅当目标架构缺乏硬件原子指令时置 1，本文件才产出符号。
  *
  *   有硬件原子指令的平台（ARMv7-M、RISC-V A 扩展等）由编译器
  *   自带运行时提供 __atomic_* 实现，本文件必须静默跳过，
  *   否则链接期符号冲突。
  *
- *   新增架构时：在此白名单添加对应预定义宏。
+ *   新增架构时：在 om_port_compiler.h 的「架构能力声明」段
+ *   追加对应的 OM_PORT_SOFTWARE_ATOMICS 条件。
  *
  * 临界区：om_hw_disable_interrupt() / om_hw_restore_interrupt()
  * 由平台 port 层提供具体中断屏蔽策略。
@@ -28,7 +28,7 @@
  * 白名单守卫：仅缺乏硬件原子指令的架构参与编译
  *===========================================================================*/
 
-#ifdef __ARM_ARCH_6M__
+#if OM_PORT_SOFTWARE_ATOMICS
 
 #define CRITICAL_ENTER(key)   uint32_t key = om_hw_disable_interrupt()
 #define CRITICAL_EXIT(key)    om_hw_restore_interrupt(key)
@@ -111,4 +111,4 @@ uint32_t __atomic_fetch_and_4(volatile void *ptr, uint32_t val, int memorder)
     return old;
 }
 
-#endif /* __ARM_ARCH_6M__ */
+#endif /* OM_PORT_SOFTWARE_ATOMICS */
