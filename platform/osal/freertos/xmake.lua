@@ -72,5 +72,10 @@ target("tar_os")
         target:add("includedirs", freertos_paths.config_dir, {public = false})
         target:add("includedirs", freertos_paths.portable_dir, {public = false})
         target:add("files", freertos_paths.port_file)
+        -- Cortex-M0+ GCC port has a separate portasm.c
+        local portasm_file = path.join(freertos_paths.portable_dir, "portasm.c")
+        if os.isfile(portasm_file) then
+            target:add("files", portasm_file)
+        end
     end)
 target_end()
