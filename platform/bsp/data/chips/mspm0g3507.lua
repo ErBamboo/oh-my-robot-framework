@@ -27,16 +27,29 @@ local chip = {
     arch = "cortex-m0plus",
     defines = {
         "CONFIG_MSPM0G3507",
+        "DeviceFamily_MSPM0G350X",
+        "__MSPM0G3507__",
     },
     includedirs = {},
     sources = {},
     components = {
         device = {
             includedirs = {
-                -- TI DriverLib 通过 SysConfig 或 SDK 路径注入
+                "vendor/TI/MSPM0/m0p",
+                "vendor/TI/MSPM0/m0p/ti/devices/msp/m0p",
+                "vendor/TI/MSPM0/m0p/third_party/CMSIS/Core/Include",
             },
             headerfiles = {},
-            sources = {},
+            sources = {
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_common.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_gpio.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_uart.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_spi.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_dma.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_timer.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_timerg.c",
+                "vendor/TI/MSPM0/m0p/ti/driverlib/dl_timera.c",
+            },
         },
     },
     startup = {
