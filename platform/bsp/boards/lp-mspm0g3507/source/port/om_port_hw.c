@@ -4,6 +4,9 @@
 
 #include "core/port/om_port_hw.h"
 #include <ti/devices/msp/msp.h>
+#ifdef __GNUC__
+#include "cmsis_compiler.h"  /* GCC needs explicit decl; TI Clang has builtins */
+#endif
 
 port_critical_key_t port_critical_enter(void)
 {

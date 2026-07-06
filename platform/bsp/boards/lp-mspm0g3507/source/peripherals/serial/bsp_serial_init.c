@@ -120,7 +120,7 @@ void bsp_serial_pre_init(bsp_serial_t s)
     bsp_serial_nvic_init(s);
 
     /* 如果注册参数含 DMA_RX，立即启动循环接收 */
-    uint32_t regparams = device_get_regparams(&s->parent);
+    uint32_t regparams = device_get_regparams((Device *)&s->parent);
     if ((regparams & DEVICE_REG_RXTYPE_MASK) == SERIAL_REG_DMA_RX)
         bsp_serial_dma_cfg(s, SERIAL_REG_DMA_RX);
 }
