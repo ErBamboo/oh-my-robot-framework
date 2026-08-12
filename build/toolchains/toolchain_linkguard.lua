@@ -9,6 +9,19 @@ local REQUIRED_PROVIDER_SYMBOLS = {
     tar_sync = {"completion_init", "completion_wait"},
 }
 
+--- 最终 binary 必须定义的边界符号（.om_init 段）。缺失说明板级链接脚本未提供该段，
+--- 自注册回调将运行期静默丢失，故构建期直接报错。符号名按工具链区分：
+--- GCC 由链接脚本 PROVIDE `__om_init_start/end`；armlink 由执行域自动生成
+--- `Image$$ER_OM_INIT$$Base/Limit`（om_init.c 直接 extern 引用）。
+---@param toolchain_name string|nil
+---@return string[] symbols
+local function required_binary_symbols(toolchain_name)
+    if toolchain_name == "armclang" then
+        return {"Image$$ER_OM_INIT$$Base", "Image$$ER_OM_INIT$$Limit"}
+    end
+    return {"__om_init_start", "__om_init_end"}
+end
+
 --- 归一化数组为集合
 ---@param values string[]|nil
 ---@return table<string, boolean> set
@@ -274,6 +287,43 @@ local function verify_provider_symbols(provider_name, symbols, toolchain_name)
     }
 end
 
+--- 校验最终 binary 的链接脚本边界符号（.om_init 段）
+---@param target target 二进制目标
+---@param toolchain_name string|nil
+---@return table report
+local function verify_binary_init_symbols(target, toolchain_name)
+    local artifact = target:targetfile()
+    if not artifact or artifact == "" or not os.isfile(artifact) then
+        return {
+            ok = false,
+            reason = "binary artifact not found: " .. tostring(artifact),
+        }
+    end
+    local states, parse_error = resolve_symbol_states(artifact, required_binary_symbols(toolchain_name), toolchain_name)
+    if not states then
+        return {
+            ok = false,
+            reason = "binary symbol resolve failed: " .. tostring(parse_error),
+        }
+    end
+    local missing = summarize_symbol_states(states)
+    -- 边界符号由链接脚本 PROVIDE / armlink .set 提供，定义为 strong；缺失即链接脚本漏段。
+    if #missing > 0 then
+        return {
+            ok = false,
+            binary = true,
+            artifact = artifact,
+            missing = missing,
+            reason = "board linker script missing `.om_init` section boundary symbols",
+        }
+    end
+    return {
+        ok = true,
+        binary = true,
+        artifact = artifact,
+    }
+end
+
 --- 校验 OM 链接契约
 ---@param target target
 ---@param context table|nil
@@ -297,6 +347,12 @@ function verify_om_link_contract(target, context)
         end
     end
 
+    local binary_report = verify_binary_init_symbols(target, toolchain_name)
+    checks[#checks + 1] = binary_report
+    if not binary_report.ok then
+        failures[#failures + 1] = binary_report
+    end
+
     if #failures == 0 then
         return {
             ok = true,
@@ -308,7 +364,16 @@ function verify_om_link_contract(target, context)
         "[oh-my-robot] link contract check failed:",
     }
     for _, failure in ipairs(failures) do
-        if failure.provider then
+        if failure.binary then
+            lines[#lines + 1] = string.format(
+                "[oh-my-robot]   binary artifact=%s",
+                tostring(failure.artifact or "unknown")
+            )
+            if failure.missing and #failure.missing > 0 then
+                lines[#lines + 1] = "[oh-my-robot]     missing boundary symbols: " .. table.concat(failure.missing, ", ")
+            end
+            lines[#lines + 1] = "[oh-my-robot]     action: 为该板链接脚本添加 .om_init 段（见 docs/build/maintenance_manual.md §11.5）"
+        elseif failure.provider then
             lines[#lines + 1] = string.format(
                 "[oh-my-robot]   provider=%s artifact=%s",
                 tostring(failure.provider),

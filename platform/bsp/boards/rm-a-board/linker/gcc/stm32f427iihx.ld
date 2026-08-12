@@ -61,13 +61,13 @@ SECTIONS
     . = ALIGN(4);
   } >ROM
 
-  /* OM pre-init callback table — iterated by om_pre_init_run() */
-  .om_pre_init :
+  /* OM init call table — iterated by om_do_initcalls() (see core/om_init.h) */
+  .om_init :
   {
     . = ALIGN(4);
-    PROVIDE(__om_pre_init_start = .);
-    KEEP(*(.om_pre_init))
-    PROVIDE(__om_pre_init_end = .);
+    PROVIDE(__om_init_start = .);
+    KEEP(*(.om_init))
+    PROVIDE(__om_init_end = .);
     . = ALIGN(4);
   } >ROM
 

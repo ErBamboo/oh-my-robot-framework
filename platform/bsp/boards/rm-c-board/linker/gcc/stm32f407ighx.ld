@@ -61,6 +61,16 @@ SECTIONS
     . = ALIGN(4);
   } >ROM
 
+  /* OM init call table — iterated by om_do_initcalls() (see core/om_init.h) */
+  .om_init :
+  {
+    . = ALIGN(4);
+    PROVIDE(__om_init_start = .);
+    KEEP(*(.om_init))
+    PROVIDE(__om_init_end = .);
+    . = ALIGN(4);
+  } >ROM
+
   /* The program code and other data into "ROM" Rom type memory */
   .text :
   {

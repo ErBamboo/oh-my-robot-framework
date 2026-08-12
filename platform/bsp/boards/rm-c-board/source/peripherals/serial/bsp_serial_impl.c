@@ -6,6 +6,15 @@
 
 #include "bsp_serial.h"
 #include "core/om_cpu.h"
+#include "core/om_init.h"
+
+/* 分散加载自注册：把 bsp_serial_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
+static OmRet bsp_serial_self_init(void)
+{
+    bsp_serial_register();
+    return OM_OK;
+}
+OM_INIT_BOARD(bsp_serial_self_init);
 /******************************************* SERIAL INTERFACE IMPLEMENTATION
  * *************************************************/
 static OmRet bsp_serial_configure(HalSerial* serial, SerialCfg* cfg)

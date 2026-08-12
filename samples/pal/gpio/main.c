@@ -28,6 +28,7 @@
  */
 
 #include "core/om_cpu.h"
+#include "core/om_init.h"
 #include "core/om_def.h"
 #include "drivers/peripheral/gpio/pal_gpio_dev.h"
 #include "osal/osal.h"
@@ -179,8 +180,9 @@ static void gpio_test_task(void *arg)
 
 int main(void)
 {
-    om_board_init();
-    om_core_init();
+    /* 分散加载初始化：自动执行 EARLIEST+BOARD+DRIVER 级（含 om_board_init 与
+     * bsp_*_register 自注册），等价于旧版显式 om_board_init()+om_core_init()。 */
+    (void)om_do_initcalls(OM_INIT_LEVEL_EARLIEST, OM_INIT_LEVEL_SERVICE);
 
     OsalThreadAttr attr = {
         .name      = "GpioTest",

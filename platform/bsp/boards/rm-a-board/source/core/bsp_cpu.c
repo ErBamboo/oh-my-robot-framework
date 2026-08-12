@@ -1,6 +1,7 @@
 
 #include "bsp.h"
 #include "core/om_interrupt.h"
+#include "core/om_init.h"
 
 /**
  * @brief  This function is executed in case of error occurrence.
@@ -85,19 +86,25 @@ static OmBoardInterface g_om_board_interface = {
 void om_board_init(void)
 {
     // 开发板初始化，对于STM32来说，在CubeMX上配置时钟树，然后直接复制过来用就好
+    // 仅保留 HAL 自举核（时钟/CPU 注册/DWT）；外设注册由 OM_INIT_BOARD 自注册
+    // （见 bsp_selfreg.c），在 BOARD 级 om_board_init 之后执行。
     HAL_Init();
     SystemClock_Config();
     NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4); // 任务调度前，需要设置中断优先级分组
     // cpu注册
     om_cpu_register(__OM_CPU_FREQ_MHZ, &g_om_board_interface);
-    // 外设注册、初始化
+    // DWT
     DWT_Init(__OM_CPU_FREQ_MHZ);
-    bsp_serial_register();
-    bsp_can_register();
-    bsp_gpio_register();
-    bsp_spi_register();
-    bsp_pwm_register();
 }
+
+/* 板级 HAL 自举作为 BOARD 级 prio 0 自注册：在所有 BOARD 级外设注册回调之前执行。 */
+static OmRet om_board_self_init(void)
+{
+    om_board_init();
+    return OM_OK;
+}
+
+OM_INIT(om_board_self_init, OM_INIT_LEVEL_BOARD, 0);
 
 /**
   * @brief  This function handles Hard Fault exception.

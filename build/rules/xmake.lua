@@ -4,3 +4,4 @@
 includes("context.lua")
 includes("board_assets.lua")
 includes("image_convert.lua")
+includes("selfreg.lua")

@@ -5,6 +5,15 @@
  */
 #include "bsp_can.h"
 #include <string.h>
+#include "core/om_init.h"
+
+/* 分散加载自注册：把 bsp_can_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
+static OmRet bsp_can_self_init(void)
+{
+    bsp_can_register();
+    return OM_OK;
+}
+OM_INIT_BOARD(bsp_can_self_init);
 
 #define BSP_CAN_FILTER_SPLIT_BANK      (14U)
 #define BSP_CAN_MAX_FILTER_BANK_COUNT  (28U)

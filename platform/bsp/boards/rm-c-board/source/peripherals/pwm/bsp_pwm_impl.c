@@ -7,6 +7,15 @@
 
 #include "bsp_pwm.h"
 #include "core/om_def.h"
+#include "core/om_init.h"
+
+/* 分散加载自注册：把 bsp_pwm_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
+static OmRet bsp_pwm_self_init(void)
+{
+    bsp_pwm_register();
+    return OM_OK;
+}
+OM_INIT_BOARD(bsp_pwm_self_init);
 
 static const PwmCapability gPwmCap[BSP_PWM_COUNT] = {
     /* pwm1: TIM1, APB2 168MHz, 16-bit advanced */
