@@ -28,7 +28,6 @@ local board = {
     sources = {
         "boards/rm-c-board/source/core/bsp_cpu.c",
         "arch/cortex-m/bsp_dwt.c",     -- 内核架构级共享（DWT 周期计数器）
-        "boards/rm-c-board/source/peripherals/gpio/bsp_gpio_impl.c",
         "boards/rm-c-board/source/peripherals/serial/bsp_serial_impl.c",
         "boards/rm-c-board/source/peripherals/serial/bsp_serial_init.c",
         "boards/rm-c-board/source/peripherals/pwm/bsp_pwm_impl.c",
@@ -39,8 +38,8 @@ local board = {
         -- 这些文件用于覆盖启动文件中的 weak ISR，必须直连最终 binary。
         -- CAN 的 ISR 已上移为共享适配层（板瘦身），路径指向 vendor adapters。
         "vendor/STM32/STM32F4/adapters/can/bsp_can_f4_it.c",
+        "vendor/STM32/STM32F4/adapters/gpio/bsp_gpio_f4_it.c",
         "boards/rm-c-board/source/peripherals/serial/serial_it.c",
-        "boards/rm-c-board/source/peripherals/gpio/bsp_gpio_it.c",
     },
     selfreg_sources = {
         -- OM_INIT 自注册入口：直连 binary，保证 .om_init 回调存活。
@@ -50,6 +49,7 @@ local board = {
         -- 共享适配层实现（含 OM_INIT 自注册）不在自动 glob 范围，须显式引用（opt-in 铁律）。
         "boards/rm-c-board/source/core/bsp_cpu.c",
         "vendor/STM32/STM32F4/adapters/can/bsp_can_f4.c",
+        "vendor/STM32/STM32F4/adapters/gpio/bsp_gpio_f4.c",
     },
     osal = {
         freertos = "boards/rm-c-board/osal/freertos",

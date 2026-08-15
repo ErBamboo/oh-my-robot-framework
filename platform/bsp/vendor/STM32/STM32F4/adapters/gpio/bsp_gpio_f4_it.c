@@ -1,6 +1,6 @@
 /**
- * @file    bsp_gpio_it.c
- * @brief   rm-a-board GPIO EXTI ISR 覆盖（override_sources）
+ * @file  bsp_gpio_f4_it.c
+ * @brief STM32F4 GPIO EXTI ISR（板瘦身共享适配层；由两板逐字相同的 bsp_gpio_it.c 上移）
  */
 
 #include "bsp_gpio.h"

@@ -1,10 +1,19 @@
 /**
- * @file    bsp_gpio_impl.c
- * @brief   rm-a-board GPIO BSP 实现（STM32F427）
+ * @file  bsp_gpio_f4.c
+ * @brief STM32F4 家族 GPIO BSP 共享适配层（板瘦身：板=数据、驱动=通用）
+ * @details 由 rm-a/rm-c 两板逐字相同的 bsp_gpio_impl.c 提炼；板特有数据（端口表）
+ *          外置到板侧 bsp_gpio_data.c，经 f4.h 契约 extern 引用。
+ *          启用外设 = 板 lua selfreg_sources 引用本文件（含 OM_INIT 自注册）。
  */
 
 #include "bsp_gpio.h"
 #include "core/om_init.h"
+#include "f4_clk.h"
+
+/* 契约守卫：板 shim bsp_gpio.h 必须定义端口数 */
+#ifndef BSP_GPIO_PORT_COUNT
+#error "bsp_gpio_f4.c requires BSP_GPIO_PORT_COUNT (define in board bsp_gpio.h shim)"
+#endif
 
 /* 分散加载自注册：把 bsp_gpio_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
 static OmRet bsp_gpio_self_init(void)
@@ -201,37 +210,12 @@ static const GpioOps gGpioOps = {
     .port_read         = bsp_gpio_port_read,
 };
 
-/* ===== BSP 实例数组 ===== */
-
-BspGpio gBspGpio[BSP_GPIO_PORT_COUNT] = {
-    {GPIOA, {0}, "gpioa", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOB, {0}, "gpiob", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOC, {0}, "gpioc", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOD, {0}, "gpiod", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOE, {0}, "gpioe", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOF, {0}, "gpiof", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOG, {0}, "gpiog", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOH, {0}, "gpioh", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOI, {0}, "gpioi", BSP_GPIO_IRQ_PRIORITY},
-    {GPIOJ, {0}, "gpioj", BSP_GPIO_IRQ_PRIORITY},
-};
-
-/* ===== 注册入口 ===== */
+/* ===== 注册入口（表驱动：端口时钟由端口表推导，不再硬编码 A-I） ===== */
 
 void bsp_gpio_register(void)
 {
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-    __HAL_RCC_GPIOF_CLK_ENABLE();
-    __HAL_RCC_GPIOG_CLK_ENABLE();
-    __HAL_RCC_GPIOH_CLK_ENABLE();
-    __HAL_RCC_GPIOI_CLK_ENABLE();
-    __HAL_RCC_GPIOJ_CLK_ENABLE();
-
     for (uint8_t i = 0; i < BSP_GPIO_PORT_COUNT; i++) {
+        bsp_f4_enable_gpio_clk(gBspGpio[i].port);
         gpio_controller_register(
             &gBspGpio[i].parent,
             gBspGpio[i].name,
