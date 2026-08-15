@@ -1,10 +1,7 @@
 /**
  * @file bsp_serial.h
- * @brief 串口bsp层头文件，职责如下：
- *          1、声明bsp层串口函数
- *          2、定义串口裁剪宏、配置宏
- * @note 1、宏说明：
- *
+ * @brief rm-a-board 串口板配置 shim（板瘦身：类型/契约已上移 serial/bsp_serial_f4.h）
+ * @details 本文件只留板配置（实例裁剪 + DMA profile + 寄存器参数）；全部类型见共享适配层头。
  */
 
 #ifndef __OM_BSP_SERIAL_H__
@@ -162,78 +159,9 @@
 #endif
 #endif
 
-typedef enum
-{
-#ifdef USE_SERIAL_1
-    SERIAL1_IDX,
-#endif
-#ifdef USE_SERIAL_2
-    SERIAL2_IDX,
-#endif
-#ifdef USE_SERIAL_3
-    SERIAL3_IDX,
-#endif
-#ifdef USE_SERIAL_4
-    SERIAL4_IDX,
-#endif
-#ifdef USE_SERIAL_5
-    SERIAL5_IDX,
-#endif
-#ifdef USE_SERIAL_6
-    SERIAL6_IDX,
-#endif
-#ifdef USE_SERIAL_7
-    SERIAL7_IDX,
-#endif
-#ifdef USE_SERIAL_8
-    SERIAL8_IDX,
-#endif
-#ifdef USE_SERIAL_9
-    SERIAL8_IDX,
-#endif
-#ifdef USE_SERIAL_10
-    SERIAL8_IDX,
-#endif
-} SerialIdx_e;
+/* 实例数：必须等于 bsp_serial_data.c 中 g_bsp_serial 条目数（数据文件内编译期校验） */
+#define BSP_SERIAL_COUNT (5U)
 
-typedef struct bsp_serial_mutibuf* bsp_serial_mutibuf_t;
-typedef struct bsp_serial_mutibuf
-{
-    uint8_t* container0;  // 缓冲区地址0
-    uint8_t* container1;  // 缓冲区地址1
-    size_t container_len; // 缓冲区接收长度
-    size_t last_rx_cnt;   // 上次rxdma指针，仅开启DMA时启用
-#ifdef STM32_H7_Serials
-    dma_type_e dmaType; // DMA类型
-#endif
-} bsp_serial_mutibuf_s;
-
-typedef struct bsp_serial* bsp_serial_t;
-typedef struct bsp_serial
-{
-    UART_HandleTypeDef handle; // 一定要放在第一位
-    HalSerial parent;
-    char* name;
-    uint32_t regparams;
-    bsp_serial_mutibuf_t rx_multibuf; // 多缓冲区接收
-} bsp_serial_s;
-
-#define BSP_SERIAL_STATIC_INIT(INSTANCE, NAME, REGPARAMS)                                                                                  \
-    (bsp_serial_s)                                                                                                                         \
-    {                                                                                                                                      \
-        .handle.Instance = (INSTANCE), .name = (NAME), .regparams = (REGPARAMS),                                                           \
-    }
-
-#define BSP_SERIAL_MULTIBUF_STATIC_INIT(CONTAINER0, CONTAINER1, CONTAINER_LEN)                                                             \
-    (bsp_serial_mutibuf_s){.container0 = CONTAINER0, .container1 = CONTAINER1, .container_len = CONTAINER_LEN, .last_rx_cnt = 0}
-
-#define BSP_SERIAL_MULTIBUF_DEF(NAME, CONTAINER0, CONTAINER1, CONTAINER_LEN)                                                               \
-    bsp_serial_mutibuf_s NAME = BSP_SERIAL_MULTIBUF_STATIC_INIT(CONTAINER0, CONTAINER1, CONTAINER_LEN)
-
-extern bsp_serial_s g_bsp_serial[];
-
-void bsp_serial_pre_init(bsp_serial_t bsp_serial);
-void bsp_serial_register(void);
-void bsp_serial_dma_cfg(bsp_serial_t bsp_serial, uint32_t dma_regparams);
+#include "serial/bsp_serial_f4.h"
 
 #endif
