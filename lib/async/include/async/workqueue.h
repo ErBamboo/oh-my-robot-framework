@@ -11,7 +11,7 @@
  *
  * | 调用上下文   | 关中断方式                  | 效果                          |
  * |-------------|---------------------------|------------------------------|
- * | 线程上下文   | osal_irq_lock_task()      | taskENTER_CRITICAL（禁中断 + 禁抢占）|
+ * | 线程上下文   | osal_irq_lock_task()      | 禁中断 + 禁抢占                   |
  * | ISR 上下文  | osal_irq_lock_from_isr()  | 保存并屏蔽中断掩码               |
  *
  * irq_lock 临界区内代码极为简短（几个指针赋值），关中断时间可忽略。
@@ -116,7 +116,7 @@ typedef struct Work Work;
 /**
  * @brief 工作函数签名
  *
- * 参考 Linux kernel 的 work_func_t，对应于 FreeRTOS 的 TimerCallbackFunction_t。
+ * 参考内核工作队列的 work item 回调约定。
  * 当 work 被调度执行时，worker 线程调用此函数。
  *
  * @param work  指向正在执行的 Work。使用 container_of() 获取嵌入结构体。
@@ -159,8 +159,8 @@ struct Work {
 typedef struct WorkqueueConfig {
     const char *name;     /**< 调试名称（用作线程名） */
     uint32_t stack_depth; /**< worker 线程栈大小（字节）；为 0 时 workqueue_init 返回 OM_ERROR_PARAM */
-    uint32_t priority;    /**< worker 线程优先级（FreeRTOS 优先级值，0 = idle priority）。
-                           *  本模块不做范围检查，调用者需保证小于 RTOS 的 configMAX_PRIORITIES；
+    uint32_t priority;    /**< worker 线程优先级（RTOS 原生优先级值，0 = idle priority）。
+                           *  本模块不做范围检查，调用者需保证小于 RTOS 的最大优先级数；
                            *  实践中建议 ≥ 1，避免 worker 与 idle 任务同优先级导致调度延迟。 */
 } WorkqueueConfig;
 
@@ -215,7 +215,7 @@ OmRet workqueue_deinit(Workqueue *wq);
 /**
  * @brief 启动 worker 线程，开始接受并执行工作
  *
- * 创建 FreeRTOS 任务作为 worker 线程。worker 线程从 pending 队列中
+ * 创建任务作为 worker 线程。worker 线程从 pending 队列中
  * 取出 Work 并调用其 func 回调。
  *
  * @param wq  已初始化的工作队列。

@@ -1,6 +1,6 @@
 /**
  * @file    osal_priority.h
- * @brief   统一线程优先级规范（参照 CMSIS-RTOS2 语义带宽模型）
+ * @brief   统一线程优先级规范（参照通用 RTOS 优先级语义带宽模型）
  * @details
  *
  * 将 OSAL_PRIORITY_MAX 个优先级划分为 7 个语义带宽，每个带宽跨度 = OSAL_PRIO_BAND_WIDTH。
@@ -8,7 +8,7 @@
  *
  * `offset` 范围 [0, OSAL_PRIO_BAND_WIDTH-1]，允许同带内微调相对顺序。
  *
- * ## FreeRTOS 映射（configMAX_PRIORITIES=32, 数值越大优先级越高）
+ * ## 当前端口映射示例（数值越大优先级越高）
  *
  *   IDLE:          0-3   (0 = 仅 idle task 自身)
  *   LOW:           4-7   (后台维护：日志刷新、状态上报)
@@ -17,9 +17,9 @@
  *   HIGH:         16-19  (实时控制：电机环、姿态解算)
  *   CRITICAL:     20-23  (极低延迟：IPC producer、中断下半部)
  *   REALTIME:     24-27  (硬实时：高精度定时器回调)
- *   保留:          28-31  (28-30 系统级，31 = FreeRTOS timer task)
+ *   保留:          28-31  (28-30 系统级，31 = RTOS 定时器任务)
  *
- * 对于其他 RTOS（如 ThreadX，数值越小优先级越高），端口层需提供映射宏
+ * 对于数值越小优先级越高的 RTOS，端口层需提供映射宏
  * `osal_prio_to_native()` 完成反转。
  */
 

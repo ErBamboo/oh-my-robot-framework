@@ -25,7 +25,7 @@ int osal_is_in_isr(void);
 
 /**
  * @brief ISR 临界区状态类型
- * @note 由端口实现定义其具体含义；在 FreeRTOS 端映射为中断屏蔽旧状态
+ * @note 由端口实现定义其具体含义；通常映射为中断屏蔽旧状态
  */
 typedef uint32_t OsalIrqIsrState;
 

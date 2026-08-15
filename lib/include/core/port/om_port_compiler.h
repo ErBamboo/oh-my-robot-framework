@@ -109,7 +109,7 @@ extern "C"
 
 /** @brief 目标架构缺乏硬件原子指令，需软件原子桩 */
 #if defined(__ARM_ARCH_6M__)
-/* Cortex-M0/M0+: 无 ldrex/strex, TI Clang 不提供 libatomic */
+/* 无硬件原子指令的架构（软件原子桩）；部分编译器不提供 libatomic */
 #define OM_PORT_SOFTWARE_ATOMICS  1
 #endif
 

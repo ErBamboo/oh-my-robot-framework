@@ -17,7 +17,7 @@
  *
  * 说明：
  * - 分原语 capability 由 port 层注入（如 OM_SYNC_ACCEL_CAP_COMPLETION）。
- * - 当前 FreeRTOS completion 无独立加速后端，默认回退 reference。
+ * - 当前 completion 无独立加速后端，默认回退 reference。
  */
 #ifndef OM_SYNC_ACCEL
 #define OM_SYNC_ACCEL 0

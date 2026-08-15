@@ -9,7 +9,7 @@
 /*
  * completion 后端选择策略：
  * - reference 后端：CAS + OSAL Semaphore（4 状态机，无 irq_lock）；
- * - 加速后端通过 capability 显式声明（如 FreeRTOS: CAS + Task Notification）。
+ * - 加速后端通过 capability 显式声明（如 CAS + 任务通知）。
  */
 #if defined(OM_SYNC_ACCEL) && (OM_SYNC_ACCEL == 1) && defined(OM_SYNC_ACCEL_CAP_COMPLETION) && \
     (OM_SYNC_ACCEL_CAP_COMPLETION == 1)

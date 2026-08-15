@@ -352,7 +352,7 @@ struct GpioOps {
     /**
      * @brief  翻转指定引脚电平
      * @details 将 pins 中为 1 的位对应的引脚物理电平取反。
-     * @warning 若硬件不支持原子翻转（如 STM32F4 的 ODR RMW），
+     * @warning 若硬件不支持原子翻转（GPIO 输出寄存器读-改-写型），
      *          调用者需保证不在多上下文中对同一控制器并发此操作。
      * @param[in] ctrl  当前控制器
      * @param[in] pins  目标引脚位掩码
@@ -517,7 +517,7 @@ static inline bool gpio_port_valid(GpioPort port)
  *          示例：mask=0x0005, value=0x0001 → 引脚 0 拉高，引脚 2 拉低，其余不变
  *
  *          是 gpio_port_set_bits / gpio_port_clear_bits 的超集。
- *          若支持原子 BSRR（如 STM32），mask 和 value 可合并为一次寄存器写入。
+ *          若支持原子置位/清零型寄存器，mask 和 value 可合并为一次寄存器写入。
  *
  * @param[in] port   有效的端口句柄
  * @param[in] mask   位选择器，bit N=1 表示引脚 N 被写入
@@ -558,7 +558,7 @@ OmRet gpio_port_clear_bits(GpioPort port, uint32_t pins);
  *
  *          示例：pins=0x000A → 引脚 1 和引脚 3 电平翻转，其余不变
  *
- * @warning STM32F4 的 ODR ^= pins 是读-改-写操作，非原子。
+ * @warning GPIO 输出寄存器的 ^= pins 是读-改-写操作，非原子。
  *          调用者需保证不对同一控制器在多个上下文中并发调用此函数。
  *
  * @param[in] port  有效的端口句柄
