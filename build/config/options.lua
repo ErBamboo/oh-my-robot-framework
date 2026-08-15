@@ -138,6 +138,17 @@ local function resolve_semihosting_default(value)
     return normalized
 end
 
+--- 解析框架默认 main 注入默认值
+---@param value string|nil 默认值
+---@return string resolved
+local function resolve_framework_main_default(value)
+    local normalized = value or "on"
+    if normalized ~= "off" and normalized ~= "on" then
+        raise("default om_framework_main invalid: " .. tostring(normalized))
+    end
+    return normalized
+end
+
 --- 持久化 flash 预设到配置
 ---@param config table 配置对象
 ---@param preset table|nil 预设配置
@@ -192,6 +203,7 @@ local os_values = list_os_names()
 local default_os = resolve_default_value(defaults.os, os_values, "os")
 local default_sync_accel = resolve_sync_default(defaults.sync_accel)
 local default_semihosting = resolve_semihosting_default(defaults.semihosting)
+local default_framework_main = resolve_framework_main_default(defaults.om_framework_main)
 
 --- @option board
 --- @brief 选择板级
@@ -323,5 +335,18 @@ option("semihosting")
     set_showmenu(true)
     set_description("select semihosting mode")
     set_values("off", "on")
+option_end()
+
+--- @option om_framework_main
+--- @brief 框架默认 main 注入策略
+--- @details 仅支持 on/off；on 时 oh_my_robot.selfreg 规则向 binary 注入
+---          lib/source/core/om_main.c（弱符号 main，用户强 main 自动覆盖）；
+---          off 时完全不注入（宿主工程已有自己的 main / 双弱符号规避场景）。
+---          对应 Zephyr CONFIG_APP_LINK_WITH_MAIN 的反向语义，见 ADR-0013。
+option("om_framework_main")
+    set_default(default_framework_main)
+    set_showmenu(true)
+    set_description("inject framework default main into binary targets")
+    set_values("on", "off")
 option_end()
 

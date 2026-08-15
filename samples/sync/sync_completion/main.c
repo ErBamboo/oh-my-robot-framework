@@ -24,6 +24,7 @@
  */
 #include "osal/osal.h"
 #include "core/om_cpu.h"
+#include "core/om_init.h"
 #include "osal/osal_config.h"
 #include "sync/completion.h"
 
@@ -1046,10 +1047,10 @@ test_finish:
 }
 
 /**
- * @brief 例程入口
- * @return 创建测试线程失败返回 -1；成功后启动调度
+ * @brief app 启动设置：创建测试线程（经 OM_INIT_APPLICATION 分散加载，init 线程调用）
+ * @return 创建测试线程失败返回错误码
  */
-int main(void)
+static OmRet sync_completion_app_setup(void)
 {
     OsalThreadAttr test_attr = {
         "sync_cpt_test",
@@ -1058,10 +1059,8 @@ int main(void)
     };
     volatile SyncCompletionTestResult* result = &g_result;
     if (osal_thread_create(&g_test_thread, &test_attr, completion_test_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
-    om_board_init();
-
-
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(sync_completion_app_setup);

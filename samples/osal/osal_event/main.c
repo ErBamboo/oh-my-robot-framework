@@ -8,6 +8,7 @@
  *   - `g_event_result.failed`：失败断言数量
  *   - `g_event_result.done`：用例是否执行完成（1 表示完成）
  */
+#include "core/om_init.h"
 #include "osal/osal.h"
 #include "osal/osal_config.h"
 
@@ -125,10 +126,10 @@ static void osal_event_test_thread_entry(void *arg)
 }
 
 /**
- * @brief 例程入口
- * @return 创建测试线程失败返回 -1；成功后启动调度
+ * @brief app 启动设置：创建测试线程（经 OM_INIT_APPLICATION 分散加载，init 线程调用）
+ * @return 创建测试线程失败返回错误码
  */
-int main(void)
+static OmRet osal_event_app_setup(void)
 {
     OsalThreadAttr test_attr = {
         "osal_event_test",
@@ -137,7 +138,8 @@ int main(void)
     };
 
     if (osal_thread_create(&g_test_thread, &test_attr, osal_event_test_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(osal_event_app_setup);

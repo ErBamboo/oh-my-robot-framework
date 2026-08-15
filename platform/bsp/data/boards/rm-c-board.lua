@@ -41,6 +41,13 @@ local board = {
         "boards/rm-c-board/source/peripherals/serial/serial_it.c",
         "boards/rm-c-board/source/peripherals/gpio/bsp_gpio_it.c",
     },
+    selfreg_sources = {
+        -- OM_INIT 自注册入口：直连 binary，保证 .om_init 回调存活。
+        -- bsp_cpu.c 含 om_board_self_init（BOARD prio0），且其强 HardFault_Handler
+        -- 需覆盖 startup.s 的 weak 版——故必须直连，不能留 in tar_board 任由抽取。
+        -- 板级外设源（source/peripherals/**.c）由 inputs.lua 自动 glob 发现，无需在此列举。
+        "boards/rm-c-board/source/core/bsp_cpu.c",
+    },
     osal = {
         freertos = "boards/rm-c-board/osal/freertos",
     },

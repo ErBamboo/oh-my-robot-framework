@@ -31,6 +31,14 @@ rule("oh_my_robot.board_assets")
                 defines = inputs.defines,
             })
         end
+        local selfreg_sources = bsp.get_board_selfreg_sources(context.board_name)
+        if selfreg_sources and #selfreg_sources > 0 then
+            local inputs = bsp.get_board_build_inputs(context.board_name)
+            target:add("files", selfreg_sources, {
+                includedirs = inputs.includedirs,
+                defines = inputs.defines,
+            })
+        end
         if assets.linkerscript then
             local config = import("core.project.config")
             local linker_flag = config.get("toolchain_linker_flag")

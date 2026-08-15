@@ -16,6 +16,15 @@
 
 #include "bsp_spi.h"
 #include "core/om_def.h"
+#include "core/om_init.h"
+
+/* 分散加载自注册：把 bsp_spi_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
+static OmRet bsp_spi_self_init(void)
+{
+    bsp_spi_register();
+    return OM_OK;
+}
+OM_INIT_BOARD(bsp_spi_self_init);
 
 /*===========================================================================
  * 内部辅助：根据 maxHz 计算 BR 分频（取 <= maxHz 的最大分频）

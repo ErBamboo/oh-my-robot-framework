@@ -1,6 +1,6 @@
 /**
  * @file    main.c
- * @brief   GPIO 硬件在环测试（rm-a-board / STM32F427）
+ * @brief   GPIO 硬件在环测试（rm-a/rm-c 板系）
  * @details
  * 引脚职能（受相邻引脚拓扑约束，仅两条跳线）：
  * - PC2：主循环 5Hz 翻转 →[跳线②]→ PB0（IRQ 触发链路）
@@ -28,6 +28,7 @@
  */
 
 #include "core/om_cpu.h"
+#include "core/om_init.h"
 #include "core/om_def.h"
 #include "drivers/peripheral/gpio/pal_gpio_dev.h"
 #include "osal/osal.h"
@@ -177,11 +178,10 @@ static void gpio_test_task(void *arg)
 
 /* ===== 入口 ===== */
 
-int main(void)
+/* app 自身启动设置：经 OM_INIT_APPLICATION 分散加载，由 init 线程（调度器后）自动调用，
+ * 在此创建业务线程（业务线程优先级低于 init 线程，init 完成后运行）。 */
+static OmRet gpio_app_setup(void)
 {
-    om_board_init();
-    om_core_init();
-
     OsalThreadAttr attr = {
         .name      = "GpioTest",
         .priority  = TEST_THREAD_PRIORITY,
@@ -191,6 +191,6 @@ int main(void)
     if (osal_thread_create(&task, &attr, gpio_test_task, NULL) != OSAL_OK) {
         while (1) {}
     }
-
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(gpio_app_setup);

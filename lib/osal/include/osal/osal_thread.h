@@ -39,7 +39,7 @@ OsalThread* osal_thread_self(void);
  * @param thread 目标线程
  * @param timeout_ms 超时（支持 `OSAL_WAIT_FOREVER`）
  * @return `OSAL_OK` 成功；`OSAL_NOT_SUPPORTED` 端口不支持持；其他为错误码
- * @note 当前 FreeRTOS 端口保持 `OSAL_NOT_SUPPORTED`
+ * @note 当前端口实现保持 `OSAL_NOT_SUPPORTED`
  * @note 禁止ISR 中调用
  */
 OsalStatus osal_thread_join(OsalThread* thread, uint32_t timeout_ms);

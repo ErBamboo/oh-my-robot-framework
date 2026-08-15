@@ -4,6 +4,15 @@
  */
 
 #include "bsp_gpio.h"
+#include "core/om_init.h"
+
+/* 分散加载自注册：把 bsp_gpio_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
+static OmRet bsp_gpio_self_init(void)
+{
+    bsp_gpio_register();
+    return OM_OK;
+}
+OM_INIT_BOARD(bsp_gpio_self_init);
 
 /* ===== STM32 EXTI IRQ 通道映射 ===== */
 

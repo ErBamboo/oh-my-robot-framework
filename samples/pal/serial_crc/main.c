@@ -1,4 +1,5 @@
 #include "core/om_cpu.h"
+#include "core/om_init.h"
 #include "drivers/peripheral/serial/pal_serial_dev.h"
 #include "osal/osal.h"
 #include "osal/osal_time.h"
@@ -71,7 +72,9 @@ void serial_test_task(void* pvParameters)
     }
 }
 
-int main(void)
+/* app 自身启动设置：经 OM_INIT_APPLICATION 分散加载，init 线程（调度器后）自动调用；
+ * 板级自举与硬件初始化由 BOARD 级 initcall 自动完成，无需在此显式调用。 */
+static OmRet serial_crc_app_setup(void)
 {
     OsalThread* task1 = NULL;
     OsalThreadAttr attr = {0};
@@ -82,13 +85,7 @@ int main(void)
     while (result1 != OSAL_OK)
     {
     }
-    om_board_init();
-    om_core_init();
 
-    osal_kernel_start();
-    // 调度成功后不会运行到这里
-    while (1)
-    {
-    }
-    return 0;
+    return OM_OK;
 }
+OM_INIT_APPLICATION(serial_crc_app_setup);

@@ -1,3 +1,4 @@
+#include "core/om_init.h"
 #include "osal/osal.h"
 
 /*
@@ -321,23 +322,27 @@ static void osal_sync_edge_test_thread_entry(void* arg)
     }
 }
 
-int main(void)
+/**
+ * @brief app 启动设置：创建同步原语与测试线程（经 OM_INIT_APPLICATION 分散加载，init 线程调用）
+ * @return 创建失败返回错误码
+ */
+static OmRet osal_sync_app_setup(void)
 {
     /* 创建事件对象 */
     if (osal_event_flags_create(&g_event) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
     /* 创建队列 */
     if (osal_queue_create(&g_queue, TEST_QUEUE_LEN, sizeof(OsalTestMessage)) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
     /* 创建互斥锁 */
     if (osal_mutex_create(&g_mutex) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
     /* 创建信号量 */
     if (osal_sem_create(&g_sem, 10U, 0U) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
     /* 创建线程 */
     OsalThreadAttr producer_thread_attr = {"osal_prod", 512U * OSAL_STACK_WORD_BYTES, 2U};
@@ -347,22 +352,22 @@ int main(void)
     OsalThreadAttr edge_test_thread_attr = {"osal_edge", 768U * OSAL_STACK_WORD_BYTES, 2U};
 
     if (osal_thread_create(&g_producer_thread, &producer_thread_attr, osal_sync_producer_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
     if (osal_thread_create(&g_consumer_thread, &consumer_thread_attr, osal_sync_consumer_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
     if (osal_thread_create(&g_monitor_thread, &monitor_thread_attr, osal_sync_monitor_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
     if (osal_thread_create(&g_counter_thread, &counter_thread_attr, osal_sync_counter_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
     if (osal_thread_create(&g_edge_test_thread, &edge_test_thread_attr, osal_sync_edge_test_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
     /* 创建并启动定时器 */
     if (osal_timer_create(&g_timer, "osal_timer", TEST_TIMER_MS, OSAL_TIMER_PERIODIC, NULL, osal_sync_timer_callback) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
     if (osal_timer_start(g_timer, OSAL_WAIT_FOREVER) != OSAL_OK)
-        return -1;
+        return OM_ERR_BUSY;
 
-    /* 启动调度 */
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(osal_sync_app_setup);

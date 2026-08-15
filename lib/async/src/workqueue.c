@@ -6,11 +6,10 @@
  *
  * ## 并发模型：开关中断 (irq_lock)
  *
- * 单核 Cortex-M + FreeRTOS 下，所有并发源自 ISR 打断线程。本实现使用
+ * 单核 MCU + RTOS 下，所有并发源自 ISR 打断线程。本实现使用
  * 统一的关中断临界区（irq_lock）保护 pending 链表和 Work.flags：
  *
- *   - **线程上下文**: osal_irq_lock_task() → taskENTER_CRITICAL()
- *     （禁用中断 + 禁止任务切换）
+ *   - **线程上下文**: osal_irq_lock_task()（禁用中断 + 禁止任务切换）
  *   - **ISR 上下文**: osal_irq_lock_from_isr() → 保存并屏蔽中断掩码
  *
  * irq_lock 临界区内代码极为简短（几个指针赋值 + 位操作），关中断时间可忽略。
@@ -236,7 +235,7 @@ OmRet workqueue_deinit(Workqueue *wq)
 /**
  * @brief 启动 worker 线程
  *
- * 通过 irq_lock 将状态从 IDLE 切换到 RUNNING，然后创建 FreeRTOS 任务
+ * 通过 irq_lock 将状态从 IDLE 切换到 RUNNING，然后创建任务
  * 作为 worker 线程。如果线程创建失败，状态回退到 IDLE。
  *
  * @param wq  已初始化的工作队列。

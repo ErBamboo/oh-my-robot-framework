@@ -9,6 +9,7 @@
 /* Framework Includes */
 #include "algorithm/controller/pid.h"
 #include "core/om_cpu.h"
+#include "core/om_init.h"
 #include "osal/osal.h"
 #include "osal/osal_time.h"
 
@@ -254,16 +255,15 @@ void control_task_func(void* arg)
     }
 }
 
-/* --- 5. 主函数 --- */
+/* --- 5. app 启动设置 --- */
 
 /**
- * @brief 硬件初始化与任务创建
+ * @brief app 启动设置：创建控制/逻辑任务（经 OM_INIT_APPLICATION 分散加载，init 线程调用）
+ * @details 板级自举与硬件初始化由 BOARD 级 initcall 自动完成，无需在此显式调用。
  */
-int main(void)
+static OmRet dji_motor_app_setup(void)
 {
-    om_board_init();
-    om_core_init();
-    /* 4. 创建 OSAL 任务 */
+    /* 创建 OSAL 任务 */
     OsalThreadAttr control_thread_attr = {0};
     OsalThreadAttr logic_thread_attr = {0};
     control_thread_attr.name = "ControlTask";
@@ -281,9 +281,6 @@ int main(void)
     {
     };
 
-    osal_kernel_start();
-    /* 正常情况不会运行到这里 */
-    for (;;)
-        ;
-    return 0;
+    return OM_OK;
 }
+OM_INIT_APPLICATION(dji_motor_app_setup);
