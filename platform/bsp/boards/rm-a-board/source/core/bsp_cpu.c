@@ -106,18 +106,8 @@ static OmRet om_board_self_init(void)
 
 OM_INIT(om_board_self_init, OM_INIT_LEVEL_BOARD, 0);
 
-/**
-  * @brief  This function handles Hard Fault exception.
-  * @param  None
-  * @retval None
-  */
-  void HardFault_Handler(void)
-  {
-    /* Go to infinite loop when Hard Fault exception occurs */
-    while (1)
-    {
-    }
-  }
+/* HardFault_Handler 已上移为架构共享实现（arch/cortex-m/om_hardfault.c → om_fatal_error，
+ * 见 ADR-0014），板级不再自写。 */
 
 /**
   * @brief  This function handles NMI exception.

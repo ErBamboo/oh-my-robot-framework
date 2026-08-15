@@ -131,12 +131,10 @@
 /* 调试                                                                      */
 /*---------------------------------------------------------------------------*/
 
-#define configASSERT(x)              \
-    if ((x) == 0) {                   \
-        taskDISABLE_INTERRUPTS();     \
-        for (;;)                      \
-            ;                         \
-    }
+/* 断言：configASSERT 失败 → vAssertCalled（端口层 osal_fatal_freertos.c 强符号实现
+ * → om_fatal_error(OM_FATAL_ASSERT)，统一收口替代本地死循环，见 ADR-0014） */
+extern void vAssertCalled(const char *file, int line);
+#define configASSERT(x) if ((x) == 0) vAssertCalled(__FILE__, __LINE__)
 
 /*---------------------------------------------------------------------------*/
 /* MPU — Cortex-M0+ 无硬件 MPU                                              */

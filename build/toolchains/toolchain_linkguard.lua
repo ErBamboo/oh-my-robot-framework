@@ -332,6 +332,48 @@ local function verify_binary_init_symbols(target, toolchain_name)
     }
 end
 
+--- 必须由共享实现提供的 binary 强符号（weak = 只有启动文件兜底，收口失效）
+--- 当前：HardFault_Handler 须为架构共享实现（arch/cortex-m/om_hardfault.c → om_fatal_error，
+--- 见 ADR-0014）；weak 说明启动文件 Default_Handler 兜底仍在生效（板级删实现时漏接共享源）。
+local REQUIRED_BINARY_STRONG_SYMBOLS = {"HardFault_Handler"}
+
+--- 校验最终 binary 的关键共享强符号（HardFault 统一收口）
+---@param target target 二进制目标
+---@param toolchain_name string|nil
+---@return table report
+local function verify_binary_strong_symbols(target, toolchain_name)
+    local artifact = target:targetfile()
+    if not artifact or artifact == "" or not os.isfile(artifact) then
+        return {
+            ok = false,
+            reason = "binary artifact not found: " .. tostring(artifact),
+        }
+    end
+    local states, parse_error = resolve_symbol_states(artifact, REQUIRED_BINARY_STRONG_SYMBOLS, toolchain_name)
+    if not states then
+        return {
+            ok = false,
+            reason = "binary symbol resolve failed: " .. tostring(parse_error),
+        }
+    end
+    local missing, weak_only = summarize_symbol_states(states)
+    if #missing > 0 or #weak_only > 0 then
+        return {
+            ok = false,
+            binary = true,
+            artifact = artifact,
+            missing = missing,
+            weak_only = weak_only,
+            reason = "binary missing shared strong symbols (HardFault 统一收口失效)",
+        }
+    end
+    return {
+        ok = true,
+        binary = true,
+        artifact = artifact,
+    }
+end
+
 --- 校验 OM 链接契约
 ---@param target target
 ---@param context table|nil
@@ -361,6 +403,12 @@ function verify_om_link_contract(target, context)
         failures[#failures + 1] = binary_report
     end
 
+    local strong_report = verify_binary_strong_symbols(target, toolchain_name)
+    checks[#checks + 1] = strong_report
+    if not strong_report.ok then
+        failures[#failures + 1] = strong_report
+    end
+
     if #failures == 0 then
         return {
             ok = true,
@@ -379,6 +427,9 @@ function verify_om_link_contract(target, context)
             )
             if failure.missing and #failure.missing > 0 then
                 lines[#lines + 1] = "[oh-my-robot]     missing boundary symbols: " .. table.concat(failure.missing, ", ")
+            end
+            if failure.weak_only and #failure.weak_only > 0 then
+                lines[#lines + 1] = "[oh-my-robot]     weak-only shared symbols: " .. table.concat(failure.weak_only, ", ")
             end
             lines[#lines + 1] = "[oh-my-robot]     action: 为该板链接脚本添加每级 .om_init_<N> 段（见 docs/build/maintenance_manual.md §11.5）"
         elseif failure.provider then

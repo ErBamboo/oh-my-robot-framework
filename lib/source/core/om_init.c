@@ -105,6 +105,12 @@ static OmRet om_init_call_one(const OmInitEntry *e)
     return ret;
 }
 
+/** @brief 最近一次 om_do_initcalls 的首个失败回调名（无失败则 NULL）——供 fatal context 诊断 */
+const char *om_init_last_fail_name(void)
+{
+    return s_first_fail_name;
+}
+
 OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi)
 {
     s_first_fail_name = NULL;
