@@ -1,6 +1,6 @@
 /**
  * @file    main.c
- * @brief   GPIO 硬件在环测试（rm-a-board / STM32F427）
+ * @brief   GPIO 硬件在环测试（rm-a/rm-c 板系）
  * @details
  * 引脚职能（受相邻引脚拓扑约束，仅两条跳线）：
  * - PC2：主循环 5Hz 翻转 →[跳线②]→ PB0（IRQ 触发链路）
@@ -178,12 +178,10 @@ static void gpio_test_task(void *arg)
 
 /* ===== 入口 ===== */
 
-int main(void)
+/* app 自身启动设置：经 OM_INIT_APPLICATION 分散加载，由 init 线程（调度器后）自动调用，
+ * 在此创建业务线程（业务线程优先级低于 init 线程，init 完成后运行）。 */
+static OmRet gpio_app_setup(void)
 {
-    /* 分散加载初始化：自动执行 EARLIEST+BOARD+DRIVER 级（含 om_board_init 与
-     * bsp_*_register 自注册），等价于旧版显式 om_board_init()+om_core_init()。 */
-    (void)om_do_initcalls(OM_INIT_LEVEL_EARLIEST, OM_INIT_LEVEL_SERVICE);
-
     OsalThreadAttr attr = {
         .name      = "GpioTest",
         .priority  = TEST_THREAD_PRIORITY,
@@ -193,6 +191,16 @@ int main(void)
     if (osal_thread_create(&task, &attr, gpio_test_task, NULL) != OSAL_OK) {
         while (1) {}
     }
+    return OM_OK;
+}
+OM_INIT_APPLICATION(gpio_app_setup);
 
-    return osal_kernel_start();
+int main(void)
+{
+    /* 系统启动编排：调度器前 EARLIEST+BOARD+DRIVER，init 线程跑 SERVICE..LATE
+     * （含 OM_INIT_APPLICATION 注册的 gpio_app_setup），不返回。 */
+    om_system_startup();
+    while (1)
+    {
+    }
 }
