@@ -36,7 +36,7 @@
   - `void om_startup_post_scheduler(void)`：建 init 线程（CRITICAL 带）→ `osal_kernel_start()`（不返回）；线程创建失败 / 调度器启动失败 → `om_fatal_error(OM_FATAL_STARTUP, ...)`
   - `om_system_startup()`：= pre + post 默认组合接线；pre 失败 → `om_fatal_error`——**行为不变（纯内部重构 + 失败路径补全）**
 - **触发源接入（本次范围，严格限定）**：initcall 失败（**调度器前后对称**：pre 段失败由 `om_system_startup` 检查、init 线程内 `SERVICE..LATE` 失败由线程检查，均 `om_fatal_error(OM_FATAL_STARTUP)`——"记录并继续"仅限 `om_do_initcalls` 扫描内部，调用方级策略为"启动期失败一律显式停机"）/ init 线程创建失败 / 调度器启动失败
-- **明确排除**（各自独立演进，未来收敛到同一入口）：HardFault 统一收口（platform 层）、任务栈溢出 hook（RTOS 配置层）——**断言机制已随本 ADR 一并接入**（`OM_ASSERT` → `OM_FATAL_ASSERT`，见 `core/om_assert.h`）
+- **明确排除**（各自独立演进，未来收敛到同一入口）：HardFault 统一收口（platform 层）——**断言机制与栈溢出已随本 ADR 一并接入**：`OM_ASSERT` → `OM_FATAL_ASSERT`（见 `core/om_assert.h`）；FreeRTOS `configASSERT` 失败 → `vAssertCalled` → `OM_FATAL_ASSERT`、栈溢出 → `vApplicationStackOverflowHook` → `OM_FATAL_STACK_OVERFLOW`（见 `platform/osal/freertos/osal_fatal_freertos.c`，板级 FreeRTOSConfig.h 不再自写 printf 宏/本地死循环）
 
 ## 影响 (Consequences)
 
@@ -48,7 +48,7 @@
   - weak 纪律不变：仅框架侧扩展点；应用层不得自行用 weak
 - **兼容**：`om_system_startup()` 行为不变；API 纯新增（`om_fatal_error` / `om_fatal_handler` / `om_startup_pre_scheduler` / `om_startup_post_scheduler`）
 - **后续演进**（设施保持最小——恢复是 handler 策略，不内建；以下按触发需求逐步落地）：
-  - **触发源扩展**：HardFault/栈溢出统一接入 `om_fatal_error`（需动 platform/RTOS 层；断言已接入：`OM_ASSERT` → `OM_FATAL_ASSERT`）；fatal 记录点接日志服务（SERVICE 级就绪后）
+  - **触发源扩展**：HardFault 统一收口（platform 层，共享 strong 实现上移 + 删板级自写 + linkguard 校验，独立 PR）；fatal 记录点接日志服务（SERVICE 级就绪后）
   - **受控恢复机制**（参照 Zephyr `sys_reboot` / Linux `panic_timeout` / MCUboot 回退 / WDT 兜底）：
     1. **软复位原语**：port 层 `om_port_system_reset()`——handler 内主动复位（最常用恢复路径）
     2. **超时自动重启样板**：Linux `panic_timeout` 模式——handler 延时 + 复位 + 重启计数（**无人值守场景**；作为 handler 样板文档给出，不内建）
