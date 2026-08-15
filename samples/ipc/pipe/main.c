@@ -13,6 +13,7 @@
  * - 判定标准：`g_result.done == 1` 且 `g_result.failed == 0`
  */
 #include "core/om_def.h"
+#include "core/om_init.h"
 #include "osal/osal.h"
 #include "ipc/pipe.h"
 
@@ -437,7 +438,8 @@ static void pipe_test_thread_entry(void* arg)
         (void)osal_sleep_ms(1000u);
 }
 
-int main(void)
+/* app 自身启动设置：经 OM_INIT_APPLICATION 分散加载，init 线程（调度器后）自动调用 */
+static OmRet pipe_app_setup(void)
 {
     OsalThreadAttr test_attr = {
         "pipe_test",
@@ -446,7 +448,8 @@ int main(void)
     };
 
     if (osal_thread_create(&g_test_thread, &test_attr, pipe_test_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(pipe_app_setup);

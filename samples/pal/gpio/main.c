@@ -194,13 +194,3 @@ static OmRet gpio_app_setup(void)
     return OM_OK;
 }
 OM_INIT_APPLICATION(gpio_app_setup);
-
-int main(void)
-{
-    /* 系统启动编排：调度器前 EARLIEST+BOARD+DRIVER，init 线程跑 SERVICE..LATE
-     * （含 OM_INIT_APPLICATION 注册的 gpio_app_setup），不返回。 */
-    om_system_startup();
-    while (1)
-    {
-    }
-}

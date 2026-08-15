@@ -12,6 +12,7 @@
 #include "algorithm/controller/pid.h"
 #include "core/om_cpu.h"
 #include "core/om_def.h"
+#include "core/om_init.h"
 #include "drivers/motor/vendors/direct_drive/P1010B.h"
 #include "drivers/peripheral/can/pal_can_dev.h"
 #include "osal/osal_thread.h"
@@ -518,27 +519,29 @@ static void p1010b_speed_loop_thread_entry(void *argument)
 /* 主函数                                                                     */
 /* -------------------------------------------------------------------------- */
 
-int main(void)
+/**
+ * @brief app 启动设置：初始化 CAN/电机总线与 PID，创建速度环线程
+ *        （经 OM_INIT_APPLICATION 分散加载，init 线程调用，可阻塞/IPC）
+ * @return 初始化或创建线程失败返回对应错误码
+ */
+static OmRet p1010b_app_setup(void)
 {
     OmRet awlf_ret;
     OsalStatus osal_ret;
     OsalThreadAttr speed_loop_thread_attr = {0};
 
-    om_board_init();
-    om_core_init();
-
     awlf_ret = p1010b_sample_init_bus_and_motor();
     if (awlf_ret != OM_OK)
     {
         p1010b_sample_release_resources();
-        return -1;
+        return awlf_ret;
     }
 
     awlf_ret = p1010b_sample_init_speed_pid(&g_motor_node);
     if (awlf_ret != OM_OK)
     {
         p1010b_sample_release_resources();
-        return -1;
+        return awlf_ret;
     }
 
     speed_loop_thread_attr.name = "p1010b_speed";
@@ -549,8 +552,9 @@ int main(void)
     if (osal_ret != OSAL_OK)
     {
         p1010b_sample_release_resources();
-        return -1;
+        return OM_ERR_NO_MEM;
     }
 
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(p1010b_app_setup);

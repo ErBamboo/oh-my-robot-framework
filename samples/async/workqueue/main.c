@@ -11,6 +11,7 @@
  *   - g_result.done    : 测试是否已执行完成（1 表示完成）
  */
 
+#include "core/om_init.h"
 #include "async/workqueue.h"
 #include "data_struct/corelist.h"
 #include "osal/osal.h"
@@ -482,7 +483,8 @@ static void test_thread_entry(void *arg)
  * 例程入口
  * -------------------------------------------------------------------------- */
 
-int main(void)
+/* app 自身启动设置：经 OM_INIT_APPLICATION 分散加载，init 线程（调度器后）自动调用 */
+static OmRet wq_app_setup(void)
 {
     OsalThreadAttr test_attr = {
         "wq_test",
@@ -493,7 +495,8 @@ int main(void)
 
     if (osal_thread_create(&test_thread, &test_attr,
                            test_thread_entry, NULL) != OSAL_OK)
-        return -1;
+        return OM_ERR_NO_MEM;
 
-    return osal_kernel_start();
+    return OM_OK;
 }
+OM_INIT_APPLICATION(wq_app_setup);
