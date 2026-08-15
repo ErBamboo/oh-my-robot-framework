@@ -1375,7 +1375,9 @@ static DevInterface can_dev_interface = {
 OmRet hal_can_register(HalCanHandler *can, char *name, void *handle, uint32_t regparams)
 {
     OmRet ret;
-    if (!can || !name || !can->adapterInterface)
+    /* hwInterface 为板侧适配层契约（板瘦身共享适配层）；缺失会在 can_open 处 NULL 解引用，
+     * 症状晚且难查，故注册期即校验。 */
+    if (!can || !name || !can->adapterInterface || !can->hwInterface)
         return OM_ERROR_PARAM;
     can->parent.type = DEVICE_TYPE_CAN;
     can->parent.handle = handle;
