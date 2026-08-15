@@ -10,6 +10,24 @@ target("tar_awcore")
     add_rules("oh_my_robot.context", {public = true})
     add_includedirs("include", {public = true})
     add_files("source/core/**.c")
+    -- om_system_startup.c 移除：它调用 osal，由 tar_awkernel 编译（保持本目标 OS 无关）
+    remove_files("source/core/om_system_startup.c")
+target_end()
+
+--- @target tar_awkernel
+--- @brief 内核层目标：启动编排（init 子系统需要 osal 的部分）
+--- @details 编译 source/core/om_system_startup.c（提供 om_system_startup()），
+---          文件与 om_init.c 同目录（同属 init 子系统）但在此编译：
+---          它调用 osal，而 tar_os→tar_awapi_osal→tar_awcore 已成链，
+---          并入 tar_awcore 会造成构建环；同时保持 tar_awcore OS 无关。
+target("tar_awkernel")
+    set_kind("static")
+    add_rules("oh_my_robot.context")
+    add_deps("tar_awcore", {public = true})
+    add_deps("tar_awapi_osal", {public = true})
+    add_deps("tar_os", {public = true})
+    add_includedirs("include", {public = true})
+    add_files("source/core/om_system_startup.c")
 target_end()
 
 --- @target tar_awapi_osal
