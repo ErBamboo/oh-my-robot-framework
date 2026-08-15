@@ -44,6 +44,7 @@ local board = {
         -- 板级外设源（source/peripherals/**.c）由 inputs.lua 自动 glob 发现，无需在此列举。
         -- 共享适配层实现（含 OM_INIT 自注册）不在自动 glob 范围，须显式引用（opt-in 铁律）。
         "boards/rm-c-board/source/core/bsp_cpu.c",
+        "arch/cortex-m/om_hardfault.c", -- 架构共享强 HardFault_Handler（覆盖 startup weak，须直连），ADR-0014
         "vendor/STM32/STM32F4/adapters/can/bsp_can_f4.c",
         "vendor/STM32/STM32F4/adapters/gpio/bsp_gpio_f4.c",
         "vendor/STM32/STM32F4/adapters/serial/bsp_serial_f4.c",

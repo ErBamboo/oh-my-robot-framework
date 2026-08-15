@@ -36,7 +36,10 @@
   - `void om_startup_post_scheduler(void)`：建 init 线程（CRITICAL 带）→ `osal_kernel_start()`（不返回）；线程创建失败 / 调度器启动失败 → `om_fatal_error(OM_FATAL_STARTUP, ...)`
   - `om_system_startup()`：= pre + post 默认组合接线；pre 失败 → `om_fatal_error`——**行为不变（纯内部重构 + 失败路径补全）**
 - **触发源接入（本次范围，严格限定）**：initcall 失败（**调度器前后对称**：pre 段失败由 `om_system_startup` 检查、init 线程内 `SERVICE..LATE` 失败由线程检查，均 `om_fatal_error(OM_FATAL_STARTUP)`——"记录并继续"仅限 `om_do_initcalls` 扫描内部，调用方级策略为"启动期失败一律显式停机"）/ init 线程创建失败 / 调度器启动失败
-- **明确排除**（各自独立演进，未来收敛到同一入口）：HardFault 统一收口（platform 层）——**断言机制与栈溢出已随本 ADR 一并接入**：`OM_ASSERT` → `OM_FATAL_ASSERT`（见 `core/om_assert.h`）；FreeRTOS `configASSERT` 失败 → `vAssertCalled` → `OM_FATAL_ASSERT`、栈溢出 → `vApplicationStackOverflowHook` → `OM_FATAL_STACK_OVERFLOW`（见 `platform/osal/freertos/osal_fatal_freertos.c`，板级 FreeRTOSConfig.h 不再自写 printf 宏/本地死循环）
+- **触发源全部接入**（各触发源各自接入，收敛同一入口）：
+  - `OM_ASSERT` → `OM_FATAL_ASSERT`（见 `core/om_assert.h`，携带 `__FILE__:__LINE__`）
+  - FreeRTOS `configASSERT` 失败 → `vAssertCalled` → `OM_FATAL_ASSERT`；栈溢出 → `vApplicationStackOverflowHook` → `OM_FATAL_STACK_OVERFLOW`（`platform/osal/freertos/osal_fatal_freertos.c`，板级 FreeRTOSConfig.h 不再自写 printf 宏/本地死循环）
+  - **HardFault** → `OM_FATAL_HW_FAULT`：架构共享 strong 实现 `platform/bsp/arch/cortex-m/om_hardfault.c`（naked 汇编捕获异常 PC → `om_fatal_error`），板级 `bsp_cpu.c` 删除自写 while(1)；linkguard 校验 `HardFault_Handler` 必须为 strong（weak = 启动文件兜底仍在生效，收口失效）
 
 ## 影响 (Consequences)
 
