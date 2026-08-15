@@ -59,7 +59,7 @@
 - **职责**：平台无关基础（基础类型、错误码、通用宏、原子操作、平台无关数据结构）与操作系统抽象（线程、互斥、信号量、队列、时间、定时器、事件对象），以及**分散加载自动注册初始化系统**（init 级别、`om_do_initcalls`、启动编排 `om_system_startup`）。
 - **内部子模块**（构建上仍是独立 target，架构上同一层，可互调）：
   - `kernel-core`（原 core）：定义/原语 + init 注册机制（`OmInitEntry`/`OM_INIT`/`om_do_initcalls`）。**保持 OS 无关（不调用 osal），由约定保证**——供主机侧编译测试（samples/host）；
-  - `kernel-os`（原 osal）：OS 抽象 API；init 子系统（含 `om_system_startup`）可调用 osal——调度器分裂在此编排（调度器前 `EARLIEST/BOARD/DRIVER` 跑在框架默认 main（弱符号，用户不写，见 ADR-0012），调度器后 `SERVICE/SYSTEM/LATE` 跑 init 线程）。
+  - `kernel-os`（原 osal）：OS 抽象 API；init 子系统（含 `om_system_startup`）可调用 osal——调度器分裂在此编排（调度器前 `EARLIEST/BOARD/DRIVER` 跑在框架默认 main（弱符号，用户不写，见 ADR-0013），调度器后 `SERVICE/SYSTEM/LATE` 跑 init 线程）。
 - **规则**：kernel 内部子模块可互调；OSAL 端口实现位于 `platform/`，由构建系统按目标选择性编译，不得混杂在 osal 公共接口中。
 - **可依赖**：`third_party`（经 platform 端口间接注入，方向仍自上而下）。
 - **禁止依赖**：`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。

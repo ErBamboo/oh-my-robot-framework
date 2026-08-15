@@ -342,7 +342,7 @@ option_end()
 --- @details 仅支持 on/off；on 时 oh_my_robot.selfreg 规则向 binary 注入
 ---          lib/source/core/om_main.c（弱符号 main，用户强 main 自动覆盖）；
 ---          off 时完全不注入（宿主工程已有自己的 main / 双弱符号规避场景）。
----          对应 Zephyr CONFIG_APP_LINK_WITH_MAIN 的反向语义，见 ADR-0012。
+---          对应 Zephyr CONFIG_APP_LINK_WITH_MAIN 的反向语义，见 ADR-0013。
 option("om_framework_main")
     set_default(default_framework_main)
     set_showmenu(true)
