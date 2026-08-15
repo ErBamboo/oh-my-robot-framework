@@ -334,33 +334,42 @@ target("tar_board")
 target_end()
 ```
 
-### 11.5 链接脚本 `.om_init` 段（自动注册初始化）
+### 11.5 链接脚本 `.om_init_<N>` 段（自动注册初始化）
 
-`om_init` 是 OM 框架的分散加载自动注册初始化系统（参考 Linux initcall / Zephyr SYS_INIT）：模块通过 `OM_INIT_<LEVEL>(func)` 或 `OM_INIT(func, level, prio)` 将 `OmInitEntry` 注册到 `.om_init` 段，`om_do_initcalls(lo, hi)` 在启动期遍历该段、按 (level, prio) 排序后依次调用，`main()` 无需显式调用各模块 init。级别按依赖轴镜像分层（`EARLIEST/BOARD/DRIVER/SERVICE/SYSTEM/LATE`），详见 `lib/include/core/om_init.h` 与 ADR-0010。
+`om_init` 是 OM 框架的分散加载自动注册初始化系统（参考 Linux initcall / Zephyr SYS_INIT）：模块通过 `OM_INIT_<LEVEL>(func)` 或 `OM_INIT(func, level, prio)` 将 `OmInitEntry` 注册到**每级一段**的 `.om_init_<N>` 段（N = 级别数值），`om_do_initcalls(lo, hi)` 在启动期逐级遍历、同级按 prio 排序后依次调用，`main()` 无需显式调用各模块 init。级别按依赖轴镜像分层（`EARLIEST=0 / BOARD=1 / DRIVER=2 / SERVICE=3 / SYSTEM=4 / APPLICATION=5 / LATE=6`），详见 `lib/include/core/om_init.h` 与 ADR-0010。
 
-新板移植时，链接脚本**必须**包含 `.om_init` 段定义，否则自注册回调会运行期静默丢失。框架通过两个外部符号定位段边界：
+新板移植时，链接脚本**必须**包含全部 7 个级别段的定义（**级别顺序由链接脚本按段排列保证**，链接期解析），否则自注册回调会运行期静默丢失（缺失段的边界符号被 C 侧 extern 引用，会直接链接报 undefined reference）。框架通过每级两个外部符号定位段边界：
 
 | 符号 | 说明 |
 |------|------|
-| `__om_init_start` | 回调表起始地址 |
-| `__om_init_end` | 回调表结束地址 |
+| `__om_init_<N>_start` | 级别 N 回调表起始地址 |
+| `__om_init_<N>_end` | 级别 N 回调表结束地址 |
 
-**GCC LD 模板**（置于 `.isr_vector` 之后、`.text` 之前）：
+**GCC LD 模板**（置于 `.isr_vector` 之后、`.text` 之前；每级一节，共 7 节按级别顺序排列）：
 
 ```ld
-.om_init :
+.om_init_0 :
 {
   . = ALIGN(4);
-  PROVIDE(__om_init_start = .);
-  KEEP(*(.om_init))
-  PROVIDE(__om_init_end = .);
+  PROVIDE(__om_init_0_start = .);
+  KEEP(*(.om_init_0))
+  PROVIDE(__om_init_0_end = .);
   . = ALIGN(4);
 } >ROM
+.om_init_1 :
+{
+  . = ALIGN(4);
+  PROVIDE(__om_init_1_start = .);
+  KEEP(*(.om_init_1))
+  PROVIDE(__om_init_1_end = .);
+  . = ALIGN(4);
+} >ROM
+/* ... .om_init_2 .. .om_init_6 依此类推，按级别顺序排列 ... */
 ```
 
 `KEEP` 防止链接器在 `--gc-sections` 下丢弃回调表项。
 
-**armlink scatter 模板：**
+**armlink scatter 模板**（每级一个执行域，按级别顺序）：
 
 ```sct
 LR_IROM1 0x08000000 ...  {
@@ -368,19 +377,25 @@ LR_IROM1 0x08000000 ...  {
    *.o (RESET, +First)
    *(InRoot$$Sections)
   }
-  ER_OM_INIT +0  {               ; OM_INIT 回调表
-   *(.om_init)
+  ER_OM_INIT_0 +0  {             ; 0 级（EARLIEST）回调表
+   *(.om_init_0)
   }
+  ER_OM_INIT_1 +0  {             ; 1 级（BOARD）
+   *(.om_init_1)
+  }
+  /* ... ER_OM_INIT_2 .. ER_OM_INIT_6 依此类推，按级别顺序排列 ... */
   ER_RO +0  { ... }
   ...
 }
 ```
 
-armlink 自动为每个执行域生成 `Image$$ER_OM_INIT$$Base` / `Image$$ER_OM_INIT$$Limit` 符号。`om_init.c` 在 `__ARMCC_VERSION` 下直接 `extern` 引用这两个符号（armclang 允许 `$` 出现在标识符中）并宏重命名为 `__om_init_start`/`__om_init_end`，**无需板级别名文件**（历史上的 `.set` 别名方案在最终符号表中被省略，已弃用）。GCC ld 的边界符号由链接脚本 `PROVIDE` 直接提供。
+armlink 自动为每个执行域生成 `Image$$ER_OM_INIT_<N>$$Base` / `Image$$ER_OM_INIT_<N>$$Limit` 符号。`om_init.c` 在 `__ARMCC_VERSION` 下直接 `extern` 引用这些符号（armclang 允许 `$` 出现在标识符中）并宏重命名为 `__om_init_<N>_start/end`，**无需板级别名文件**（历史上的 `.set` 别名方案在最终符号表中被省略，已弃用）。GCC ld 的边界符号由链接脚本 `PROVIDE` 直接提供。
+
+**同级排序说明：** 级别顺序由链接器保证；同级内执行顺序由 prio 决定（启动期一次小排序）——armlink 无段内 `SORT_BY_NAME` 等价物，故 OMR 不做链接期 prio 排序（Zephyr 仅 GCC/Clang 系才用链接期排序）。
 
 **自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。
 
-**校验：** 构建后 linkguard 会按工具链校验最终 ELF 的边界符号（GCC 查 `__om_init_start/end`、armclang 查 `Image$$ER_OM_INIT$$Base/Limit`）；若缺失，构建期即报错（"该板链接脚本未提供 `.om_init` 段边界符号"），不再等到运行期静默失败。
+**校验：** 构建后 linkguard 会按工具链校验最终 ELF 的每级边界符号（GCC 查 `__om_init_<N>_start/end`、armclang 查 `Image$$ER_OM_INIT_<N>$$Base/Limit`，N=0..6）；若缺失，构建期即报错（"该板链接脚本未提供每级 `.om_init_<N>` 段边界符号"），不再等到运行期静默失败。
 
 ### 11.6 新增 OS
 目录：`oh-my-robot/platform/osal/myos/`，编写 `xmake.lua`：

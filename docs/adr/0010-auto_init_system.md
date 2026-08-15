@@ -1,6 +1,6 @@
 # ADR-0010：分散加载自动注册初始化系统
 
-- 状态：已实施（Phase 1-3，rm-a/rm-c-board，gnu-rm + armclang 验证通过）
+- 状态：已实施（Phase 1-3 + kernel 层合并，rm-a/rm-c-board，gnu-rm + armclang 验证通过）
 - 日期：2026-07-30
 - 参考：Linux initcall、Zephyr SYS_INIT、RT-Thread auto-init
 
@@ -18,8 +18,9 @@ OMR 启动当前靠 `main()` 显式调用一长串 `bsp_*_register()` / `xxx_ini
 - 否决单级扩展（无法表达分层依赖）与 6 级照搬（与 priority 重复）。
 
 ### 段布局与排序
-- **每级一段 + 链接期 `SORT_BY_NAME`（Zephyr 风）**：armlink scatter 无段内 SORT 等价物，跨工具链不可移植。
-- **单段 `.om_init` + 启动期按 (level,prio) 排序（采纳）**：每板链接脚本只加 1 段、出错面最小；N 小，启动期选择排序成本可忽略。
+- **每级一段 + 链接期 `SORT_BY_NAME` 排同级 prio（Zephyr 风）**：armlink scatter 无段内 SORT 等价物，跨工具链不可移植。
+- **每级一段 `.om_init_<N>` + 链接期级别顺序 + 启动期同级 prio 排序（采纳，最终方案）**：级别顺序由链接脚本按段排列保证（Linux/RT-Thread 同款，链接期解析、零运行期成本）；同级 prio 在启动期做一次小排序（表项少，成本可忽略；armlink 无段内排序等价物，故不做链接期 prio 排序）。
+- 早期曾采用"单段 + 启动期 (level,prio) 全排序"，后按成熟框架做法改为每级一段（级别顺序链接期）——见本轮演进。
 
 ### 自注册 entry 的抽取保障（核心难点）
 静态库按需抽取会丢弃无外部引用的自注册 `.o`。`OM_USED`/`KEEP` 都救不回（前者只挡编译器，后者只对已抽取的 `.o` 生效）。候选：
@@ -35,8 +36,8 @@ OMR 启动当前靠 `main()` 显式调用一长串 `bsp_*_register()` / `xxx_ini
 
 - **级别**（依赖轴）：`OM_INIT_LEVEL_EARLIEST/BOARD/DRIVER/SERVICE/SYSTEM/LATE`，枚举 `OmInitLevel`。
 - **API**：`OM_INIT(func, level, prio)` 主宏（`__COUNTER__` 唯一符号，允许同 func 多级注册）；`OM_INIT_<LEVEL>(fn)` 别名（默认 prio=50）。回调签名 `OmRet (*)(void)`。
-- **段**：单段 `.om_init`，entry `{fn, name, level, prio}`；GCC 用链接脚本 `PROVIDE __om_init_start/end`，armmlink 用 `Image$$ER_OM_INIT$$Base/Limit`（om_init.c 直接 extern + 宏重命名）。
-- **编排**：`om_do_initcalls(lo, hi)` 遍历段、筛级别、按 (level,prio) 选择排序、依次调用、失败记录并继续（`OM_INIT_ABORT_ON_FAIL` 可中止）。
+- **段**：每级一段 `.om_init_<N>`（N=级别数值，级别常量定义为宏以便拼段名），链接脚本按级排列 → 级别顺序链接期解析；GCC 每级 `PROVIDE __om_init_<N>_start/end`，armmlink 每级执行域 `ER_OM_INIT_<N>` → `Image$$ER_OM_INIT_<N>$$Base/Limit`（om_init.c 直接 extern + 宏重命名）。
+- **编排**：`om_do_initcalls(lo, hi)` 逐级遍历对应段（级别顺序已由链接器保证）、同级按 prio 选择排序、依次调用、失败记录并继续（`OM_INIT_ABORT_ON_FAIL` 可中止）。
 - **抽取保障**（两路直连注入，规避静态库按需抽取）：
   - 框架自注册源（`lib/systems/src`、`lib/services/src`）：`oh_my_robot.selfreg` 规则 `on_config` 时 glob 直接 `target:add("files")` 进 binary；
   - 板级自注册源：每个 `bsp_*_impl.c` 在自己文件里 `OM_INIT_BOARD(bsp_*_self_init)` 自注册（包一层 `void→OmRet` wrapper），由 `inputs.lua` 自动 glob `boards/<board>/source/peripherals/**.c`（排除 `override_sources` 的 `_it.c`）→ 进 `selfreg_sources` → 从 `tar_board` 剔除 + `board_assets` 直连 binary；`bsp_cpu.c`（含 `om_board_self_init`、强 `HardFault_Handler`）经板数据 `selfreg_sources` 显式声明。加外设 = 在 `peripherals/` 下新建 `.c` 写 `OM_INIT`，零清单编辑。
@@ -49,5 +50,5 @@ OMR 启动当前靠 `main()` 显式调用一长串 `bsp_*_register()` / `xxx_ini
 - **正面**：模块/外设作者写 `OM_INIT_<LEVEL>(foo)` 即完成注册（板级外设自动发现）；分层与启动顺序对齐；漏配链接脚本有构建期报错；rm-a/rm-c 双工具链（gnu-rm/armclang）实测通过。
 - **约束**：binary 须启用 `oh_my_robot.selfreg` 规则；框架自注册源目录约定为 `lib/systems/src`、`lib/services/src`，板级为 `source/peripherals/`；`EARLIEST/BOARD/DRIVER` 回调不得阻塞（调度器未启）。
 - **体积**：框架自注册源会编译两次（archive 一次 + direct 一次，后者实际生效），板级源经剔除只编译一次（direct）；可接受，必要时给框架源也加剔除优化。
-- **Phase 3（init 线程 + 调度器分裂，已实现）**：`main` 跑 `om_do_initcalls(EARLIEST, SERVICE)`（调度器前，不可阻塞），随后建 init 线程跑 `om_do_initcalls(SERVICE, COUNT)`（调度器后，可阻塞/IPC/建线程），再 `osal_kernel_start()`。**core 不能依赖 osal**（架构铁律），故 init 线程的创建（`osal_thread_create`）与退出（`osal_thread_exit`，FreeRTOS 任务不得返回）属 **app 层**（OMR 惯例：app 在 main 编排启动）；框架无需新代码——`om_do_initcalls` 已支持任意级别区间。init 线程取 `OSAL_PRIO_CRITICAL_BASE`（高于业务 NORMAL/HIGH）确保先于业务线程完成；业务线程应在 SYSTEM 级回调里创建。样板见 `_verify_init/main.c`（`supercap_self_init` 在 SYSTEM 级经 init 线程执行，含 `osal_sleep_ms` 阻塞以证明 post-scheduler 上下文）。
+- **Phase 3（kernel 层合并 + init 线程 + 调度器分裂，已实现）**：**core 与 osal 合并为 kernel 层**（定义层合并，参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层；`architecture_reference_manual.md` 已同步）：撤掉 `core↛osal` 规则，`kernel-core`（定义/原语，保持 OS 无关由约定保证，供 samples/host）与 `kernel-os`（osal 抽象）同层可互调。init 子系统留在 kernel 层；启动编排在框架侧——`lib/source/core/om_system_startup.c` 提供 `om_system_startup()`（由 `tar_awkernel` 编译，依赖 core+osal，避免 `tar_awcore→tar_os` 构建环；文件与 om_init.c 同目录，同属 init 子系统）：调度器前 `om_do_initcalls(EARLIEST, SERVICE)` → 建 init 线程（`OSAL_PRIO_CRITICAL_BASE`，跑 `om_do_initcalls(SERVICE, COUNT)`，可阻塞/IPC）→ `osal_kernel_start()`（不返回）。**app 的 main 只调一行** `om_system_startup();`；app 自身启动设置（建业务线程等）与其它模块一样**经 `OM_INIT_APPLICATION` 分散加载**（新增 `OM_INIT_LEVEL_APPLICATION` 级，位于 SYSTEM 后、LATE 前；app 源直接编入 binary，entry 天然存活）。样板见 `_verify_init/main.c` 与 `samples/pal/gpio/main.c`（`supercap_self_init` 在 SYSTEM 级、`gpio_app_setup` 在 APPLICATION 级经 init 线程执行，含 `osal_sleep_ms` 阻塞以证明 post-scheduler 上下文）。
 - **后续**：Phase 1-3 已完成 rm-a/rm-c（双工具链验证）；待办——lp-mspm0g3507（需先解预存的 `vApplicationStackOverflowHook`）、其余 sample main 迁移到 init 线程范式。

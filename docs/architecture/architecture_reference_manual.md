@@ -15,9 +15,9 @@
 ├──────────────────────────────────────────────────┤
 │   async（异步）  │  ipc（数传）  │  sync（同步）     │
 ├──────────────────────────────────────────────────┤
-│              osal（操作系统抽象）                   │
+│          algorithm（算法，可选，依赖 kernel）      │
 ├──────────────────────────────────────────────────┤
-│         core（核心）   │  algorithm（算法）         │
+│   kernel（核心与 OS 抽象：core 定义/原语 · osal · init 子系统）│
 ╞══════════════════════════════════════════════════╡
 │              platform（平台适配）                  │
 │   bsp · osal端口 · sync加速 · 工具链/ABI · RTOS绑定 │
@@ -28,9 +28,9 @@
 
 > 双线以上为**架构定义**（接口与抽象），双线以下为**平台实现**。`platform` 是所有平台适配代码的有序聚合，配合构建系统选择性编译；`third_party` 为第三方外部代码，仅供适配与移植使用。
 >
-> **设计思想**：下层为**单一功能原语**（sync 提供同步语义、async 提供执行调度、ipc 提供跨上下文数据传输、osal 抽象操作系统、core 提供平台无关基底、algorithm 提供可选计算原语），中层（services、drivers）是原语组合而成的**领域模块**，各有独立语义。业务（systems）可直取任意一层——原语或组合，不受中间层约束。
+> **设计思想**：下层为**单一功能原语**（sync 提供同步语义、async 提供执行调度、ipc 提供跨上下文数据传输、kernel 提供平台无关基底与 OS 抽象、algorithm 提供可选计算原语），中层（services、drivers）是原语组合而成的**领域模块**，各有独立语义。业务（systems）可直取任意一层——原语或组合，不受中间层约束。
 
-**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。
+**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调（参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层）；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
 
 **头文件引用规则**：对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件，避免通过聚合头引入隐式耦合。
 
@@ -46,42 +46,40 @@
 ### 2.2 platform — 平台适配
 
 - **职责**：所有平台适配代码的有序聚合，配合构建系统选择性编译。涵盖板级初始化与外设配置（bsp）、OSAL 端口实现、sync 加速后端、工具链/ABI 适配、RTOS 绑定。
-- **可依赖**：`core`、`third_party`。
+- **可依赖**：`kernel`、`third_party`。
 - **禁止依赖**：`services`、`systems`。
 
-### 2.3 单一功能原语 — core / algorithm / osal / sync / async / ipc
+### 2.3 单一功能原语 — kernel / algorithm / sync / async / ipc
 
 这些层各自提供单一、独立的功能原语，不承载业务或领域语义。任何上层模块（drivers、services、systems）均可按需直取任意原语进行组合。
 
-**core — 核心**
-- **职责**：基础类型、错误码、通用宏、原子操作、平台无关的数据结构。
-- **边界**：不包含 OS、设备驱动、板级或业务语义。不依赖任何上层。
-- **禁止依赖**：`osal`、`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
+**kernel — 核心与 OS 抽象**（原 `core` 与 `osal` 合并，参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层的做法）
+
+- **职责**：平台无关基础（基础类型、错误码、通用宏、原子操作、平台无关数据结构）与操作系统抽象（线程、互斥、信号量、队列、时间、定时器、事件对象），以及**分散加载自动注册初始化系统**（init 级别、`om_do_initcalls`、启动编排 `om_system_startup`）。
+- **内部子模块**（构建上仍是独立 target，架构上同一层，可互调）：
+  - `kernel-core`（原 core）：定义/原语 + init 注册机制（`OmInitEntry`/`OM_INIT`/`om_do_initcalls`）。**保持 OS 无关（不调用 osal），由约定保证**——供主机侧编译测试（samples/host）；
+  - `kernel-os`（原 osal）：OS 抽象 API；init 子系统（含 `om_system_startup`）可调用 osal——调度器分裂在此编排（调度器前 `EARLIEST/BOARD/DRIVER` 跑 main，调度器后 `SERVICE/SYSTEM/LATE` 跑 init 线程）。
+- **规则**：kernel 内部子模块可互调；OSAL 端口实现位于 `platform/`，由构建系统按目标选择性编译，不得混杂在 osal 公共接口中。
+- **可依赖**：`third_party`（经 platform 端口间接注入，方向仍自上而下）。
+- **禁止依赖**：`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
 
 **algorithm — 算法**
 
 - **职责**：框架预置的可选计算原语（控制、滤波等），平台无关，不承载业务语义。为按需引入的工具箱。
-- **可依赖**：`core`。
-- **禁止依赖**：`osal`、`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
-
-**osal — 操作系统抽象层**
-
-- **职责**：对 RTOS/系统调用做最小可移植抽象（线程、互斥、信号量、队列、时间、定时器、事件对象等）。
-- **移植**：osal 自身仅定义接口和跨平台通用逻辑；各 RTOS 的具体端口实现位于 `platform/`，由构建系统按目标选择性编译。
-- **规则**：OSAL 只定义"端口必须实现"的最小原语，不承诺更高层语义。端口实现不得混杂在 osal 公共接口中。
-- **可依赖**：`core`。
+- **可依赖**：`kernel`。
+- **禁止依赖**：`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
 
 **sync — 同步语义层**
 
 - **职责**：基于 OSAL 原语组合出的纯同步信号抽象（例如事件通知、栅栏同步等），无数据载荷。
 - **与 ipc 的区别**：sync 提供同步语义（协调执行顺序），无数据载荷。
 - **规则**：对外 API 不暴露具体 RTOS 类型；默认实现仅依赖 OSAL，可选加速实现须满足跨模块复用约束。
-- **可依赖**：`core`、`osal`。
+- **可依赖**：`kernel`。
 
 **async — 异步执行基座**
 - **职责**：在 `osal`/`sync` 之上提供通用执行调度能力（工作队列、延时执行等）。
 - **边界**：只提供通用执行语义，不承载业务模块。
-- **可依赖**：`core`、`osal`、`sync`。
+- **可依赖**：`kernel`、`sync`。
 - **禁止依赖**：`drivers`、`services`、`systems`。
 
 **ipc — 跨上下文数据传输层**
@@ -90,7 +88,7 @@
 - **与 sync 的区别**：ipc 传输数据载荷，sync 提供同步语义，无数据载荷。
 - **与 services/comm 的区别**：ipc 提供原始传输原语（字节流或类型化元素），comm 在此基础上增加帧格式与路由，形成结构化消息。
 - **范围**：单核内跨上下文传输。核间通信为 future scope。
-- **可依赖**：`core`、`osal`。
+- **可依赖**：`kernel`。
 - **禁止依赖**：`services`、`drivers`、`systems`。
 
 ### 2.4 领域模块 — drivers / services
@@ -100,14 +98,14 @@
 **drivers — 驱动与 PAL**
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `platform` 处理。
-- **可依赖**：`core`、`osal`、`sync`、`async`。
+- **可依赖**：`kernel`、`sync`、`async`。
 - **禁止依赖**：`platform`（任意代码）、`services` 核心路径、`systems`。
 
 **services — 通用服务层**
 
 - **职责**：可复用的通用服务组件（日志、配置、通信、诊断、文件系统等）。
 - **边界**：服务语义必须保持项目无关，不得绑定具体机器人机构或业务。
-- **可依赖**：`core`、`osal`、`sync`、`ipc`。
+- **可依赖**：`kernel`、`sync`、`ipc`。
 - **禁止依赖**：`drivers` 、`systems`。
 
 ### 2.5 业务 — systems
@@ -115,5 +113,5 @@
 **systems — 业务子系统层**
 
 - **职责**：机器人系统级模块（chassis、gimbal、arm、robot 等），业务语义明确。可位于 `oh-my-robot` 仓库内，也可位于独立领域仓库。
-- **可依赖**：`services`、`drivers`、`sync`、`ipc`、`osal`、`core` — 即业务可直取领域模块或任意原语，不受中间层约束。
+- **可依赖**：`services`、`drivers`、`sync`、`ipc`、`kernel` — 即业务可直取领域模块或任意原语，不受中间层约束。
 - **说明**：可直接依赖 `drivers`（驱动层为硬件无关抽象）。
