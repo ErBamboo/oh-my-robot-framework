@@ -12,6 +12,9 @@ target("tar_awcore")
     add_files("source/core/**.c")
     -- om_system_startup.c 移除：它调用 osal，由 tar_awkernel 编译（保持本目标 OS 无关）
     remove_files("source/core/om_system_startup.c")
+    -- om_main.c 移除：框架默认 main（弱符号）是 binary 级入口，经 oh_my_robot.selfreg
+    -- 规则直编进 binary，不入静态归档（归档消费者/宿主工程自带 main，见 ADR-0011）
+    remove_files("source/core/om_main.c")
 target_end()
 
 --- @target tar_awkernel

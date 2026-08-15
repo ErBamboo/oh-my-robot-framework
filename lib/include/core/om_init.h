@@ -41,8 +41,9 @@
  *
  *          ── 调度器上下文（能力轴，属性而非一级）──────────────────────────
  *
- *            EARLIEST / BOARD / DRIVER —— 调度器未启，跑在 main，回调不得阻塞、
- *                                         不得使用需调度器的 OSAL 服务
+ *            EARLIEST / BOARD / DRIVER —— 调度器未启，跑在 main 调用帧（main 由框架
+ *                                         默认提供弱符号，用户不写，见 ADR-0012），
+ *                                         回调不得阻塞、不得使用需调度器的 OSAL 服务
  *            SERVICE / SYSTEM / APPLICATION / LATE —— 调度器已启，跑在 init 线程，
  *                                         可阻塞/IPC/建线程
  *
@@ -175,11 +176,13 @@ OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi);
 
 /**
  * @brief 系统启动编排（kernel 层，正常不返回）
- * @details app 的 main 只调这一行。内部：调度器前跑 EARLIEST+BOARD+DRIVER（不可阻塞），
- *          建 init 线程跑 SERVICE+SYSTEM+APPLICATION+LATE（可阻塞/IPC/建线程），最后
- *          osal_kernel_start() 启动调度器（不返回）。app 自身启动设置（建业务线程等）
- *          与其它模块一样经 OM_INIT_APPLICATION 分散加载，无需显式注册。实现在
- *          lib/source/core/om_system_startup.c（由 tar_awkernel 编译）。
+ * @details 用户默认不写 main：框架经 oh_my_robot.selfreg 注入弱 main（lib/source/core/
+ *          om_main.c），启动文件调 main 即进入本编排。内部：调度器前跑 EARLIEST+BOARD+
+ *          DRIVER（不可阻塞），建 init 线程跑 SERVICE+SYSTEM+APPLICATION+LATE（可阻塞/
+ *          IPC/建线程），最后 osal_kernel_start() 启动调度器（不返回）。app 自身启动
+ *          设置（建业务线程等）与其它模块一样经 OM_INIT_APPLICATION 分散加载，无需显式
+ *          注册。需要自定义启动序列的用户可定义强 main 覆盖并在其中调用本函数（逃生
+ *          通道，见 ADR-0012）。实现在 lib/source/core/om_system_startup.c（tar_awkernel）。
  */
 void om_system_startup(void);
 
