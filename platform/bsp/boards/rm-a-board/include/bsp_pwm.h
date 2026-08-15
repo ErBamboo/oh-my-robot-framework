@@ -1,14 +1,10 @@
 /**
- * @file    bsp_pwm.h
- * @brief   rm-a-board PWM BSP 配置
- * @details RoboMaster A 板（STM32F427IIH6）PWM 接口定义：
- *          J30 (PWM×8, Item 8):  TIM2_CH1-4 + TIM8_CH1-4
- *          J29 (PWM×8):          TIM4_CH1-4 + TIM5_CH1-4
- *
- *          APB1 定时器时钟 = 84MHz（TIM2/4/5），
- *          APB2 定时器时钟 = 168MHz（TIM8）。
+ * @file  bsp_pwm.h
+ * @brief rm-a-board PWM 板配置 shim（板瘦身：类型/宏/契约已上移 pwm/bsp_pwm_f4.h）
+ * @details 本文件只留板配置；全部类型与板数据契约见共享适配层头。
+ *          引脚映射：pwm1(TIM2)=PA0-3、pwm2(TIM8)=PI5/6/7+PI2、pwm3(TIM4)=PD12-15、
+ *          pwm4(TIM5)=PH10/11/12+PI0。
  */
-
 #ifndef __BSP_PWM_H__
 #define __BSP_PWM_H__
 
@@ -16,27 +12,10 @@
 extern "C" {
 #endif
 
-#include "drivers/peripheral/pwm/pal_pwm_dev.h"
-#include "stm32f4xx_hal.h"
+/* 实例数：必须等于 bsp_pwm_data.c 中 gBspPwm 条目数（数据文件内编译期校验） */
+#define BSP_PWM_COUNT (4U)
 
-/** A 板启用的 PWM 控制器数量 */
-#define BSP_PWM_COUNT   (4U)
-
-/**
- * @brief  BSP PWM 控制器实例
- */
-typedef struct {
-    TIM_HandleTypeDef  timHandle;  /**< STM32 HAL 定时器句柄 */
-    PwmController       parent;     /**< 框架控制器 */
-    const char         *name;       /**< 控制器名称 */
-    PwmChannelState     chState[4];     /**< per-channel 状态，框架层读写 */
-} BspPwm;
-
-/** GPIO AF 预初始化（bsp_pwm_register 内部调用） */
-void bsp_pwm_init_gpio(void);
-
-/** 注册所有 PWM 控制器到框架 */
-void bsp_pwm_register(void);
+#include "pwm/bsp_pwm_f4.h"
 
 #ifdef __cplusplus
 }

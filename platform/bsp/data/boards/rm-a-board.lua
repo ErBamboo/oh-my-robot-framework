@@ -28,8 +28,6 @@ local board = {
     sources = {
         "boards/rm-a-board/source/core/bsp_cpu.c",
         "arch/cortex-m/bsp_dwt.c",     -- 内核架构级共享（DWT 周期计数器）
-        "boards/rm-a-board/source/peripherals/pwm/bsp_pwm_impl.c",
-        "boards/rm-a-board/source/peripherals/pwm/bsp_pwm_init.c",
         "arch/cortex-m/om_port_hw.c",  -- 内核架构级共享（Cortex-M 临界区）
     },
     override_sources = {
@@ -53,6 +51,7 @@ local board = {
         "vendor/STM32/STM32F4/adapters/serial/bsp_serial_f4_init.c",
         "vendor/STM32/STM32F4/adapters/spi/bsp_spi_f4.c",
         "vendor/STM32/STM32F4/adapters/spi/bsp_spi_f4_init.c",
+        "vendor/STM32/STM32F4/adapters/pwm/bsp_pwm_f4.c",
     },
     osal = {
         freertos = "boards/rm-a-board/osal/freertos",
