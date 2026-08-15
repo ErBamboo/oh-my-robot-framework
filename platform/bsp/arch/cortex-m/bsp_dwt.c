@@ -5,10 +5,40 @@
  * @author  modified by NeoZng 2022/3/8
  * @modifier:  Yuhao  2025/12/1
  * @date    2025/12/1
- * @brief
+ * @brief   Cortex-M 周期计数器（DWT CYCCNT）时间服务实现（arch/cortex-m 共享）
+ * @details 纯 ARMv7-M 内核寄存器操作，M3/M4/M7 家族通用。
+ *          零设备头依赖：DWT（base 0xE0001000）与 DEMCR（0xE000EDFC）是 ARM 架构
+ *          规范（ARM ARM DDI 0403）固定的内核寄存器地址，本文件自管寄存器映射
+ *          （core_cm4.h 非自包含——需设备头先定义 IRQn_Type/__FPU_PRESENT，故不采用）。
+ *          接入：板 lua sources 引用本文件（板瘦身 opt-in 铁律）。
+ ******************************************************************************
  */
 
 #include "bsp_dwt.h"
+
+/*===========================================================================
+ * Cortex-M 内核寄存器映射（ARMv7-M 架构规范，非厂商 HAL；仅本 TU 使用）
+ *===========================================================================*/
+
+/** @brief DWT 数据观察点与跟踪单元寄存器（DWT base = 0xE0001000） */
+typedef struct
+{
+    volatile uint32_t CTRL;      /* 0x00 控制寄存器（CYCCNTENA=bit0） */
+    volatile uint32_t CYCCNT;    /* 0x04 周期计数器 */
+    volatile uint32_t CPICNT;    /* 0x08 */
+    volatile uint32_t EXCCNT;    /* 0x0C */
+    volatile uint32_t SLEEPCNT;  /* 0x10 */
+    volatile uint32_t LSUCNT;    /* 0x14 */
+    volatile uint32_t FOLDCNT;   /* 0x18 */
+    volatile uint32_t PCSR;      /* 0x1C */
+} OmDwtRegs;
+
+#define OM_DWT                  (*(volatile OmDwtRegs *)0xE0001000UL)
+#define OM_DWT_CTRL_CYCCNTENA   (1UL << 0)
+
+/** @brief 调试异常与监控控制寄存器（DEMCR，base = 0xE000EDFC；TRCENA=bit24） */
+#define OM_DEMCR                (*(volatile uint32_t *)0xE000EDFCUL)
+#define OM_DEMCR_TRCENA         (1UL << 24)
 
 static DwtTime_s SysTime;
 static uint32_t CPU_FREQ_Hz, CPU_FREQ_Hz_ms, CPU_FREQ_Hz_us;
@@ -30,11 +60,11 @@ static void DWT_CNT_Update(void)
     if (!bit_locker)
     {
         bit_locker = 1;
-        volatile uint32_t cnt_now = DWT->CYCCNT;
+        volatile uint32_t cnt_now = OM_DWT.CYCCNT;
         if (cnt_now < CYCCNT_LAST)
             CYCCNT_RountCount++;
 
-        CYCCNT_LAST = DWT->CYCCNT;
+        CYCCNT_LAST = OM_DWT.CYCCNT;
         bit_locker = 0;
     }
 }
@@ -42,13 +72,13 @@ static void DWT_CNT_Update(void)
 void DWT_Init(uint32_t CPU_Freq_mHz)
 {
     /* 使能DWT外设 */
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    OM_DEMCR |= OM_DEMCR_TRCENA;
 
     /* DWT CYCCNT寄存器计数清0 */
-    DWT->CYCCNT = (uint32_t)0u;
+    OM_DWT.CYCCNT = (uint32_t)0u;
 
     /* 使能Cortex-M DWT CYCCNT寄存器 */
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    OM_DWT.CTRL |= OM_DWT_CTRL_CYCCNTENA;
 
     CPU_FREQ_Hz = CPU_Freq_mHz * 1000000;
     CPU_FREQ_Hz_ms = CPU_FREQ_Hz / 1000;
@@ -60,7 +90,7 @@ void DWT_Init(uint32_t CPU_Freq_mHz)
 
 float DWT_GetDeltaT(uint32_t* cnt_last)
 {
-    volatile uint32_t cnt_now = DWT->CYCCNT;
+    volatile uint32_t cnt_now = OM_DWT.CYCCNT;
     float dt = ((uint32_t)(cnt_now - *cnt_last)) / ((float)(CPU_FREQ_Hz));
     *cnt_last = cnt_now;
 
@@ -71,7 +101,7 @@ float DWT_GetDeltaT(uint32_t* cnt_last)
 
 double DWT_GetDeltaT64(uint32_t* cnt_last)
 {
-    volatile uint32_t cnt_now = DWT->CYCCNT;
+    volatile uint32_t cnt_now = OM_DWT.CYCCNT;
     double dt = ((uint32_t)(cnt_now - *cnt_last)) / ((double)(CPU_FREQ_Hz));
     *cnt_last = cnt_now;
 
@@ -82,7 +112,7 @@ double DWT_GetDeltaT64(uint32_t* cnt_last)
 
 void DWT_SysTimeUpdate(void)
 {
-    volatile uint32_t cnt_now = DWT->CYCCNT;
+    volatile uint32_t cnt_now = OM_DWT.CYCCNT;
     static uint64_t CNT_TEMP1, CNT_TEMP2, CNT_TEMP3;
 
     DWT_CNT_Update();
@@ -125,9 +155,9 @@ uint64_t DWT_GetTimeline_us(void)
 
 void DWT_Delay(float Delay)
 {
-    uint32_t tickstart = DWT->CYCCNT;
+    uint32_t tickstart = OM_DWT.CYCCNT;
     float wait = Delay;
 
-    while ((DWT->CYCCNT - tickstart) < wait * (float)CPU_FREQ_Hz)
+    while ((OM_DWT.CYCCNT - tickstart) < wait * (float)CPU_FREQ_Hz)
         ;
 }

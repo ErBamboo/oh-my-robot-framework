@@ -5,16 +5,16 @@
  * @author  modified by NeoZng 2022/3/8
  * @modifier:  Yuhao  2025/12/1
  * @date    2025/12/1
- * @brief
- ******************************************************************************
- * @attention
- *
+ * @brief   Cortex-M 周期计数器（DWT CYCCNT）时间服务（板瘦身：内核架构级共享）
+ * @details DWT 是 Cortex-M 内核外设（非 MCU 厂商外设），M3/M4/M7 家族通用。
+ *          M0/M0+ 无 CYCCNT，不可用。
+ *          本头零设备依赖（只含类型与 API 声明）；DWT/CoreDebug 寄存器定义由实现
+ *          文件 bsp_dwt.c 自管（ARMv7-M 架构规范映射，见该文件）。
  ******************************************************************************
  */
 #ifndef _BSP_DWT_H
 #define _BSP_DWT_H
 
-#include "stm32f4xx_hal.h"
 #include <stdint.h>
 
 typedef struct DwtTime

@@ -23,17 +23,18 @@ local board = {
     defines = {},
     includedirs = {
         "boards/rm-c-board/include",
+        "arch/cortex-m",  -- 内核架构级共享头（bsp_dwt.h）
     },
     sources = {
         "boards/rm-c-board/source/core/bsp_cpu.c",
-        "boards/rm-c-board/source/core/bsp_dwt.c",
+        "arch/cortex-m/bsp_dwt.c",     -- 内核架构级共享（DWT 周期计数器）
         "boards/rm-c-board/source/peripherals/can/bsp_can_impl.c",
         "boards/rm-c-board/source/peripherals/gpio/bsp_gpio_impl.c",
         "boards/rm-c-board/source/peripherals/serial/bsp_serial_impl.c",
         "boards/rm-c-board/source/peripherals/serial/bsp_serial_init.c",
         "boards/rm-c-board/source/peripherals/pwm/bsp_pwm_impl.c",
         "boards/rm-c-board/source/peripherals/pwm/bsp_pwm_init.c",
-        "boards/rm-c-board/source/port/om_port_hw.c",
+        "arch/cortex-m/om_port_hw.c",  -- 内核架构级共享（Cortex-M 临界区）
     },
     override_sources = {
         -- 这些文件用于覆盖启动文件中的 weak ISR，必须直连最终 binary。
