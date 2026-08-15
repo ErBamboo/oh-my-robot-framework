@@ -10,7 +10,7 @@ Fatal 设施是 OM 框架**不可恢复错误的统一收敛入口**（参考 Ze
 - **入口强制 fatal 语义**：`om_fatal_error()` 永不返回——handler 返回后入口禁中断 halt 兜底，"handler 不得返回"由入口强制而非约定
 - **最小设施、策略在外**：不内建恢复逻辑（软复位/超时重启/WDT 兜底/bootloader 回退均为 handler 策略，见 ADR-0014 后续演进节）
 
-代码位置：`lib/include/core/om_fatal.h` + `lib/source/core/om_fatal.c`（kernel-core，OS 无关，进 `tar_awcore`）+ `lib/include/core/om_assert.h`。
+代码位置：设施在 **kernel-core**（OS 无关，进 `tar_awcore`；头文件 `core/om_fatal.h` 为 API 事实源）；触发源分布于 **kernel 启动编排**、**FreeRTOS 端口**、**Cortex-M 架构层**——实现文件路径以符号 grep 定位，不在本文档列举。
 
 ## API 面
 
@@ -46,13 +46,15 @@ void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *c
 
 ## 触发源全景
 
-| 触发源 | 接入点 | 上下文 | 位置 |
+> 稳定表述约定：触发源按**层归属 + 入口符号**描述（层是架构契约、符号是公开接口，均不随实现重构变动）；实现文件路径可从符号 grep 定位，不在本文档列举。
+
+| 触发源 | 入口符号（接入点） | 携带上下文 | 层归属 |
 | --- | --- | --- | --- |
-| 框架断言 | `OM_ASSERT(cond)` | file/line | `lib/include/core/om_assert.h`（`OM_USE_ASSERT` 开关，`om_appcfg.h` 可关） |
-| FreeRTOS 断言 | `configASSERT` 失败 → `vAssertCalled` | file/line | `platform/osal/freertos/osal_fatal_freertos.c`（板级 FreeRTOSConfig.h 不再自写 printf 宏/死循环） |
-| 任务栈溢出 | `vApplicationStackOverflowHook` | detail=任务名 | 同上（`configCHECK_FOR_STACK_OVERFLOW>0` 时触发） |
-| HardFault | 架构共享 strong `HardFault_Handler` | pc（异常返回地址） | `platform/bsp/arch/cortex-m/om_hardfault.c`（naked 汇编捕获 PC；经 `selfreg_sources` 直连 binary） |
-| 启动失败 | `om_system_startup()` / init 线程 | detail=失败回调名 | `lib/source/core/om_system_startup.c`（`om_init_last_fail_name()`） |
+| 框架断言 | `OM_ASSERT(cond)` | file/line | kernel-core（`OM_USE_ASSERT` 开关，`om_appcfg.h` 可关） |
+| FreeRTOS 断言 | `configASSERT` 失败 → `vAssertCalled` | file/line | FreeRTOS 端口（板级 FreeRTOSConfig.h 不再自写 printf 宏/死循环） |
+| 任务栈溢出 | `vApplicationStackOverflowHook` | detail=任务名 | FreeRTOS 端口（`configCHECK_FOR_STACK_OVERFLOW>0` 时触发） |
+| CPU 硬件异常 | 架构共享 strong `HardFault_Handler` | pc（异常返回地址） | Cortex-M 架构层（naked 汇编捕获 PC；须经 `selfreg_sources` 直连 binary） |
+| 启动失败 | `om_system_startup()` / init 线程 | detail=失败回调名 | kernel 启动编排（`om_init_last_fail_name()`） |
 
 **收口纪律**：枚举只增不改（新增触发源 = 追加成员 + 接入点 + ADR-0014 同步）；linkguard 校验 `HardFault_Handler` 必须为 strong（weak = 启动文件兜底仍在生效，收口失效，构建期报错）。
 
@@ -100,11 +102,9 @@ void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *c
 
 ## 参考索引
 
-- `lib/include/core/om_fatal.h`——API 事实源（枚举/context/入口/handler 声明）
-- `lib/source/core/om_fatal.c`——设施实现（可重入保护 + 禁中断 halt）
-- `lib/include/core/om_assert.h`——框架断言（OM_ASSERT → OM_FATAL_ASSERT）
-- `platform/osal/freertos/osal_fatal_freertos.c`——FreeRTOS 触发源收口
-- `platform/bsp/arch/cortex-m/om_hardfault.c`——HardFault 收口（naked 汇编 PC 捕获）
-- `lib/source/core/om_system_startup.c`——启动编排接入
+（稳定锚：公开头文件 / 决策记录 / 关联文档；实现文件路径随重构可能变动，以触发源全景表的入口符号 grep 定位）
+
+- `core/om_fatal.h`——API 事实源（枚举/context/入口/handler 声明）
+- `core/om_assert.h`——框架断言（OM_ASSERT → OM_FATAL_ASSERT）
 - `docs/adr/0014-fatal_error_and_startup_split.md`——设施边界 + 颗粒度判据 + 受控恢复演进
 - `lib/include/docs/init_design.md`——init 子系统设计（启动编排的上游叙事）
