@@ -10,7 +10,7 @@ Init 子系统是 OM 框架的**分散加载自动注册初始化系统**（参�
 模块写 OM_INIT_<LEVEL>(fn) ──→ 链接器按级别排入 .om_init_<N> 段 ──→ om_system_startup() 逐级执行
 ```
 
-- 代码位置：`lib/include/core/om_init.h`（API 事实源）+ `lib/source/core/om_init.c`（编排器）+ `lib/source/core/om_system_startup.c`（启动编排，kernel 层）+ `lib/source/core/om_main.c`（框架默认 main）
+- 代码位置：设施在 **kernel 层**（API 事实源为公开头文件 `core/om_init.h`）；编排器、启动编排、框架 main 实现随代码库演进，按符号 `om_do_initcalls` / `om_system_startup` / `om_main` 定位（稳定表述约定：本文档不列举实现文件路径，见参考索引）
 - 决策记录：ADR-0010（系统设计）、ADR-0013（框架接管 main）
 - 移植指南：维护手册 §11.5（链接脚本 `.om_init_<N>` 段）
 
@@ -66,7 +66,7 @@ OM_INIT_<LEVEL>(fn)                 /* 分级别名，默认 prio=50 */
 
 ## 启动编排：om_system_startup()
 
-`om_system_startup()`（`lib/source/core/om_system_startup.c`，kernel 层，正常不返回）是启动全链路的编排器：
+`om_system_startup()`（kernel 层，正常不返回）是启动全链路的编排器：
 
 ```
 main（框架弱符号）
@@ -82,7 +82,7 @@ main（框架弱符号）
 
 ## main 范式：框架接管（ADR-0013）
 
-**用户不写 `main`**。框架提供弱符号默认入口 `lib/source/core/om_main.c`（Zephyr `kernel/main.c` 同款）：
+**用户不写 `main`**。框架提供弱符号默认入口（Zephyr `kernel/main.c` 同款）：
 
 ```c
 OM_WEAK int main(int argc, char *argv[])   /* 带参签名：抑制 armclang 为无参 main TU 自动生成的
@@ -123,11 +123,10 @@ OM_WEAK int main(int argc, char *argv[])   /* 带参签名：抑制 armclang 为
 
 ## 参考索引
 
-- `lib/include/core/om_init.h`——API 事实源（类型/宏/级别/段/注意点）
-- `lib/source/core/om_init.c`——编排器实现（`om_do_initcalls`）
-- `lib/source/core/om_system_startup.c`——启动编排
-- `lib/source/core/om_main.c`——框架默认 main
-- `build/rules/selfreg.lua`——自注册直编规则
+（稳定锚：公开头文件 / 决策记录 / 关联文档；实现文件路径随重构可能变动，以符号 grep 定位，不在本文档列举）
+
+- `core/om_init.h`——API 事实源（类型/宏/级别/段/注意点；编排器/启动编排/main 实现按符号 `om_do_initcalls` / `om_system_startup` / `om_main` 定位）
 - `docs/adr/0010-auto_init_system.md`——系统设计决策
 - `docs/adr/0013-framework_owned_main.md`——框架接管 main 决策 + 后续演进指引
 - `docs/build/maintenance_manual.md` §11.5——新板链接脚本段移植模板
+- `lib/include/docs/fatal_design.md`——fatal 设施设计（启动失败收口的下游叙事）
