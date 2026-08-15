@@ -182,6 +182,7 @@ flowchart LR
 
 维护约束：
 - 新增必须覆盖 `weak` 的点时，必须将 `strong` 源文件登记到对应层级 `override_sources`。
+- 共享适配层（vendor adapters，见 ADR-0011）的 ISR 文件遵循同一规则：登记到板级 `override_sources` 直连 binary；实现文件（含 `OM_INIT` 自注册）登记到 `selfreg_sources`。
 - 不得默认依赖 `whole-archive` 作为跨工具链通用方案。
 - 不得将“应用层 weak 扩展”作为推荐模式对外传播；当前版本明确不建议应用层使用 weak 语义承载业务逻辑。
 - 中断/启动/端口钩子等关键覆盖点，必须在构建验证阶段执行符号强弱校验。
@@ -310,6 +311,12 @@ end
 ```
 新增 board 时需同步更新 [`oh-my-robot/platform/bsp/data/boards/index.lua`](../../platform/bsp/data/boards/index.lua)。
 
+**启用 vendor 共享适配层外设（板瘦身，见 ADR-0011）**：若新板使用已适配 MCU 家族的外设（如 STM32F4 的 CAN），无需复制实现，只需：
+1. `boards/<b>/include/bsp_<p>.h`：板配置 shim（`USE_*` 开关 + `BSP_<P>_COUNT` + include 适配层契约头）；
+2. `boards/<b>/source/peripherals/<p>/bsp_<p>_data.c`：板数据表（实例/参数/引脚/中断，自动 glob 进 selfreg）；
+3. 板 lua：`selfreg_sources` 引用适配层实现（含自注册）、`override_sources` 引用适配层 ISR。
+不用该外设的板零改动；板数据缺漏由实现侧 `#error`（缺 `BSP_<P>_COUNT`）与数据文件编译期断言兜底。
+
 ### 11.4 新增 board 构建脚本
 文件：`oh-my-robot/platform/bsp/boards/my-board/xmake.lua`
 ```lua
@@ -336,7 +343,9 @@ target_end()
 
 ### 11.5 链接脚本 `.om_init_<N>` 段（自动注册初始化）
 
-`om_init` 是 OM 框架的分散加载自动注册初始化系统（参考 Linux initcall / Zephyr SYS_INIT）：模块通过 `OM_INIT_<LEVEL>(func)` 或 `OM_INIT(func, level, prio)` 将 `OmInitEntry` 注册到**每级一段**的 `.om_init_<N>` 段（N = 级别数值），`om_do_initcalls(lo, hi)` 在启动期逐级遍历、同级按 prio 排序后依次调用，`main()` 无需显式调用各模块 init。级别按依赖轴镜像分层（`EARLIEST=0 / BOARD=1 / DRIVER=2 / SERVICE=3 / SYSTEM=4 / APPLICATION=5 / LATE=6`），详见 `lib/include/core/om_init.h` 与 ADR-0010。
+`om_init` 是 OM 框架的分散加载自动注册初始化系统（参考 Linux initcall / Zephyr SYS_INIT）：模块通过 `OM_INIT_<LEVEL>(func)` 或 `OM_INIT(func, level, prio)` 将 `OmInitEntry` 注册到**每级一段**的 `.om_init_<N>` 段（N = 级别数值），`om_do_initcalls(lo, hi)` 在启动期逐级遍历、同级按 prio 排序后依次调用。级别按依赖轴镜像分层（`EARLIEST=0 / BOARD=1 / DRIVER=2 / SERVICE=3 / SYSTEM=4 / APPLICATION=5 / LATE=6`），详见 `lib/include/core/om_init.h` 与 ADR-0010。
+
+**用户不写 `main`**（ADR-0013）：框架经 `oh_my_robot.selfreg` 规则向 binary 注入弱符号 `main`（`lib/source/core/om_main.c`，内部调 `om_system_startup()` 进入启动编排）——启动文件调 `main` 即自动执行全部 initcall。用户/测试例程的开发通道是 `OM_INIT_APPLICATION(fn)`（建业务线程等，init 线程调用）；需要自定义启动（host 测试/bootloader/自定义序列）时定义强 `main` 自动覆盖；不需要框架 main 符号时构建期设 `om_framework_main=off` 关闭注入。
 
 新板移植时，链接脚本**必须**包含全部 7 个级别段的定义（**级别顺序由链接脚本按段排列保证**，链接期解析），否则自注册回调会运行期静默丢失（缺失段的边界符号被 C 侧 extern 引用，会直接链接报 undefined reference）。框架通过每级两个外部符号定位段边界：
 
@@ -393,7 +402,7 @@ armlink 自动为每个执行域生成 `Image$$ER_OM_INIT_<N>$$Base` / `Image$$E
 
 **同级排序说明：** 级别顺序由链接器保证；同级内执行顺序由 prio 决定（启动期一次小排序）——armlink 无段内 `SORT_BY_NAME` 等价物，故 OMR 不做链接期 prio 排序（Zephyr 仅 GCC/Clang 系才用链接期排序）。
 
-**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。
+**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。**框架默认 `main`（`lib/source/core/om_main.c`，弱符号）也经本规则注入** binary（`om_framework_main=on` 默认）；它不在 `tar_awcore` 归档内（`remove_files`），用户定义强 `main` 自动覆盖，`om_framework_main=off` 时整体关闭注入（见 ADR-0013）。
 
 **校验：** 构建后 linkguard 会按工具链校验最终 ELF 的每级边界符号（GCC 查 `__om_init_<N>_start/end`、armclang 查 `Image$$ER_OM_INIT_<N>$$Base/Limit`，N=0..6）；若缺失，构建期即报错（"该板链接脚本未提供每级 `.om_init_<N>` 段边界符号"），不再等到运行期静默失败。
 
