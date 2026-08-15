@@ -19,9 +19,10 @@
 extern "C" {
 #endif
 
-/** @brief 致命错误原因类别（只增不改；按触发源追加，如断言/硬件故障/栈溢出） */
+/** @brief 致命错误原因类别（只增不改；按触发源追加，如硬件故障/栈溢出） */
 typedef enum {
     OM_FATAL_STARTUP = 0, /**< 启动期失败：initcall 返回错误 / init 线程创建失败 / 调度器启动失败 */
+    OM_FATAL_ASSERT = 1,  /**< 断言失败（OM_ASSERT）：状态不变量被违反 */
 } OmFatalReason;
 
 /**
