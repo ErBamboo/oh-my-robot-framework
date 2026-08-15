@@ -1,3 +1,8 @@
+/*
+ * @Description: STM32F4 CAN 中断服务（板瘦身共享适配层；由两板逐字相同的 bsp_can_it.c 上移）
+ * @date 2025-11-10
+ * @author Bamboo
+ */
 #include "bsp_can.h"
 
 void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef* hcan)

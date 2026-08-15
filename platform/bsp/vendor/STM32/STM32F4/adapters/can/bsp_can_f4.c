@@ -1,11 +1,20 @@
 /*
- * @Description: CAN BSP 适配实现（对接 STM32 HAL CAN 外设）
+ * @Description: STM32F4 家族 CAN BSP 共享适配层（板瘦身：板=数据、驱动=通用）
+ * @details 由 rm-a/rm-c 两板逐字相同的 bsp_can_impl.c 提炼；板特有数据（实例/波特率/
+ *          引脚/中断）全部外置到板侧 bsp_can_data.c，经 f4.h 契约 extern 引用。
+ *          启用外设 = 板 lua selfreg_sources 引用本文件（含 OM_INIT 自注册）。
  * @date 2025-11-10
  * @author Bamboo
  */
 #include "bsp_can.h"
 #include <string.h>
 #include "core/om_init.h"
+#include "f4_clk.h"
+
+/* 契约守卫：板 shim bsp_can.h 必须定义实例数，否则编译期报错（防漏板宏静默漂移） */
+#ifndef BSP_CAN_COUNT
+#error "bsp_can_f4.c requires BSP_CAN_COUNT (define in board bsp_can.h shim)"
+#endif
 
 /* 分散加载自注册：把 bsp_can_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
 static OmRet bsp_can_self_init(void)
@@ -15,9 +24,6 @@ static OmRet bsp_can_self_init(void)
 }
 OM_INIT_BOARD(bsp_can_self_init);
 
-#define BSP_CAN_FILTER_SPLIT_BANK      (14U)
-#define BSP_CAN_MAX_FILTER_BANK_COUNT  (28U)
-
 // 保持映射表按枚举顺序排列，便于人工核对。
 // clang-format off（避免数组紧凑排版被打散）
 static uint32_t gBs1Table[CAN_TSEG1_MAX] =
@@ -26,7 +32,7 @@ static uint32_t gBs1Table[CAN_TSEG1_MAX] =
     CAN_BS1_4TQ, CAN_BS1_5TQ, CAN_BS1_6TQ,
     CAN_BS1_7TQ, CAN_BS1_8TQ, CAN_BS1_9TQ,
     CAN_BS1_10TQ, CAN_BS1_11TQ, CAN_BS1_12TQ,
-    CAN_BS1_13TQ, CAN_BS1_14TQ, CAN_BS1_15TQ, 
+    CAN_BS1_13TQ, CAN_BS1_14TQ, CAN_BS1_15TQ,
     CAN_BS1_16TQ,
 };
 
@@ -163,22 +169,10 @@ static OmRet bsp_can_clear_filter(CAN_HandleTypeDef* hcan, size_t bank)
     return OM_OK;
 }
 
-// 常用波特率预设参数（假设 CAN 内核时钟为 42MHz）。
-static CanTimeCfg BspCanBitTimeTable[] = {
-    {CAN_BAUD_10K, 300, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_20K, 150, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_50K, 60, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_100K, 30, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_125K, 24, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_250K, 12, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_500K, 6, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_800K, 4, {CAN_TSEG1_8TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-    {CAN_BAUD_1M, 3, {CAN_TSEG1_9TQ, CAN_TSEG2_4TQ, CAN_SYNCJW_2TQ}},
-};
-
+/** 波特率匹配：表来自板数据，以 psc=0 哨兵项结尾（extern 数组不可 sizeof） */
 static CanTimeCfg* bsp_can_time_cfg_matched(CanBaudRate baud)
 {
-    for (int i = 0; i < sizeof(BspCanBitTimeTable) / sizeof(BspCanBitTimeTable[0]); i++)
+    for (int i = 0; BspCanBitTimeTable[i].psc != 0; i++)
     {
         if (BspCanBitTimeTable[i].baudRate == baud)
         {
@@ -237,20 +231,13 @@ static OmRet bsp_can_configure(HalCanHandler* can, CanCfg* cfg)
     return OM_OK;
 }
 
-#ifdef USE_CAN1
-static const uint8_t gCan1HwBanks[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
-#endif
-
-#ifdef USE_CAN2
-static const uint8_t gCan2HwBanks[] = {14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27};
-#endif
-
 static OmRet bsp_can_control(HalCanHandler* can, uint32_t cmd, void *arg)
 {
     if (!can || !can->parent.handle)
         return OM_ERROR_PARAM;
 
     CAN_HandleTypeDef *hcan = (CAN_HandleTypeDef *)can->parent.handle;
+    BspCan_t bsp_can = (BspCan_t)can->parent.handle;
     OmRet ret = OM_OK;
 
     switch (cmd)
@@ -272,23 +259,9 @@ static OmRet bsp_can_control(HalCanHandler* can, uint32_t cmd, void *arg)
             break;
         }
         CanHwCapability* capability = (CanHwCapability*)arg;
-#ifdef USE_CAN2
-        if (hcan->Instance == CAN2)
-        {
-            capability->hwBankCount = sizeof(gCan2HwBanks) / sizeof(gCan2HwBanks[0]);
-            capability->hwBankList = gCan2HwBanks;
-        }
-        else
-#endif
-        {
-#ifdef USE_CAN1
-            capability->hwBankCount = sizeof(gCan1HwBanks) / sizeof(gCan1HwBanks[0]);
-            capability->hwBankList = gCan1HwBanks;
-#else
-            capability->hwBankCount = 0;
-            capability->hwBankList = NULL;
-#endif
-        }
+        /* 板数据驱动：本实例的 bank 分配由数据表描述 */
+        capability->hwBankCount = bsp_can->hwBankCount;
+        capability->hwBankList = bsp_can->hwBankList;
     }
     break;
     case CAN_CMD_START:
@@ -382,13 +355,10 @@ static OmRet bsp_can_control(HalCanHandler* can, uint32_t cmd, void *arg)
             break;
         }
         CanHwFilterCfg* filter_cfg = (CanHwFilterCfg*)arg;
-        if ((hcan->Instance == CAN1) && filter_cfg->bank >= BSP_CAN_FILTER_SPLIT_BANK)
-        {
-            ret = OM_ERROR_PARAM;
-            break;
-        }
-        if ((hcan->Instance == CAN2) &&
-            (filter_cfg->bank < BSP_CAN_FILTER_SPLIT_BANK || filter_cfg->bank >= BSP_CAN_MAX_FILTER_BANK_COUNT))
+        /* 板数据驱动：bank 合法性 = 本实例的 [hwBankList[0], hwBankList[0]+hwBankCount) 区间 */
+        uint8_t first_bank = bsp_can->hwBankList[0];
+        if (filter_cfg->bank < first_bank ||
+            filter_cfg->bank >= (size_t)first_bank + bsp_can->hwBankCount)
         {
             ret = OM_ERROR_PARAM;
             break;
@@ -423,6 +393,7 @@ static OmRet bsp_can_recv_msg(HalCanHandler* can, CanHwMsg* msg, int32_t rxfifo_
     uint8_t data[8];
 
     CAN_HandleTypeDef *hcan = (CAN_HandleTypeDef *)can->parent.handle;
+    BspCan_t bsp_can = (BspCan_t)can->parent.handle;
 
     // 先检查指定硬件 FIFO 是否有可读报文
     uint32_t fifo_fill_level = HAL_CAN_GetRxFifoFillLevel(hcan, rxfifo_bank);
@@ -440,19 +411,16 @@ static OmRet bsp_can_recv_msg(HalCanHandler* can, CanHwMsg* msg, int32_t rxfifo_
     msg->dsc.id = (rx_header.IDE == CAN_ID_STD) ? rx_header.StdId : rx_header.ExtId;
     msg->dsc.idType = (rx_header.IDE == CAN_IDE_STD) ? CAN_IDE_STD : CAN_IDE_EXT;
     msg->dsc.msgType = (rx_header.RTR == CAN_RTR_DATA) ? CAN_MSG_TYPE_DATA : CAN_MSG_TYPE_REMOTE;
-    msg->dsc.dataLen = rx_header.DLC; 
+    msg->dsc.dataLen = rx_header.DLC;
     // 标准 CAN 数据长度范围 0~8，按 HAL 返回 DLC 直接透传
-    /* bxCAN 返回的 FilterMatchIndex 是“当前 FIFO 内命中的过滤器序号”，
+    /* bxCAN 返回的 FilterMatchIndex 是"当前 FIFO 内命中的过滤器序号"，
      * 不是全局 bank 编号。当前 BSP 固定按 bank 奇偶分配 FIFO：
      * - 偶数 bank -> FIFO0
      * - 奇数 bank -> FIFO1
      * 且全部使用 32bit filter，因此可以按 FIFO 内序号还原真实 bank。
+     * 板数据驱动：全局 bank = FIFO 内序号还原 + 本实例起始 bank（hwBankList[0]）偏移。
      */
-    int16_t hwFilterBank = (int16_t)(rx_header.FilterMatchIndex * 2u + (uint32_t)rxfifo_bank);
-#ifdef USE_CAN2
-    if (hcan->Instance == CAN2)
-        hwFilterBank = (int16_t)(hwFilterBank + (int16_t)BSP_CAN_FILTER_SPLIT_BANK);
-#endif
+    int16_t hwFilterBank = (int16_t)(rx_header.FilterMatchIndex * 2u + (uint32_t)rxfifo_bank + bsp_can->hwBankList[0]);
     if (msg->dsc.dataLen > 8u)
     {
         return OM_ERROR_PARAM;
@@ -529,66 +497,57 @@ static CanHwInterface gCanHwInterface = {
     .sendMsgMailbox = bsp_can_send_msg,
 };
 
-BspCan_s gBspCan[] = {
-#ifdef USE_CAN1
-    BSP_CAN_STATIC_INIT(CAN1, "can1", CAN1_REG_PARAMS),
-#endif
-#ifdef USE_CAN2
-    BSP_CAN_STATIC_INIT(CAN2, "can2", CAN2_REG_PARAMS),
-#endif
-};
+/*===========================================================================
+ * 板级预初始化（数据驱动：引脚表 + 中断表；时钟宏无法数据化，用家族 switch-helper）
+ *===========================================================================*/
 
+/** @brief 使能 CAN 外设时钟（先查后开） */
+static void bsp_can_enable_can_clk(CAN_TypeDef *instance)
+{
+    if (instance == CAN1)
+    {
+        if (__HAL_RCC_CAN1_IS_CLK_DISABLED()) __HAL_RCC_CAN1_CLK_ENABLE();
+    }
+    else if (instance == CAN2)
+    {
+        if (__HAL_RCC_CAN2_IS_CLK_DISABLED()) __HAL_RCC_CAN2_CLK_ENABLE();
+    }
+}
+
+/** @brief 板级预初始化（数据驱动：引脚 AF + 时钟使能 + 中断，逐实例） */
 static void bsp_can_pre_init(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    CAN_HandleTypeDef* hcan = &gBspCan[BSP_CAN1_IDX].handle;
-#ifdef USE_CAN1
+    GPIO_InitTypeDef init = {0};
+    init.Mode = GPIO_MODE_AF_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_HIGH;
+
+    for (uint8_t i = 0; i < BSP_CAN_COUNT; i++)
     {
-        (void)hcan;
-        __HAL_RCC_CAN1_CLK_ENABLE();
-        if (__HAL_RCC_GPIOD_IS_CLK_DISABLED())
-            __HAL_RCC_GPIOD_CLK_ENABLE();
-        GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1;
-        GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
-        HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-        HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5,0); // 中断优先级需低于 FreeRTOS 可屏蔽阈值，避免破坏内核临界区
-        HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
-        HAL_NVIC_SetPriority(CAN1_RX1_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN1_RX1_IRQn);
-        HAL_NVIC_SetPriority(CAN1_TX_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN1_TX_IRQn);
-        HAL_NVIC_SetPriority(CAN1_SCE_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN1_SCE_IRQn);
+        bsp_can_enable_can_clk(gBspCan[i].handle.Instance);
+
+        for (uint8_t j = 0; j < 2; j++) /* [RX, TX] 引脚 */
+        {
+            const BspCanPinCfg *pin = &BspCanPinTable[i][j];
+            bsp_f4_enable_gpio_clk(pin->port);
+            init.Pin = pin->pin;
+            init.Alternate = pin->af;
+            HAL_GPIO_Init(pin->port, &init);
+        }
+
+        for (uint8_t k = 0; k < 4; k++) /* [RX0, RX1, TX, SCE] 中断 */
+        {
+            /* 中断优先级需低于 RTOS 可屏蔽阈值，避免破坏内核临界区（板数据决定） */
+            HAL_NVIC_SetPriority(BspCanIrqTable[i][k].irqn, BspCanIrqTable[i][k].preemptPrio, 0);
+            HAL_NVIC_EnableIRQ(BspCanIrqTable[i][k].irqn);
+        }
     }
-#endif
-#ifdef USE_CAN2
-    {
-        __HAL_RCC_CAN2_CLK_ENABLE();
-        if (__HAL_RCC_GPIOB_IS_CLK_DISABLED())
-            __HAL_RCC_GPIOB_CLK_ENABLE();
-        GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
-        GPIO_InitStruct.Alternate = GPIO_AF9_CAN2;
-        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-        HAL_NVIC_EnableIRQ(CAN2_RX0_IRQn);
-        HAL_NVIC_SetPriority(CAN2_RX0_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN2_RX1_IRQn);
-        HAL_NVIC_SetPriority(CAN2_RX1_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN2_TX_IRQn);
-        HAL_NVIC_SetPriority(CAN2_TX_IRQn, 5, 0);
-        HAL_NVIC_EnableIRQ(CAN2_SCE_IRQn);
-        HAL_NVIC_SetPriority(CAN2_SCE_IRQn, 5, 0);
-    }
-#endif
 }
 
 void bsp_can_register(void)
 {
-    uint8_t cnt = sizeof(gBspCan) / sizeof(gBspCan[0]);
     OmRet ret = OM_OK;
-    for (int i = 0; i < cnt; i++)
+    for (int i = 0; i < BSP_CAN_COUNT; i++)
     {
         gBspCan[i].parent.hwInterface = &gCanHwInterface;
         gBspCan[i].parent.adapterInterface = hal_can_get_classic_adapter_interface();

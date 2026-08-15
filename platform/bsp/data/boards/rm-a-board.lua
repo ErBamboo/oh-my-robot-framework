@@ -28,7 +28,6 @@ local board = {
     sources = {
         "boards/rm-a-board/source/core/bsp_cpu.c",
         "arch/cortex-m/bsp_dwt.c",     -- 内核架构级共享（DWT 周期计数器）
-        "boards/rm-a-board/source/peripherals/can/bsp_can_impl.c",
         "boards/rm-a-board/source/peripherals/gpio/bsp_gpio_impl.c",
         "boards/rm-a-board/source/peripherals/serial/bsp_serial_impl.c",
         "boards/rm-a-board/source/peripherals/serial/bsp_serial_init.c",
@@ -40,7 +39,8 @@ local board = {
     },
     override_sources = {
         -- 这些文件用于覆盖启动文件中的 weak ISR，必须直连最终 binary。
-        "boards/rm-a-board/source/peripherals/can/bsp_can_it.c",
+        -- CAN 的 ISR 已上移为共享适配层（板瘦身），路径指向 vendor adapters。
+        "vendor/STM32/STM32F4/adapters/can/bsp_can_f4_it.c",
         "boards/rm-a-board/source/peripherals/gpio/bsp_gpio_it.c",
         "boards/rm-a-board/source/peripherals/serial/serial_it.c",
         "boards/rm-a-board/source/peripherals/spi/bsp_spi_it.c",
@@ -50,7 +50,9 @@ local board = {
         -- bsp_cpu.c 含 om_board_self_init（BOARD prio0），且其强 HardFault_Handler
         -- 需覆盖 startup.s 的 weak 版——故必须直连，不能留 in tar_board 任由抽取。
         -- 板级外设源（source/peripherals/**.c）由 inputs.lua 自动 glob 发现，无需在此列举。
+        -- 共享适配层实现（含 OM_INIT 自注册）不在自动 glob 范围，须显式引用（opt-in 铁律）。
         "boards/rm-a-board/source/core/bsp_cpu.c",
+        "vendor/STM32/STM32F4/adapters/can/bsp_can_f4.c",
     },
     osal = {
         freertos = "boards/rm-a-board/osal/freertos",
