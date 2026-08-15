@@ -24,14 +24,25 @@ typedef enum {
     OM_FATAL_STARTUP = 0,       /**< 启动期失败：initcall 返回错误 / init 线程创建失败 / 调度器启动失败 */
     OM_FATAL_ASSERT = 1,        /**< 断言失败（OM_ASSERT / FreeRTOS configASSERT）：状态不变量被违反 */
     OM_FATAL_STACK_OVERFLOW = 2, /**< 任务栈溢出（FreeRTOS 检测） */
+    OM_FATAL_HW_FAULT = 3,      /**< CPU 硬件异常（HardFault 等） */
 } OmFatalReason;
+
+/** @brief 致命错误触发点上下文——handler 的诊断信息（无则全零/NULL） */
+typedef struct OmFatalContext
+{
+    const char *file;   /**< 触发点文件（断言用 __FILE__） */
+    int         line;   /**< 触发点行号（断言用 __LINE__） */
+    uintptr_t   pc;     /**< 触发点 PC（硬件异常返回地址），无则 0 */
+    const char *detail; /**< 附加说明（如溢出任务名），无则 NULL */
+} OmFatalContext;
 
 /**
  * @brief 致命错误唯一入口：调 handler → 禁中断 halt。**永不返回**，任何上下文可调（ISR 安全）。
  * @param reason 原因类别
  * @param cause  具体错误码（如 initcall 返回的 OmRet；无则 OM_ERR_IO 兜底）
+ * @param ctx    触发点上下文（file/line/pc/detail），可为 NULL
  */
-void om_fatal_error(OmFatalReason reason, OmRet cause);
+void om_fatal_error(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx);
 
 /**
  * @brief 用户可覆盖的致命错误处理（框架侧 weak 扩展点：默认空实现定义在 om_fatal.c，
@@ -39,7 +50,7 @@ void om_fatal_error(OmFatalReason reason, OmRet cause);
  * @details 覆盖实现不得返回（自行禁中断 halt / 软复位 / 跳 bootloader）；若返回，
  *          由 om_fatal_error() 入口禁中断 halt 兜底——"fatal 永不返回"由入口强制而非约定。
  */
-void om_fatal_handler(OmFatalReason reason, OmRet cause);
+void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx);
 
 #ifdef __cplusplus
 }

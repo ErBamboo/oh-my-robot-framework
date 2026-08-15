@@ -14,14 +14,15 @@
 /** @brief 重入保护标志：fatal 进行中再触发直接 halt（不重复调 handler） */
 static volatile OmBool g_fatal_entered = 0;
 
-OM_WEAK void om_fatal_handler(OmFatalReason reason, OmRet cause)
+OM_WEAK void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx)
 {
     (void)reason;
     (void)cause;
+    (void)ctx;
     /* 默认空实现：返回后由 om_fatal_error() 入口禁中断 halt 兜底 */
 }
 
-void om_fatal_error(OmFatalReason reason, OmRet cause)
+void om_fatal_error(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx)
 {
     if (g_fatal_entered)
     {
@@ -33,7 +34,7 @@ void om_fatal_error(OmFatalReason reason, OmRet cause)
     }
     g_fatal_entered = 1;
 
-    om_fatal_handler(reason, cause);
+    om_fatal_handler(reason, cause, ctx);
 
     /* handler 返回 → 禁中断 halt 兜底（fatal 永不返回） */
     om_hw_disable_interrupt_force();

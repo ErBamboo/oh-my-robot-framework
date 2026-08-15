@@ -15,14 +15,13 @@
 
 void vAssertCalled(const char *file, int line)
 {
-    (void)file;
-    (void)line;
-    om_fatal_error(OM_FATAL_ASSERT, OM_ERR_CONFLICT);
+    const OmFatalContext ctx = {.file = file, .line = line};
+    om_fatal_error(OM_FATAL_ASSERT, OM_ERR_CONFLICT, &ctx);
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
     (void)xTask;
-    (void)pcTaskName;
-    om_fatal_error(OM_FATAL_STACK_OVERFLOW, OM_ERR_OVERFLOW);
+    const OmFatalContext ctx = {.detail = pcTaskName};
+    om_fatal_error(OM_FATAL_STACK_OVERFLOW, OM_ERR_OVERFLOW, &ctx);
 }

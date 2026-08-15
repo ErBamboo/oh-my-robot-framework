@@ -18,13 +18,14 @@
 #include "core/om_fatal.h"
 
 #if defined(OM_USE_ASSERT)
-/** @brief 断言：条件不成立 → om_fatal_error(OM_FATAL_ASSERT)，永不返回 */
+/** @brief 断言：条件不成立 → om_fatal_error(OM_FATAL_ASSERT)（携带 __FILE__:__LINE__），永不返回 */
 #define OM_ASSERT(cond)                                                                   \
     do                                                                                    \
     {                                                                                     \
         if (!(cond))                                                                      \
         {                                                                                 \
-            om_fatal_error(OM_FATAL_ASSERT, OM_ERR_CONFLICT);                             \
+            static const OmFatalContext s_assert_ctx = {.file = __FILE__, .line = __LINE__}; \
+            om_fatal_error(OM_FATAL_ASSERT, OM_ERR_CONFLICT, &s_assert_ctx);              \
         }                                                                                 \
     } while (0)
 #else

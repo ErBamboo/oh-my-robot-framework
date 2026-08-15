@@ -40,7 +40,7 @@ static void om_init_thread(void *arg)
     {
         /* 启动期任何级别 initcall 失败均为致命（与 pre 段对称）：带病启动比显式停机更危险
          * （机器人场景），由 handler 决定受控恢复（亮灯/软复位/跳 bootloader）。 */
-        om_fatal_error(OM_FATAL_STARTUP, ret);
+        om_fatal_error(OM_FATAL_STARTUP, ret, NULL);
     }
     osal_thread_exit(); /* 任务入口不得返回，须自退出 */
 }
@@ -63,12 +63,12 @@ void om_startup_post_scheduler(void)
     };
     if (osal_thread_create(&init_task, &init_attr, om_init_thread, NULL) != OSAL_OK)
     {
-        om_fatal_error(OM_FATAL_STARTUP, OM_ERR_NO_MEM);
+        om_fatal_error(OM_FATAL_STARTUP, OM_ERR_NO_MEM, NULL);
     }
 
     /* 启动调度器，正常不返回；返回即调度器启动失败 */
     (void)osal_kernel_start();
-    om_fatal_error(OM_FATAL_STARTUP, OM_ERR_IO);
+    om_fatal_error(OM_FATAL_STARTUP, OM_ERR_IO, NULL);
 }
 
 void om_system_startup(void)
@@ -76,7 +76,7 @@ void om_system_startup(void)
     OmRet ret = om_startup_pre_scheduler();
     if (ret != OM_OK)
     {
-        om_fatal_error(OM_FATAL_STARTUP, ret);
+        om_fatal_error(OM_FATAL_STARTUP, ret, NULL);
     }
     om_startup_post_scheduler();
 }
