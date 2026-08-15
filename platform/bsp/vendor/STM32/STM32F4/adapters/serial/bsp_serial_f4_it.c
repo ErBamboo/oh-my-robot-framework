@@ -1,6 +1,7 @@
 /*
- * @file bsp_serial_it.c
- * @brief 串口中断处理模块
+ * @file bsp_serial_f4_it.c
+ * @brief STM32F4 家族串口中断处理模块（板瘦身共享适配层；由两板逐字相同的
+ *        serial_it.c 上移，IRQ 块由板 shim 的 USE_SERIAL_x 宏裁剪）
  * @details 该模块负责处理串口的中断事件，包括接收数据、发送完成等。
  */
 #include "bsp_serial.h"

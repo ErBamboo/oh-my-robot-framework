@@ -1,12 +1,18 @@
 /**
- * @file      bsp_serial_impl.c
- * @brief     serial的接口实现文件
+ * @file      bsp_serial_f4.c
+ * @brief     STM32F4 家族 Serial BSP 共享适配层（板瘦身：板=数据、驱动=通用）
+ * @details   由 rm-a/rm-c 两板逐字相同的 bsp_serial_impl.c 提炼；实例表外置板数据。
  * @copyright (c) 2025/7/22, 余浩
  */
 
 #include "bsp_serial.h"
 #include "core/om_cpu.h"
 #include "core/om_init.h"
+
+/* 契约守卫：板 shim bsp_serial.h 必须定义实例数 */
+#ifndef BSP_SERIAL_COUNT
+#error "bsp_serial_f4.c requires BSP_SERIAL_COUNT (define in board bsp_serial.h shim)"
+#endif
 
 /* 分散加载自注册：把 bsp_serial_register 挂到 .om_init 段（BOARD 级，由 om_do_initcalls 自动调用） */
 static OmRet bsp_serial_self_init(void)
@@ -169,7 +175,7 @@ static size_t bsp_serial_transmit(HalSerial* serial, const uint8_t* data, size_t
 }
 
 /********************************** SERIAL INTERFACE DEFINITION ***************************************/
-static SerialInterface bsp_serial_interface = 
+static SerialInterface bsp_serial_interface =
 {
     .configure = bsp_serial_configure,
     .control = bsp_serial_control,
@@ -178,30 +184,10 @@ static SerialInterface bsp_serial_interface =
     .transmit = bsp_serial_transmit,
 };
 
-/******************************************* RESOURCE *************************************************/
-bsp_serial_s g_bsp_serial[] = {
-#ifdef USE_SERIAL_1
-    BSP_SERIAL_STATIC_INIT(USART1, "usart1", SERIAL_1_REG_PARAMS),
-#endif
-#ifdef USE_SERIAL_3
-    BSP_SERIAL_STATIC_INIT(USART3, "usart3", SERIAL_3_REG_PARAMS),
-#endif
-#ifdef USE_SERIAL_6
-    BSP_SERIAL_STATIC_INIT(USART6, "usart6", SERIAL_6_REG_PARAMS),
-#endif
-#ifdef USE_SERIAL_7
-    BSP_SERIAL_STATIC_INIT(UART7, "uart7", SERIAL_7_REG_PARAMS),
-#endif
-#ifdef USE_SERIAL_8
-    BSP_SERIAL_STATIC_INIT(UART8, "uart8", SERIAL_8_REG_PARAMS),
-#endif
-};
-
 /******************************************* FUNCTION *************************************************/
 void bsp_serial_register(void)
 {
-    uint8_t cnt = sizeof(g_bsp_serial) / sizeof(g_bsp_serial[0]);
-    for (uint8_t i = 0; i < cnt; i++)
+    for (uint8_t i = 0; i < BSP_SERIAL_COUNT; i++)
     {
         g_bsp_serial[i].parent.interface = &bsp_serial_interface;
         serial_register(&g_bsp_serial[i].parent, g_bsp_serial[i].name, &g_bsp_serial[i], g_bsp_serial[i].regparams);

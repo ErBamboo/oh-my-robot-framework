@@ -1,6 +1,8 @@
 /**
- * @file    bsp_serial_init.c
- * @brief   serial的硬件配置相关文件，存放serial的若干资源描述
+ * @file    bsp_serial_f4_init.c
+ * @brief   STM32F4 家族 Serial 预初始化（板瘦身共享适配层；由两板逐字相同的
+ *          bsp_serial_init.c 上移，逐实例块由板 shim 的 USE_SERIAL_x 宏裁剪）
+ * @details serial的硬件配置相关文件，存放serial的若干资源描述
  * @note    # init行为包括：
  *              1、cfg赋值（仅赋值，具体配置行为交由应用层调用）
  *              2、开启串口、DMA、GPIO时钟

@@ -28,8 +28,6 @@ local board = {
     sources = {
         "boards/rm-c-board/source/core/bsp_cpu.c",
         "arch/cortex-m/bsp_dwt.c",     -- 内核架构级共享（DWT 周期计数器）
-        "boards/rm-c-board/source/peripherals/serial/bsp_serial_impl.c",
-        "boards/rm-c-board/source/peripherals/serial/bsp_serial_init.c",
         "boards/rm-c-board/source/peripherals/pwm/bsp_pwm_impl.c",
         "boards/rm-c-board/source/peripherals/pwm/bsp_pwm_init.c",
         "arch/cortex-m/om_port_hw.c",  -- 内核架构级共享（Cortex-M 临界区）
@@ -39,7 +37,7 @@ local board = {
         -- CAN 的 ISR 已上移为共享适配层（板瘦身），路径指向 vendor adapters。
         "vendor/STM32/STM32F4/adapters/can/bsp_can_f4_it.c",
         "vendor/STM32/STM32F4/adapters/gpio/bsp_gpio_f4_it.c",
-        "boards/rm-c-board/source/peripherals/serial/serial_it.c",
+        "vendor/STM32/STM32F4/adapters/serial/bsp_serial_f4_it.c",
     },
     selfreg_sources = {
         -- OM_INIT 自注册入口：直连 binary，保证 .om_init 回调存活。
@@ -50,6 +48,8 @@ local board = {
         "boards/rm-c-board/source/core/bsp_cpu.c",
         "vendor/STM32/STM32F4/adapters/can/bsp_can_f4.c",
         "vendor/STM32/STM32F4/adapters/gpio/bsp_gpio_f4.c",
+        "vendor/STM32/STM32F4/adapters/serial/bsp_serial_f4.c",
+        "vendor/STM32/STM32F4/adapters/serial/bsp_serial_f4_init.c",
     },
     osal = {
         freertos = "boards/rm-c-board/osal/freertos",
