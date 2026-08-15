@@ -1,8 +1,9 @@
 /**
- * @file    bsp_spi_impl.c
- * @brief   A 板 SPI BSP 实现（SpiControllerOps 4 回调 + 全局实例 + 注册入口）
+ * @file    bsp_spi_f4.c
+ * @brief   STM32F4 家族 SPI BSP 共享适配层（板瘦身：由 rm-a 唯一实现上移；
+ *          SpiControllerOps 4 回调 + 注册入口，实例表外置板数据）
  * @details 实现 SpiControllerOps 的 configure / transferOne / control / setCs，
- *          并提供 gBspSpi[] 全局实例数组与 bsp_spi_register() 注册入口。
+ *          并提供 bsp_spi_register() 注册入口（实例表 gBspSpi[] 由板数据提供）。
  *
  *          关键约束（bsp_implementer_checklist.md §1）：
  *          - configure ：持 bus->lock，线程上下文，按 cfg 字段重配 SPI 寄存器
@@ -317,20 +318,18 @@ static SpiControllerOps gSpiOps = {
     .setCs       = NULL,   /* 硬件 CS 不实现，A 板 CS 走 GPIO 路径 */
 };
 
-/*===========================================================================
- * 全局实例数组 + 注册入口
- *===========================================================================*/
-
-BspSpi_s gBspSpi[] = {
-#ifdef USE_SPI4
-    BSP_SPI_STATIC_INIT(SPI4),
+/* 契约守卫：板 shim bsp_spi.h 必须定义实例数 */
+#ifndef BSP_SPI_COUNT
+#error "bsp_spi_f4.c requires BSP_SPI_COUNT (define in board bsp_spi.h shim)"
 #endif
-};
+
+/*===========================================================================
+ * 注册入口（实例表 gBspSpi[] 由板数据提供）
+ *===========================================================================*/
 
 void bsp_spi_register(void)
 {
-    uint8_t cnt = (uint8_t)(sizeof(gBspSpi) / sizeof(gBspSpi[0]));
-    for (uint8_t i = 0U; i < cnt; i++)
+    for (uint8_t i = 0U; i < BSP_SPI_COUNT; i++)
     {
         /* 1. 硬件预初始化：GPIO/AF/DMA link/NVIC（必须先于 bus_register，
          *    因为 spi_bus_register 不做任何硬件工作，只分配 lock/completion） */

@@ -1,24 +1,13 @@
 /**
  * @file    bsp_spi.h
- * @brief   A 板 SPI BSP 私有头文件
- * @details 定义 BspSpi_s 实例结构、BSP_SPI_STATIC_INIT 宏、实例索引枚举、
- *          DMA stream/channel/NVIC IRQn/IRQHandler 的板级映射宏。
+ * @brief   rm-a-board SPI 板配置 shim（板瘦身：类型/契约已上移 spi/bsp_spi_f4.h）
+ * @details 本文件只留板配置：实例裁剪 + DMA stream/channel/NVIC 映射宏（含实测教训注释）。
  *
  *          SPI4 引脚（AF5）：
  *            PE12 — SCLK
  *            PE5  — MISO
  *            PE6  — MOSI
  *            PE4  — NSS（GPIO CS，由框架直控）
- *
- *          本头文件不入框架 PR 之外的使用范围（仅 rm-a-board SPI BSP 内部），
- *          框架侧通过 SpiBus.hwPrivate 不透明指针持有本结构。
- *
- * @note    结构布局约束（任务约束 #5）：
- *          - 第 1 字段：SpiBus parent（框架父类）
- *          - 第 2 字段：SPI_HandleTypeDef handle（HAL 句柄）
- *          由于 handle 不在首字段，HAL 回调传入 SPI_HandleTypeDef* 时不能
- *          直接强转为 BspSpi_t，须用 BSP_SPI_FROM_HANDLE(hspi) 辅助宏
- *          （基于 offsetof 反查）。
  */
 
 #ifndef BSP_SPI_H
@@ -29,7 +18,6 @@ extern "C" {
 #endif
 
 #include "stm32f4xx_hal.h"
-
 #include "drivers/peripheral/spi/pal_spi_dev.h"
 
 /*===========================================================================
@@ -71,98 +59,10 @@ extern "C" {
 #define SPI4_INPUT_CLOCK_HZ      (90000000UL)
 #endif /* USE_SPI4 */
 
-/*===========================================================================
- * 实例索引枚举
- *===========================================================================*/
+/* 实例数：必须等于 bsp_spi_data.c 中 gBspSpi 条目数（数据文件内编译期校验） */
+#define BSP_SPI_COUNT (1U)
 
-typedef enum
-{
-#ifdef USE_SPI4
-    BSP_SPI4_IDX,
-#endif
-    BSP_SPI_COUNT
-} BspSpiIdx_e;
-
-/*===========================================================================
- * BspSpi_s —— BSP 实例结构（含 SpiBus 父类 + HAL 句柄）
- *===========================================================================*/
-
-typedef struct BspSpi *BspSpi_t;
-
-/**
- * @brief A 板 SPI BSP 实例
- * @note  第 1 字段为 SpiBus parent，以便 SpiBus* 与 BspSpi_t 在向上注册时可
- *        通过首字段强转互相转换。handle 放第 2 字段，HAL 回调中反查须用
- *        BSP_SPI_FROM_HANDLE(hspi)。
- */
-typedef struct BspSpi
-{
-    SpiBus             parent;       /* 第 1 字段：框架 SpiBus */
-    SPI_HandleTypeDef  handle;       /* 第 2 字段：HAL 句柄（含 hdmatx/hdmarx 链接） */
-
-    /* DMA dummy 缓冲：tx/rx==NULL 时 DMA 源/目标。uint16_t 兼容 8/16-bit
-     * 两种数据宽度（16-bit 模式下 DMA HALFWORD 访问需 2 字节对齐）。 */
-    uint16_t           dummyTx;      /* tx==NULL 时 DMA 源，固定 0xFFFF */
-    uint16_t           dummyRx;      /* rx==NULL 时 DMA 目标，丢弃 */
-    size_t             pendingLen;   /* 当前传输总长，abort 反算用 */
-} BspSpi_s;
-
-/**
- * @brief 由 SPI_HandleTypeDef* 反查 BspSpi_t（HAL 回调用）
- * @note  handle 在 BspSpi_s 第 2 字段，需基于偏移反算。
- */
-#define BSP_SPI_FROM_HANDLE(hspi) \
-    ((BspSpi_t)((char *)(hspi) - offsetof(BspSpi_s, handle)))
-
-/**
- * @brief 静态初始化宏（用于全局 gBspSpi[] 数组）
- * @note  dummyTx = 0xFFFF（SPI 约定 dummy），dummyRx = 0（丢弃）。
- *        uint16_t 兼容 8/16-bit DMA 宽度，MINC=0 循环读，len 无上限。
- *        固定 Init 字段（Mode/Direction/NSS/TIMode/CRCCalculation/CRCPolynomial）
- *        在此静态赋初值，configure 中不再重复设置：
- *        - Mode           = MASTER
- *        - Direction      = 2LINES（全双工）
- *        - NSS            = SOFT（GPIO CS 由框架直控）
- *        - TIMode         = DISABLE
- *        - CRCCalculation = DISABLE
- *        - CRCPolynomial  = 7（HAL 默认值，CRC 禁用时无电气意义）
- */
-#define BSP_SPI_STATIC_INIT(INSTANCE)                            \
-    (BspSpi_s)                                                     \
-    {                                                              \
-        .handle.Instance = (INSTANCE),                             \
-        .handle.Init     = {                                       \
-            .Mode           = SPI_MODE_MASTER,                     \
-            .Direction      = SPI_DIRECTION_2LINES,                \
-            .NSS            = SPI_NSS_SOFT,                        \
-            .TIMode         = SPI_TIMODE_DISABLE,                  \
-            .CRCCalculation = SPI_CRCCALCULATION_DISABLE,          \
-            .CRCPolynomial  = 7U,                                  \
-        },                                                         \
-        .dummyTx         = 0xFFFFU,                                \
-        .dummyRx         = 0x0000U,                                \
-        .pendingLen      = 0U,                                     \
-    }
-
-/*===========================================================================
- * 全局实例与注册入口
- *===========================================================================*/
-
-extern BspSpi_s gBspSpi[];
-
-/**
- * @brief 注册 A 板 SPI 总线到框架
- * @details 遍历 gBspSpi[]，对每个实例：
- *          (1) bsp_spi_pre_init：GPIO/DMA/NVIC 配置
- *          (2) spi_bus_register：注册 SpiBus 到框架
- *          由 om_port_hw.c 在板级初始化阶段调用。
- */
-void bsp_spi_register(void);
-
-/**
- * @brief 单实例硬件预初始化（GPIO/AF/DMA link/NVIC），bsp_spi_register 内部调用
- */
-void bsp_spi_pre_init(BspSpi_t bsp_spi);
+#include "spi/bsp_spi_f4.h"
 
 #ifdef __cplusplus
 }

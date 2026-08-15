@@ -1,6 +1,7 @@
 /**
- * @file    bsp_spi_init.c
- * @brief   A 板 SPI BSP 硬件资源初始化（GPIO/DMA link/NVIC）
+ * @file    bsp_spi_f4_init.c
+ * @brief   STM32F4 家族 SPI BSP 硬件资源初始化（板瘦身共享适配层；由 rm-a 唯一实现上移，
+ *          逐实例块由板 shim 的 USE_SPI4 宏与 DMA 映射宏驱动）
  * @details 职责：
  *          1. 静态 DMA_HandleTypeDef 定义（每个 SPI 实例一对 TX/RX）
  *          2. _bsp_spiN_pre_init：开外设/AF/DMA 时钟、配 GPIO AF、

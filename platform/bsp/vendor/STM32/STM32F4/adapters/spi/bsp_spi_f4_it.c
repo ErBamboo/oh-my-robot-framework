@@ -1,7 +1,8 @@
 /**
- * @file    bsp_spi_it.c
- * @brief   A 板 SPI BSP 中断处理（DMA TX/RX IRQ + SPI 错误 IRQ + HAL 回调）
- * @details 本文件必须进 override_sources（rm-a-board.lua），否则 IRQ 强符号
+ * @file    bsp_spi_f4_it.c
+ * @brief   STM32F4 家族 SPI BSP 中断处理（板瘦身共享适配层；DMA TX/RX IRQ + SPI 错误 IRQ
+ *          + HAL 回调，由 rm-a 唯一实现上移）
+ * @details 本文件必须进 override_sources（板 lua），否则 IRQ 强符号
  *          被链接器 GC，vector table 仍指向启动文件中的 weak 默认（死循环）。
  *
  *          三层调用栈（bsp_peripheral_pattern.md §4.1）：
