@@ -39,8 +39,10 @@ static void om_init_thread(void *arg)
     if (ret != OM_OK)
     {
         /* 启动期任何级别 initcall 失败均为致命（与 pre 段对称）：带病启动比显式停机更危险
-         * （机器人场景），由 handler 决定受控恢复（亮灯/软复位/跳 bootloader）。 */
-        om_fatal_error(OM_FATAL_STARTUP, ret, NULL);
+         * （机器人场景），由 handler 决定受控恢复（亮灯/软复位/跳 bootloader）。
+         * detail 携带失败回调名（om_init_last_fail_name），handler 可定位失败点。 */
+        const OmFatalContext ctx = {.detail = om_init_last_fail_name()};
+        om_fatal_error(OM_FATAL_STARTUP, ret, &ctx);
     }
     osal_thread_exit(); /* 任务入口不得返回，须自退出 */
 }
@@ -76,7 +78,8 @@ void om_system_startup(void)
     OmRet ret = om_startup_pre_scheduler();
     if (ret != OM_OK)
     {
-        om_fatal_error(OM_FATAL_STARTUP, ret, NULL);
+        const OmFatalContext ctx = {.detail = om_init_last_fail_name()};
+        om_fatal_error(OM_FATAL_STARTUP, ret, &ctx);
     }
     om_startup_post_scheduler();
 }

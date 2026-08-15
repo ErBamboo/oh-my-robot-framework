@@ -174,6 +174,9 @@ typedef uint8_t OmInitLevel;
  */
 OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi);
 
+/** @brief 最近一次 om_do_initcalls 的首个失败回调名（无失败/未调用则 NULL）——fatal context 诊断用 */
+const char *om_init_last_fail_name(void);
+
 /**
  * @brief 启动前段：调度器前 om_do_initcalls(EARLIEST, SERVICE)——板级自举 + 外设注册 + 驱动
  *        （不可阻塞），结束后"硬件就绪、驱动已注册、调度器未启"。
