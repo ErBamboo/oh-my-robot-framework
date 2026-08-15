@@ -48,7 +48,7 @@ static OmRet supercap_self_init(void)
 {
     g_supercap_init_entered = 1;
     /* 阻塞 10ms：证明本回调运行在调度器已启的 init 线程里（Phase 3 能力）；
-     * 若误在调度器前运行，osal_sleep_ms→vTaskDelay 会死锁/异常。 */
+     * 若误在调度器前运行，阻塞原语会死锁/异常。 */
     (void)osal_sleep_ms(10);
     g_supercap_init_blocked = 1;
     /* TODO: 注册到设备模型 / 申请资源 / 建后台任务 */
