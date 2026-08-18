@@ -54,7 +54,7 @@ typedef struct OmLogBackend {
  * @param level 编译期级别（其下整条编出去，常量折叠零成本）
  * @note 同一 TU 重复调用 = 重复定义；未注册就使用调用宏 = 编译错误（特性）
  */
-#define OM_LOG_MODULE(name, level) OM_USED static const OmLogModule _om_log_module = {(name), (level)}
+#define OM_LOG_MODULE(name, level) OM_USED static const OmLogModule _om_log_module = {(#name), (level)}
 
 /** @brief 调用宏（引用本 TU 的 _om_log_module；fmt 为 printf 风格子集） */
 #define OM_LOG_DEBUG(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_DEBUG, __VA_ARGS__)
