@@ -75,10 +75,12 @@ int main(void)
     EXPECT(strcmp(g_buf, "0") == 0);
     format_check(""); /* 空格式串 */
     EXPECT(g_len == 0);
-    format_check("%.2f", 1.5); /* 未知转换符：降级字面输出 */
+    format_check("%.2f", 1.5); /* 未知转换符：整段规格字面输出 */
     EXPECT(strcmp(g_buf, "%.2f") == 0);
-    format_check("%", 1); /* 尾部 '%' 丢弃 */
-    EXPECT(strcmp(g_buf, "") == 0);
+    format_check("%5f", 1.5); /* 宽度被解析仍整段字面输出（不丢宽度前缀） */
+    EXPECT(strcmp(g_buf, "%5f") == 0);
+    format_check("%", 1); /* 尾部不完整规格：整体字面输出 */
+    EXPECT(strcmp(g_buf, "%") == 0);
 
     /* 段边界：>32B 消息多段回调，拼接后与原文一致 */
     {

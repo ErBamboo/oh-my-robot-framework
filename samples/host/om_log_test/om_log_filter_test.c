@@ -6,8 +6,6 @@
 
 #include "services/log/log.h"
 
-#include "log_internal.h"
-
 #include "om_log_test_common.h"
 
 #include <string.h>

@@ -61,7 +61,7 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
 {
     port_critical_key_t key;
     va_list ap;
-    if (module == NULL || fmt == NULL)
+    if (module == NULL || module->name == NULL || fmt == NULL)
     {
         return; /* 无失败路径：非法参数静默 */
     }

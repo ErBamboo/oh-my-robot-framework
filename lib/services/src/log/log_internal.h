@@ -31,7 +31,7 @@ void log_buf_putc(LogBufWriter *w, char c);
 void log_buf_flush(LogBufWriter *w);
 
 /** @brief printf 风格子集：标志 -/0、宽度、长度 l；转换符 d i u x X p c s %；
- *          未知转换符降级字面输出；LONG_MIN 取负未处理（文档约束） */
+ *          未知/不完整转换符降级为整段规格字面输出；LONG_MIN 取负未处理（文档约束） */
 void log_format(LogBufWriter *w, const char *fmt, va_list ap);
 
 /** @brief 是否有后端接受该级别（过滤流水线第②步，临界区内调用） */

@@ -2,10 +2,14 @@
  * @file formatter.c
  * @brief log 流式格式化器（printf 风格子集，逐段回调输出）
  * @details 支持：标志 -/0、宽度、长度修饰 l；转换符 d i u x X p c s %。
- *          未知转换符降级为字面输出（"%.2f" 原样打印）；任意长消息分段回调，
- *          栈占用 = 段缓冲 + 常量状态，不随消息长度增长（ADR-0015）。
+ *          未知/不完整转换符降级为整段规格字面输出（"%5f" 原样打印）；任意长
+ *          消息分段回调，栈占用 = 段缓冲 + 常量状态，不随消息长度增长（ADR-0015）。
  *          LONG_MIN 的取负溢出未处理（嵌入式整型格式化惯例，文档约束）。
  */
+
+#include "core/om_config.h"
+
+#ifdef OM_USE_LOG
 
 #include "core/om_def.h"
 
@@ -135,7 +139,8 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             log_buf_putc(w, c);
             continue;
         }
-        /* 解析规格：- / 0 / 宽度 / l */
+        /* 解析规格：- / 0 / 宽度 / l；spec_start 供未知/不完整规格整体字面输出 */
+        const char *spec_start = fmt - 1; /* '%' 起始位 */
         int width = 0;
         char pad = ' ';
         int left = 0;
@@ -166,7 +171,8 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
         c = *fmt++;
         if (c == '\0')
         {
-            break; /* 尾部 '%' 丢弃 */
+            log_buf_write(w, spec_start, (size_t)(fmt - spec_start)); /* 尾部不完整规格整体字面输出 */
+            break;
         }
         switch (c)
         {
@@ -228,11 +234,12 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             break;
         }
         default:
-            /* 未知转换符：降级字面输出 */
-            log_buf_putc(w, '%');
-            log_buf_putc(w, c);
+            /* 未知转换符：整段规格字面输出（含已解析的宽度/标志） */
+            log_buf_write(w, spec_start, (size_t)(fmt - spec_start));
             break;
         }
     }
     fmt_flush(w);
 }
+
+#endif /* OM_USE_LOG */
