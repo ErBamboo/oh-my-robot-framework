@@ -40,7 +40,7 @@
 - **打日志无失败路径**：后端失败 → 段丢弃 + 最小丢计数；调度器前未就绪 → 静默丢弃（deferred 列 v3）
 - **配置**（`core/om_config.h`，appcfg 可覆写）：`OM_USE_LOG` / `OM_LOG_MAX_BACKENDS`（默认 4）/ `OM_LOG_SEGMENT_SIZE`（默认 32）
 - **级别常量归位**：`om_def.h` 删除 `OmLogLevel` 枚举（typedef 零引用）；`OM_CPU_LOG_LEVEL_*`（数值不变）迁 om_cpu.h（errhandler 路径属主，使用点均已包含该头，零新增 include）；log.h 成为 `OM_LOG_LEVEL_*` 唯一属主
-- **架构**：services 层 log 模块三分（formatter 纯 C 流式 / core 过滤判定纯函数 + 临界区编排 / backend 注册表）；经 selfreg 规则直接注入 binary；**无初始化生命周期**（静态零初始化，无 OM_INIT entry）
+- **架构**：services 层 log 模块三分（formatter 纯 C 流式 / core 过滤判定纯函数 + 临界区编排 / backend 注册表）；经 selfreg 规则直接注入 binary；**无初始化生命周期**（静态零初始化，无 OM_INIT entry）——**仅限同步模式**：异步模式（v2）引入 `OM_INIT_SERVICE` 建日志线程，"零 init"是同步模式的属性而非服务永恒属性
 - **host 测试**：log 专属 host 测试工程——formatter（格式符/段切分/任意长/非法格式串）+ 过滤判定（threshold/OFF/per-backend/折叠语义）；分发/临界区设备验证
 
 ## 影响 (Consequences)
