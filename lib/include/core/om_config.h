@@ -4,6 +4,17 @@
 /* 功能裁剪 */
 #define OM_USE_ASSERT /* 框架断言（见 core/om_assert.h）；om_appcfg.h 中 #undef 可关闭 */
 
+/* services: log 服务（见 services/log/log.h，ADR-0015） */
+#define OM_USE_LOG
+
+#ifndef OM_LOG_MAX_BACKENDS
+#define OM_LOG_MAX_BACKENDS 4 /* 后端注册表上限（定长数组） */
+#endif
+
+#ifndef OM_LOG_SEGMENT_SIZE
+#define OM_LOG_SEGMENT_SIZE 32 /* formatter 段缓冲（字节，栈占用 = 段 + 常量状态） */
+#endif
+
 /* 抽象层裁剪 */
 #define OM_USE_HAL_SERIALS
 #define OM_USE_HAL_CAN

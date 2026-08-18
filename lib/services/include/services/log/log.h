@@ -1,0 +1,85 @@
+/**
+ * @file log.h
+ * @brief log 服务公共 API（services 层第一个真实服务，ADR-0015 (log_service)）
+ * @details 同步模式 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
+ *          设计文档：services/log/README.md；决策：docs/adr/0015-log_service.md。
+ *          用法：
+ *            OM_LOG_MODULE(supercap, OM_LOG_LEVEL_INFO);   // 每个 .c 顶部一次
+ *            OM_LOG_INFO("电压 %d.%02d V", mv / 1000, mv % 1000);
+ *          后端：om_log_backend_register + om_log_backend_set_level。
+ *          契约：调用宏引用本 TU 的 _om_log_module——未注册模块就调用 = 编译错误；
+ *               每 TU 一次注册；中断上下文可调用（只打 ERROR/FATAL 短消息）；
+ *               后端 push 必须快速提交（不得阻塞轮询）、不得假设一次 push = 一条日志。
+ */
+
+#ifndef __OM_LOG_H__
+#define __OM_LOG_H__
+
+#include "core/om_def.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* 级别：升序严重度（spdlog/log.c 同款方向）；OFF 置顶（set OFF = 全关，
+ * msg >= OFF 永不成立）；MAX 计数哨兵。只增不改。 */
+typedef enum {
+    OM_LOG_LEVEL_DEBUG = 0,
+    OM_LOG_LEVEL_INFO,
+    OM_LOG_LEVEL_WARN,
+    OM_LOG_LEVEL_ERROR,
+    OM_LOG_LEVEL_FATAL,
+    OM_LOG_LEVEL_OFF,
+    OM_LOG_LEVEL_MAX,
+} OmLogLevel;
+
+/** @brief 模块实例（OM_LOG_MODULE 生成，静态常量；仅编译期级别，运行时过滤表见 v3） */
+typedef struct OmLogModule {
+    const char *name;
+    OmLogLevel compileLevel;
+} OmLogModule;
+
+/** @brief 输出后端：分段友好（一条日志多段回调）+ 快速提交（绝不阻塞轮询） */
+typedef struct OmLogBackend {
+    const char *name;                              /* 查找/调试用 */
+    void (*push)(const char *segment, size_t len); /* 流式段推送（线程/中断上下文均可能） */
+    void (*flush)(void);                           /* 可选：强制刷出，可为 NULL（v1 无调用点） */
+} OmLogBackend;
+
+/**
+ * @brief 模块注册：每个 TU 顶部一次，生成静态 _om_log_module
+ * @param name 模块名（诊断/查找用）
+ * @param level 编译期级别（其下整条编出去，常量折叠零成本）
+ * @note 同一 TU 重复调用 = 重复定义；未注册就使用调用宏 = 编译错误（特性）
+ */
+#define OM_LOG_MODULE(name, level) \
+    static const OmLogModule _om_log_module = {(name), (level)}
+
+/** @brief 调用宏（引用本 TU 的 _om_log_module；fmt 为 printf 风格子集） */
+#define OM_LOG_DEBUG(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_DEBUG, __VA_ARGS__)
+#define OM_LOG_INFO(...)  om_log_log(&_om_log_module, OM_LOG_LEVEL_INFO, __VA_ARGS__)
+#define OM_LOG_WARN(...)  om_log_log(&_om_log_module, OM_LOG_LEVEL_WARN, __VA_ARGS__)
+#define OM_LOG_ERROR(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_ERROR, __VA_ARGS__)
+#define OM_LOG_FATAL(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, __VA_ARGS__)
+
+/** @brief 日志入口：过滤（编译期+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
+ *  @note 无失败路径（打日志不打扰调用方）；参数非法/未就绪静默返回；线程/中断上下文均可调 */
+void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
+
+/** @brief 注册输出后端（默认级别 DEBUG=全收，可用 om_log_backend_set_level 收紧） */
+OmRet om_log_backend_register(OmLogBackend *backend);
+
+/** @brief 注销输出后端 */
+OmRet om_log_backend_unregister(OmLogBackend *backend);
+
+/** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关 */
+OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __OM_LOG_H__ */
