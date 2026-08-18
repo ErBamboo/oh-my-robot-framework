@@ -26,10 +26,10 @@ target("tar_board")
         local board_name = context.board_name
         local inputs = bsp.get_board_build_inputs(board_name)
         if inputs.includedirs and #inputs.includedirs > 0 then
-            target:add("includedirs", inputs.includedirs, {public = true})
+            target:add("includedirs", inputs.includedirs, {public = false})
         end
         if inputs.defines and #inputs.defines > 0 then
-            target:add("defines", inputs.defines, {public = true})
+            target:add("defines", inputs.defines)
         end
         if inputs.sources and #inputs.sources > 0 then
             target:add("files", inputs.sources)

@@ -5,12 +5,13 @@
  *          用于演示/验证分散加载自动注册初始化系统（见 core/om_init.h）。
  */
 
+#include "systems/supercap/supercap.h"
 #include "core/om_def.h"
 #include "core/om_init.h"
 #include "osal/osal.h"
-#include "systems/supercap/supercap.h"
 
-struct Supercap {
+struct Supercap
+{
     int placeholder; /**< 占位，模块尚未实现 */
 };
 

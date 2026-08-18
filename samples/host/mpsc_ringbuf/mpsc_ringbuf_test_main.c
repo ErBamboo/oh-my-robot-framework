@@ -26,7 +26,7 @@ static void host_thread_yield(void)
 }
 #endif
 
-#define MPSCRB_TEST_CAPACITY     (64U)
+#define MPSCRB_TEST_CAPACITY (64U)
 #define MPSCRB_CONCURRENCY_TOTAL (2000000U)
 
 /* ---- thread helpers (same as ringbuf test) ---- */
@@ -86,7 +86,8 @@ static int run_mpscrb_basic_test(void)
         return 0;
 
     /* fill to capacity */
-    for (uint32_t i = 0; i < 8; i++) {
+    for (uint32_t i = 0; i < 8; i++)
+    {
         if (!mpscrb_in(&rb, &i))
             return 0;
     }
@@ -105,7 +106,8 @@ static int run_mpscrb_basic_test(void)
         return 0; /* peek does not consume */
 
     /* drain and verify FIFO */
-    for (uint32_t i = 0; i < 8; i++) {
+    for (uint32_t i = 0; i < 8; i++)
+    {
         if (!mpscrb_out(&rb, &out_val))
             return 0;
         if (out_val != i)
@@ -149,18 +151,20 @@ typedef struct
 
 static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 {
-    ProducerArg *parg       = (ProducerArg *)arg;
+    ProducerArg *parg = (ProducerArg *)arg;
     MpscConcurrencyCtx *ctx = parg->ctx;
-    uint32_t id             = parg->producer_id;
-    uint32_t seq            = 0;
-    uint32_t total          = ctx->totalPerProducer;
+    uint32_t id = parg->producer_id;
+    uint32_t seq = 0;
+    uint32_t total = ctx->totalPerProducer;
 
-    while (seq < total && OM_LOAD_ACQ(&ctx->stop) == 0) {
+    while (seq < total && OM_LOAD_ACQ(&ctx->stop) == 0)
+    {
         MpscTestItem item;
         item.producer_id = id;
-        item.seq         = seq;
+        item.seq = seq;
 
-        if (mpscrb_in(&ctx->rb, &item)) {
+        if (mpscrb_in(&ctx->rb, &item))
+        {
             OM_INC_AR(&ctx->produced);
             seq++;
             continue;
@@ -178,16 +182,19 @@ static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 
 static HostThreadRet HOST_THREAD_CALL consumer_thread(void *arg)
 {
-    MpscConcurrencyCtx *ctx  = (MpscConcurrencyCtx *)arg;
+    MpscConcurrencyCtx *ctx = (MpscConcurrencyCtx *)arg;
     uint32_t expected_seq[2] = {0, 0}; /* per-producer next expected seq */
-    uint32_t total           = ctx->totalPerProducer * 2;
+    uint32_t total = ctx->totalPerProducer * 2;
 
-    while (OM_LOAD_ACQ(&ctx->consumed) < total && OM_LOAD_ACQ(&ctx->stop) == 0) {
+    while (OM_LOAD_ACQ(&ctx->consumed) < total && OM_LOAD_ACQ(&ctx->stop) == 0)
+    {
         MpscTestItem item;
 
-        if (mpscrb_out(&ctx->rb, &item)) {
+        if (mpscrb_out(&ctx->rb, &item))
+        {
             uint32_t pid = item.producer_id;
-            if (pid > 1 || item.seq != expected_seq[pid]) {
+            if (pid > 1 || item.seq != expected_seq[pid])
+            {
                 OM_INC_AR(&ctx->errors);
                 OM_STORE_REL(&ctx->stop, 1);
                 break;
@@ -225,21 +232,23 @@ static int run_mpscrb_concurrency_test(void)
     OM_STORE_RLX(&ctx.errors, 0);
     OM_STORE_RLX(&ctx.stop, 0);
 
-    if (!mpscrb_alloc(&ctx.rb, sizeof(MpscTestItem), MPSCRB_TEST_CAPACITY, NULL)) {
+    if (!mpscrb_alloc(&ctx.rb, sizeof(MpscTestItem), MPSCRB_TEST_CAPACITY, NULL))
+    {
         printf("[FAIL] mpscrb_alloc failed\n");
         return 0;
     }
 
-    parg0.ctx         = &ctx;
+    parg0.ctx = &ctx;
     parg0.producer_id = 0;
-    parg1.ctx         = &ctx;
+    parg1.ctx = &ctx;
     parg1.producer_id = 1;
 
     t0 = clock();
 
     if (host_thread_create(&prod0, producer_thread, &parg0) != 0 ||
         host_thread_create(&prod1, producer_thread, &parg1) != 0 ||
-        host_thread_create(&cons, consumer_thread, &ctx) != 0) {
+        host_thread_create(&cons, consumer_thread, &ctx) != 0)
+    {
         printf("[FAIL] thread create failed\n");
         mpscrb_free(&ctx.rb, NULL);
         return 0;
@@ -249,7 +258,7 @@ static int run_mpscrb_concurrency_test(void)
     host_thread_join(prod1);
     host_thread_join(cons);
 
-    t1      = clock();
+    t1 = clock();
     elapsed = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
 
     printf("produced=%u consumed=%u write_retry=%u read_retry=%u errors=%u elapsed=%.3fs\n",
@@ -257,7 +266,8 @@ static int run_mpscrb_concurrency_test(void)
            OM_LOAD_ACQ(&ctx.readRetry), OM_LOAD_ACQ(&ctx.errors), elapsed);
 
     if (OM_LOAD_ACQ(&ctx.errors) != 0 || OM_LOAD_ACQ(&ctx.produced) != MPSCRB_CONCURRENCY_TOTAL ||
-        OM_LOAD_ACQ(&ctx.consumed) != MPSCRB_CONCURRENCY_TOTAL || !mpscrb_is_empty(&ctx.rb)) {
+        OM_LOAD_ACQ(&ctx.consumed) != MPSCRB_CONCURRENCY_TOTAL || !mpscrb_is_empty(&ctx.rb))
+    {
         mpscrb_free(&ctx.rb, NULL);
         return 0;
     }
@@ -270,16 +280,18 @@ static int run_mpscrb_concurrency_test(void)
 
 int main(void)
 {
-    int basic  = run_mpscrb_basic_test();
+    int basic = run_mpscrb_basic_test();
     int concur = run_mpscrb_concurrency_test();
 
-    if (!basic) {
+    if (!basic)
+    {
         printf("[FAIL] mpscrb basic test failed\n");
         return 1;
     }
     printf("[PASS] mpscrb basic test passed\n");
 
-    if (!concur) {
+    if (!concur)
+    {
         printf("[FAIL] mpscrb concurrency test failed\n");
         return 2;
     }

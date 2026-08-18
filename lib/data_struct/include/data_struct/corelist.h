@@ -33,8 +33,7 @@ typedef struct ListHead {
 
 #define LIST_HEAD_INIT(name) \
     {                        \
-        &(name), &(name)     \
-    }
+        &(name), &(name)}
 #define LIST_HEAD(name) ListHead name = LIST_HEAD_INIT(name)
 
 static inline void init_list_head(ListHead *list)

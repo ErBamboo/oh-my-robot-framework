@@ -19,9 +19,9 @@ typedef struct
     volatile uint32_t done;
 } OsalSemTestResult;
 
-static OsalSem *g_sem                 = NULL;
-static OsalThread *g_test_thread      = NULL;
-static OsalThread *g_post_thread      = NULL;
+static OsalSem *g_sem = NULL;
+static OsalThread *g_test_thread = NULL;
+static OsalThread *g_post_thread = NULL;
 static OsalSemTestResult g_sem_result = {0u, 0u, 0u};
 
 /**
@@ -57,8 +57,8 @@ static void osal_sem_post_once_thread(void *arg)
  */
 static void osal_sem_test_thread_entry(void *arg)
 {
-    OsalSem *invalid_sem     = NULL;
-    uint32_t sem_count       = 0u;
+    OsalSem *invalid_sem = NULL;
+    uint32_t sem_count = 0u;
     OsalThreadAttr post_attr = {
         "osal_sem_poster",
         512u * OSAL_STACK_WORD_BYTES,

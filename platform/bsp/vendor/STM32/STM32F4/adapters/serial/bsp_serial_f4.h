@@ -94,10 +94,10 @@ typedef enum
     SERIAL8_IDX,
 #endif
 #ifdef USE_SERIAL_9
-    SERIAL9_IDX,
+    SERIAL8_IDX,
 #endif
 #ifdef USE_SERIAL_10
-    SERIAL10_IDX,
+    SERIAL8_IDX,
 #endif
 } SerialIdx_e;
 

@@ -19,11 +19,11 @@ typedef struct
     volatile uint32_t done;
 } OsalMutexTestResult;
 
-static OsalMutex *g_mutex         = NULL;
+static OsalMutex *g_mutex = NULL;
 static OsalSem *g_owner_ready_sem = NULL;
-static OsalSem *g_owner_done_sem  = NULL;
+static OsalSem *g_owner_done_sem = NULL;
 
-static OsalThread *g_test_thread  = NULL;
+static OsalThread *g_test_thread = NULL;
 static OsalThread *g_owner_thread = NULL;
 
 static OsalMutexTestResult g_mutex_result = {0u, 0u, 0u};
@@ -51,7 +51,8 @@ static void osal_mutex_owner_thread_entry(void *arg)
 {
     (void)arg;
 
-    if (osal_mutex_lock(g_mutex, OSAL_WAIT_FOREVER) == OSAL_OK) {
+    if (osal_mutex_lock(g_mutex, OSAL_WAIT_FOREVER) == OSAL_OK)
+    {
         (void)osal_sem_post(g_owner_ready_sem);
         (void)osal_sleep_ms(80u);
         (void)osal_mutex_unlock(g_mutex);
@@ -110,9 +111,9 @@ static void osal_mutex_test_thread_entry(void *arg)
     osal_mutex_expect(osal_sem_delete(g_owner_done_sem) == OSAL_OK);
     osal_mutex_expect(osal_mutex_delete(g_mutex) == OSAL_OK);
 
-    g_owner_ready_sem   = NULL;
-    g_owner_done_sem    = NULL;
-    g_mutex             = NULL;
+    g_owner_ready_sem = NULL;
+    g_owner_done_sem = NULL;
+    g_mutex = NULL;
     g_mutex_result.done = 1u;
 
     for (;;)

@@ -3,9 +3,9 @@
  * @brief   Win32 平台 OSAL + Completion 实现（host 测试用）
  */
 
-#include <windows.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <windows.h>
 
 #include "osal/osal_config.h"
 #include "osal/osal_core.h"
@@ -22,7 +22,8 @@ static volatile LONG g_cs_inited = 0;
 
 static void ensure_cs(void)
 {
-    if (!g_cs_inited) {
+    if (!g_cs_inited)
+    {
         InitializeCriticalSection(&g_cs);
         g_cs_inited = 1;
     }
@@ -65,16 +66,19 @@ void osal_sleep_ms(uint32_t ms)
  * Semaphore — Win32 CreateSemaphore
  * =================================================================== */
 
-struct OsalSemHandle_s {
+struct OsalSemHandle_s
+{
     HANDLE handle;
 };
 
 OsalStatus osal_sem_create(OsalSem **sem, uint32_t max_count, uint32_t init_count)
 {
     OsalSem *s = (OsalSem *)malloc(sizeof(OsalSem));
-    if (!s) return OSAL_TIMEOUT;
+    if (!s)
+        return OSAL_TIMEOUT;
     s->handle = CreateSemaphoreA(NULL, (LONG)init_count, (LONG)max_count, NULL);
-    if (!s->handle) {
+    if (!s->handle)
+    {
         free(s);
         return OSAL_TIMEOUT;
     }
@@ -84,7 +88,8 @@ OsalStatus osal_sem_create(OsalSem **sem, uint32_t max_count, uint32_t init_coun
 
 OsalStatus osal_sem_delete(OsalSem *sem)
 {
-    if (!sem) return OSAL_TIMEOUT;
+    if (!sem)
+        return OSAL_TIMEOUT;
     CloseHandle(sem->handle);
     free(sem);
     return OSAL_OK;
@@ -92,16 +97,19 @@ OsalStatus osal_sem_delete(OsalSem *sem)
 
 OsalStatus osal_sem_wait(OsalSem *sem, uint32_t timeout_ms)
 {
-    if (!sem) return OSAL_TIMEOUT;
+    if (!sem)
+        return OSAL_TIMEOUT;
     DWORD ms = (timeout_ms == OSAL_WAIT_FOREVER) ? INFINITE : (DWORD)timeout_ms;
-    DWORD r  = WaitForSingleObject(sem->handle, ms);
-    if (r == WAIT_OBJECT_0) return OSAL_OK;
+    DWORD r = WaitForSingleObject(sem->handle, ms);
+    if (r == WAIT_OBJECT_0)
+        return OSAL_OK;
     return OSAL_TIMEOUT;
 }
 
 OsalStatus osal_sem_post(OsalSem *sem)
 {
-    if (!sem) return OSAL_TIMEOUT;
+    if (!sem)
+        return OSAL_TIMEOUT;
     ReleaseSemaphore(sem->handle, 1, NULL);
     return OSAL_OK;
 }
@@ -115,20 +123,22 @@ OsalStatus osal_sem_post_from_isr(OsalSem *sem)
  * Thread — Win32 CreateThread
  * =================================================================== */
 
-struct OsalThreadHandle_s {
+struct OsalThreadHandle_s
+{
     HANDLE handle;
 };
 
-typedef struct {
+typedef struct
+{
     OsalThreadEntryFunction entry;
     void *arg;
 } ThreadStartCtx;
 
 static DWORD WINAPI thread_start_wrapper(LPVOID param)
 {
-    ThreadStartCtx *ctx        = (ThreadStartCtx *)param;
+    ThreadStartCtx *ctx = (ThreadStartCtx *)param;
     OsalThreadEntryFunction fn = ctx->entry;
-    void *arg                  = ctx->arg;
+    void *arg = ctx->arg;
     free(ctx);
     fn(arg);
     return 0;
@@ -138,19 +148,22 @@ OsalStatus osal_thread_create(OsalThread **thread, const OsalThreadAttr *attr,
                               OsalThreadEntryFunction entry, void *arg)
 {
     ThreadStartCtx *ctx = (ThreadStartCtx *)malloc(sizeof(ThreadStartCtx));
-    if (!ctx) return OSAL_TIMEOUT;
+    if (!ctx)
+        return OSAL_TIMEOUT;
     ctx->entry = entry;
-    ctx->arg   = arg;
+    ctx->arg = arg;
 
     OsalThread *t = (OsalThread *)malloc(sizeof(OsalThread));
-    if (!t) {
+    if (!t)
+    {
         free(ctx);
         return OSAL_TIMEOUT;
     }
 
     t->handle = CreateThread(NULL, (SIZE_T)attr->stackSize,
                              thread_start_wrapper, ctx, 0, NULL);
-    if (!t->handle) {
+    if (!t->handle)
+    {
         free(t);
         free(ctx);
         return OSAL_TIMEOUT;
@@ -171,17 +184,20 @@ void osal_thread_exit(void)
 
 OmRet completion_init(Completion *c)
 {
-    if (c->_handle) {
+    if (c->_handle)
+    {
         CloseHandle((HANDLE)c->_handle);
     }
     c->_handle = (void *)CreateEventA(NULL, TRUE, FALSE, NULL);
-    if (!c->_handle) return OM_ERROR;
+    if (!c->_handle)
+        return OM_ERROR;
     return OM_OK;
 }
 
 void completion_deinit(Completion *c)
 {
-    if (c->_handle) {
+    if (c->_handle)
+    {
         CloseHandle((HANDLE)c->_handle);
         c->_handle = NULL;
     }
@@ -190,8 +206,9 @@ void completion_deinit(Completion *c)
 OmRet completion_wait(Completion *c, size_t timeout_ms)
 {
     DWORD ms = (timeout_ms == OSAL_WAIT_FOREVER) ? INFINITE : (DWORD)timeout_ms;
-    DWORD r  = WaitForSingleObject((HANDLE)c->_handle, ms);
-    if (r == WAIT_OBJECT_0) return OM_OK;
+    DWORD r = WaitForSingleObject((HANDLE)c->_handle, ms);
+    if (r == WAIT_OBJECT_0)
+        return OM_OK;
     return OM_ERROR_TIMEOUT;
 }
 
