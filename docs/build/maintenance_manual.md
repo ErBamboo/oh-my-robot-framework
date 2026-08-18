@@ -182,7 +182,7 @@ flowchart LR
 
 维护约束：
 - 新增必须覆盖 `weak` 的点时，必须将 `strong` 源文件登记到对应层级 `override_sources`。
-- 共享适配层（vendor adapters，见 ADR-0011）的 ISR 文件遵循同一规则：登记到板级 `override_sources` 直连 binary；实现文件（含 `OM_INIT` 自注册）登记到 `selfreg_sources`。
+- 共享适配层（vendor adapters，见 ADR-0012）的 ISR 文件遵循同一规则：登记到板级 `override_sources` 直连 binary；实现文件（含 `OM_INIT` 自注册）登记到 `selfreg_sources`。
 - 不得默认依赖 `whole-archive` 作为跨工具链通用方案。
 - 不得将“应用层 weak 扩展”作为推荐模式对外传播；当前版本明确不建议应用层使用 weak 语义承载业务逻辑。
 - 中断/启动/端口钩子等关键覆盖点，必须在构建验证阶段执行符号强弱校验。
@@ -311,11 +311,16 @@ end
 ```
 新增 board 时需同步更新 [`oh-my-robot/platform/bsp/data/boards/index.lua`](../../platform/bsp/data/boards/index.lua)。
 
-**启用 vendor 共享适配层外设（板瘦身，见 ADR-0011）**：若新板使用已适配 MCU 家族的外设（如 STM32F4 的 CAN），无需复制实现，只需：
+**启用 vendor 共享适配层外设（板瘦身，见 ADR-0012）**：若新板使用已适配 MCU 家族的外设（如 STM32F4 的 CAN），无需复制实现，只需：
 1. `boards/<b>/include/bsp_<p>.h`：板配置 shim（`USE_*` 开关 + `BSP_<P>_COUNT` + include 适配层契约头）；
 2. `boards/<b>/source/peripherals/<p>/bsp_<p>_data.c`：板数据表（实例/参数/引脚/中断，自动 glob 进 selfreg）；
 3. 板 lua：`selfreg_sources` 引用适配层实现（含自注册）、`override_sources` 引用适配层 ISR。
 不用该外设的板零改动；板数据缺漏由实现侧 `#error`（缺 `BSP_<P>_COUNT`）与数据文件编译期断言兜底。
+
+> ⚠️ **glob 契约**：`boards/<b>/source/peripherals/` 下的 `*.c` 会被自动 glob 直连 binary（进 selfreg）。
+> 若在该目录新增 ISR 文件（`*_it.c`），**必须同步登记到板 lua `override_sources`**——否则会被 glob 当作
+> 普通源直连，绕开 opt-in 铁律（inputs.lua 的排除规则以 override_sources 集合为准，未登记即不排除）。
+> 同理，板数据/实现文件删除时须同步清理板 lua 中的对应引用。
 
 ### 11.4 新增 board 构建脚本
 文件：`oh-my-robot/platform/bsp/boards/my-board/xmake.lua`

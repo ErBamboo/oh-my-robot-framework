@@ -135,7 +135,12 @@ void bsp_spi_pre_init(BspSpi_t bsp_spi)
         break;
 #endif
     default:
-        /* 未支持的实例，忽略 */
+        /* 未支持的实例：家族适配层当前仅实现 SPI4 的时钟/GPIO/DMA 路径。
+         * 静默忽略会让外设注册后时钟/引脚未使能而死透且零编译错误——
+         * 显式停住，接线错误即刻暴露（TODO: 以 OM_CPU_ERRHANDLER 替换）。 */
+        while (1)
+        {
+        }
         break;
     }
 }
