@@ -33,6 +33,7 @@
 ## 最终决策 (Decision)
 
 - **定位**：services 层独立服务，对标 Zephyr LOG 级能力；fatal 是下游消费方（panic 路径接入列 v3）
+- **运行形态**：v1 同步库形态（无任务无队列，后端回调在调用方上下文同步直写，rt_kprintf / Zephyr sync 同构）；v2 演进为异步队列形态（生产者入队 + 日志线程消费）；生产者↔后端匹配 = 广播模型（一条消息被所有通过 per-backend 级别过滤的后端消费，一次格式化多路扇出，Zephyr / printk 同构）；并发收敛于单串行化点（v1 临界区贯穿整条 / v2 队列+日志线程两级），后端间零并发零同步需求
 - **级别体系**（`services/log/log.h`）：`OM_LOG_LEVEL_DEBUG=0/INFO/WARN/ERROR/FATAL/OFF/MAX`（OFF 置顶、MAX 计数哨兵、只增不改）；过滤 `msg.level >= threshold`
 - **API**：`OM_LOG_MODULE(name, level)` 每 TU 一次（生成静态模块实例 {name, compileLevel}，编译期裁剪 = 常量折叠）；调用宏 `OM_LOG_DEBUG/INFO/WARN/ERROR/FATAL(fmt, ...)`（引用本 TU 实例，未注册 = 编译错误）；后端接口 `OmLogBackend{name, push, flush}`（push 快速提交、flush 可 NULL）+ `om_log_backend_register/unregister/set_level`（错误码：`OM_ERR_ALREADY/FULL/NOT_FOUND/INVALID_ARG`）
 - **过滤流水线**：① 编译期模块级别（折叠）→ ② 运行时无后端接受 → 返回（零格式化）→ ③ 临界区 → ④ emit（头部 + 流式格式化 + per-backend 过滤广播）→ ⑤ 退临界区
