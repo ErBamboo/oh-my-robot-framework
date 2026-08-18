@@ -1,0 +1,238 @@
+/**
+ * @file formatter.c
+ * @brief log 流式格式化器（printf 风格子集，逐段回调输出）
+ * @details 支持：标志 -/0、宽度、长度修饰 l；转换符 d i u x X p c s %。
+ *          未知转换符降级为字面输出（"%.2f" 原样打印）；任意长消息分段回调，
+ *          栈占用 = 段缓冲 + 常量状态，不随消息长度增长（ADR-0015）。
+ *          LONG_MIN 的取负溢出未处理（嵌入式整型格式化惯例，文档约束）。
+ */
+
+#include "core/om_def.h"
+
+#include "log_internal.h"
+
+#include <stdarg.h>
+#include <string.h>
+
+void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *outCtx, char *seg, size_t segSize)
+{
+    w->out = out;
+    w->outCtx = outCtx;
+    w->seg = seg;
+    w->segSize = segSize;
+    w->segLen = 0;
+}
+
+static void fmt_flush(LogBufWriter *w)
+{
+    if (w->segLen > 0)
+    {
+        w->out(w->outCtx, w->seg, w->segLen);
+        w->segLen = 0;
+    }
+}
+
+void log_buf_flush(LogBufWriter *w)
+{
+    fmt_flush(w);
+}
+
+void log_buf_write(LogBufWriter *w, const char *s, size_t n)
+{
+    while (n > 0)
+    {
+        size_t room = w->segSize - w->segLen;
+        size_t m = (n < room) ? n : room;
+        (void)memcpy(w->seg + w->segLen, s, m);
+        w->segLen += m;
+        s += m;
+        n -= m;
+        if (w->segLen >= w->segSize)
+        {
+            fmt_flush(w);
+        }
+    }
+}
+
+void log_buf_putc(LogBufWriter *w, char c)
+{
+    log_buf_write(w, &c, 1);
+}
+
+static void fmt_pad(LogBufWriter *w, char pad, size_t n)
+{
+    while (n > 0)
+    {
+        log_buf_putc(w, pad);
+        n--;
+    }
+}
+
+/* 无符号整数转字符串（逆序填充后反转）；返回长度 */
+static size_t fmt_utoa(unsigned long v, char *tmp, int base, int upper)
+{
+    static const char digits[] = "0123456789abcdef";
+    static const char digitsUp[] = "0123456789ABCDEF";
+    const char *table = upper ? digitsUp : digits;
+    size_t len = 0;
+    if (v == 0)
+    {
+        tmp[len++] = '0';
+    }
+    else
+    {
+        while (v > 0)
+        {
+            tmp[len++] = table[v % (unsigned)base];
+            v /= (unsigned)base;
+        }
+    }
+    for (size_t i = 0; i < len / 2; i++)
+    {
+        char t = tmp[i];
+        tmp[i] = tmp[len - 1 - i];
+        tmp[len - 1 - i] = t;
+    }
+    return len;
+}
+
+static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int upper, int width, char pad, int left)
+{
+    char tmp[32];
+    size_t len = fmt_utoa(v, tmp, base, upper);
+    size_t total = len + (sign != 0 ? 1 : 0);
+    size_t padCount = (size_t)(width > (int)total ? width - (int)total : 0);
+    if (sign != 0 && pad == '0')
+    {
+        /* 零填充：符号先出再补零（"-0001"），与 libc printf 一致 */
+        log_buf_putc(w, (char)sign);
+        fmt_pad(w, '0', padCount);
+        log_buf_write(w, tmp, len);
+        return;
+    }
+    if (!left)
+    {
+        fmt_pad(w, pad, padCount);
+    }
+    if (sign != 0)
+    {
+        log_buf_putc(w, (char)sign);
+    }
+    log_buf_write(w, tmp, len);
+    if (left)
+    {
+        fmt_pad(w, ' ', padCount);
+    }
+}
+
+void log_format(LogBufWriter *w, const char *fmt, va_list ap)
+{
+    while (*fmt != '\0')
+    {
+        char c = *fmt++;
+        if (c != '%')
+        {
+            log_buf_putc(w, c);
+            continue;
+        }
+        /* 解析规格：- / 0 / 宽度 / l */
+        int width = 0;
+        char pad = ' ';
+        int left = 0;
+        int isLong = 0;
+        c = *fmt;
+        while (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l')
+        {
+            if (c == '-')
+            {
+                left = 1;
+                pad = ' ';
+            }
+            else if (c == '0' && width == 0 && !left)
+            {
+                pad = '0';
+            }
+            else if (c >= '0' && c <= '9')
+            {
+                width = width * 10 + (c - '0');
+            }
+            else if (c == 'l')
+            {
+                isLong = 1;
+            }
+            fmt++;
+            c = *fmt;
+        }
+        c = *fmt++;
+        if (c == '\0')
+        {
+            break; /* 尾部 '%' 丢弃 */
+        }
+        switch (c)
+        {
+        case '%':
+            log_buf_putc(w, '%');
+            break;
+        case 'd':
+        case 'i': {
+            long v = isLong ? va_arg(ap, long) : (long)va_arg(ap, int);
+            int sign = 0;
+            unsigned long u;
+            if (v < 0)
+            {
+                sign = '-';
+                u = (unsigned long)(-v);
+            }
+            else
+            {
+                u = (unsigned long)v;
+            }
+            fmt_num(w, u, sign, 10, 0, width, pad, left);
+            break;
+        }
+        case 'u': {
+            unsigned long u = isLong ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
+            fmt_num(w, u, 0, 10, 0, width, pad, left);
+            break;
+        }
+        case 'x':
+        case 'X': {
+            unsigned long u = isLong ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
+            fmt_num(w, u, 0, 16, (c == 'X'), width, pad, left);
+            break;
+        }
+        case 'p': {
+            void *p = va_arg(ap, void *);
+            fmt_num(w, (unsigned long)(uintptr_t)p, 0, 16, 0, width, pad, left);
+            break;
+        }
+        case 'c':
+            log_buf_putc(w, (char)va_arg(ap, int));
+            break;
+        case 's': {
+            const char *s = va_arg(ap, const char *);
+            if (s == NULL)
+            {
+                s = "(null)";
+            }
+            size_t len = strlen(s);
+            if (!left)
+            {
+                fmt_pad(w, ' ', (size_t)(width > (int)len ? width - (int)len : 0));
+            }
+            log_buf_write(w, s, len);
+            if (left)
+            {
+                fmt_pad(w, ' ', (size_t)(width > (int)len ? width - (int)len : 0));
+            }
+            break;
+        }
+        default:
+            /* 未知转换符：降级字面输出 */
+            log_buf_putc(w, '%');
+            log_buf_putc(w, c);
+            break;
+        }
+    }
+    fmt_flush(w);
+}
