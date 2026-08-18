@@ -75,7 +75,7 @@ static OmRet bsp_serial_configure(HalSerial* serial, SerialCfg* cfg)
     huart->Init.OverSampling = (cfg->overSampling == OVERSAMPLING_8) ? UART_OVERSAMPLING_8 : UART_OVERSAMPLING_16;
     if (HAL_UART_Init(huart) != HAL_OK)
     {
-        OM_CPU_ERRHANDLER("HAL_UART_Init failed", OM_LOG_LEVEL_FATAL);
+        OM_CPU_ERRHANDLER("HAL_UART_Init failed", OM_CPU_LOG_LEVEL_FATAL);
     }
     return OM_OK;
 }

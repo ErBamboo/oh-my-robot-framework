@@ -26,7 +26,7 @@ void serial_err_cb(Device *dev, uint32_t errcode, void *param, size_t paramsz)
     switch (errcode)
     {
     case ERR_SERIAL_INVALID_MEM:
-        OM_CPU_ERRHANDLER("ERR_SERIAL_INVALID_MEM", OM_LOG_LEVEL_FATAL);
+        OM_CPU_ERRHANDLER("ERR_SERIAL_INVALID_MEM", OM_CPU_LOG_LEVEL_FATAL);
         break;
 
     case ERR_SERIAL_RXFIFO_OVERFLOW:
@@ -40,7 +40,7 @@ void serial_err_cb(Device *dev, uint32_t errcode, void *param, size_t paramsz)
     default: {
         char *notify = "\r\nserial occurred some error\r\n";
         device_write(dev, NULL, notify, strlen(notify));
-        OM_CPU_ERRHANDLER("serial occurred some error", OM_LOG_LEVEL_FATAL);
+        OM_CPU_ERRHANDLER("serial occurred some error", OM_CPU_LOG_LEVEL_FATAL);
     }
     break;
     }

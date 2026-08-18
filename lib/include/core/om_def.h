@@ -69,27 +69,18 @@ typedef int32_t OmRet; /* 正值错误码：0=成功，>0=失败 */
 /* === 0x13 - 0xFF 预留给未来通用码扩展 === */
 
 /* === 过渡期兼容宏（阶段 1-6，阶段 7 删除） === */
-#define OM_ERROR             OM_ERR_IO            /* deprecated */
-#define OM_ERR_CONFLICT_OLD  OM_ERR_CONFLICT      /* deprecated */
-#define OM_ERR_OVERFLOW_OLD  OM_ERR_OVERFLOW      /* deprecated */
-#define OM_ERROR_TIMEOUT     OM_ERR_TIMEOUT       /* deprecated */
-#define OM_ERROR_DMA         OM_ERR_IO            /* deprecated */
-#define OM_ERROR_MEMORY      OM_ERR_NO_MEM        /* deprecated */
-#define OM_ERROR_PARAM       OM_ERR_INVALID_ARG   /* deprecated */
-#define OM_ERROR_NULL        OM_ERR_NULL          /* deprecated */
-#define OM_ERROR_BUSY        OM_ERR_BUSY          /* deprecated */
-#define OM_ERROR_WOULD_BLOCK OM_ERR_AGAIN         /* deprecated */
-#define OM_ERROR_EMPTY       OM_ERR_EMPTY         /* deprecated */
-#define OM_ERROR_NOT_SUPPORT OM_ERR_NOT_SUPPORTED /* deprecated */
-
-typedef enum {
-    OM_LOG_LEVEL_DEBUG = 0U, // 调试信息
-    OM_LOG_LEVEL_INFO,       // 信息
-    OM_LOG_LEVEL_WARN,       // 警告
-    OM_LOG_LEVEL_ERROR,      // 错误
-    OM_LOG_LEVEL_FATAL,      // 致命错误
-    OM_LOG_LEVEL_MAX,        // 日志级别最大值
-} OmLogLevel;
+#define OM_ERROR              OM_ERR_IO            /* deprecated */
+#define OM_ERR_CONFLICT_OLD   OM_ERR_CONFLICT      /* deprecated */
+#define OM_ERR_OVERFLOW_OLD   OM_ERR_OVERFLOW      /* deprecated */
+#define OM_ERROR_TIMEOUT      OM_ERR_TIMEOUT       /* deprecated */
+#define OM_ERROR_DMA          OM_ERR_IO            /* deprecated */
+#define OM_ERROR_MEMORY       OM_ERR_NO_MEM        /* deprecated */
+#define OM_ERROR_PARAM        OM_ERR_INVALID_ARG   /* deprecated */
+#define OM_ERROR_NULL         OM_ERR_NULL          /* deprecated */
+#define OM_ERROR_BUSY         OM_ERR_BUSY          /* deprecated */
+#define OM_ERROR_WOULD_BLOCK  OM_ERR_AGAIN         /* deprecated */
+#define OM_ERROR_EMPTY        OM_ERR_EMPTY         /* deprecated */
+#define OM_ERROR_NOT_SUPPORT  OM_ERR_NOT_SUPPORTED /* deprecated */
 
 #define OM_WAIT_FOREVER       0xffffffffU
 
