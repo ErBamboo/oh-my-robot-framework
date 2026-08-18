@@ -14,12 +14,12 @@
 #include <stdarg.h>
 #include <string.h>
 
-void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *outCtx, char *seg, size_t segSize)
+void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *out_ctx, char *seg, size_t seg_size)
 {
     w->out = out;
-    w->outCtx = outCtx;
+    w->outCtx = out_ctx;
     w->seg = seg;
-    w->segSize = segSize;
+    w->segSize = seg_size;
     w->segLen = 0;
 }
 
@@ -72,8 +72,8 @@ static void fmt_pad(LogBufWriter *w, char pad, size_t n)
 static size_t fmt_utoa(unsigned long v, char *tmp, int base, int upper)
 {
     static const char digits[] = "0123456789abcdef";
-    static const char digitsUp[] = "0123456789ABCDEF";
-    const char *table = upper ? digitsUp : digits;
+    static const char digits_up[] = "0123456789ABCDEF";
+    const char *table = upper ? digits_up : digits;
     size_t len = 0;
     if (v == 0)
     {
@@ -101,18 +101,18 @@ static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int up
     char tmp[32];
     size_t len = fmt_utoa(v, tmp, base, upper);
     size_t total = len + (sign != 0 ? 1 : 0);
-    size_t padCount = (size_t)(width > (int)total ? width - (int)total : 0);
+    size_t pad_count = (size_t)(width > (int)total ? width - (int)total : 0);
     if (sign != 0 && pad == '0')
     {
         /* 零填充：符号先出再补零（"-0001"），与 libc printf 一致 */
         log_buf_putc(w, (char)sign);
-        fmt_pad(w, '0', padCount);
+        fmt_pad(w, '0', pad_count);
         log_buf_write(w, tmp, len);
         return;
     }
     if (!left)
     {
-        fmt_pad(w, pad, padCount);
+        fmt_pad(w, pad, pad_count);
     }
     if (sign != 0)
     {
@@ -121,7 +121,7 @@ static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int up
     log_buf_write(w, tmp, len);
     if (left)
     {
-        fmt_pad(w, ' ', padCount);
+        fmt_pad(w, ' ', pad_count);
     }
 }
 
@@ -139,7 +139,7 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
         int width = 0;
         char pad = ' ';
         int left = 0;
-        int isLong = 0;
+        int is_long = 0;
         c = *fmt;
         while (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l')
         {
@@ -158,7 +158,7 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             }
             else if (c == 'l')
             {
-                isLong = 1;
+                is_long = 1;
             }
             fmt++;
             c = *fmt;
@@ -175,7 +175,7 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             break;
         case 'd':
         case 'i': {
-            long v = isLong ? va_arg(ap, long) : (long)va_arg(ap, int);
+            long v = is_long ? va_arg(ap, long) : (long)va_arg(ap, int);
             int sign = 0;
             unsigned long u;
             if (v < 0)
@@ -191,13 +191,13 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             break;
         }
         case 'u': {
-            unsigned long u = isLong ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
+            unsigned long u = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
             fmt_num(w, u, 0, 10, 0, width, pad, left);
             break;
         }
         case 'x':
         case 'X': {
-            unsigned long u = isLong ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
+            unsigned long u = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
             fmt_num(w, u, 0, 16, (c == 'X'), width, pad, left);
             break;
         }

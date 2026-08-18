@@ -25,7 +25,7 @@ typedef struct
     size_t segLen;
 } LogBufWriter;
 
-void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *outCtx, char *seg, size_t segSize);
+void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *out_ctx, char *seg, size_t seg_size);
 void log_buf_write(LogBufWriter *w, const char *s, size_t n);
 void log_buf_putc(LogBufWriter *w, char c);
 void log_buf_flush(LogBufWriter *w);
