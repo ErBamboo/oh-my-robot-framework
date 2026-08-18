@@ -25,9 +25,9 @@ typedef struct
     volatile uint32_t done;
 } OsalQueueTestResult;
 
-static OsalQueue *g_queue                 = NULL;
-static OsalThread *g_test_thread          = NULL;
-static OsalThread *g_sender_thread        = NULL;
+static OsalQueue *g_queue = NULL;
+static OsalThread *g_test_thread = NULL;
+static OsalThread *g_sender_thread = NULL;
 static OsalQueueTestResult g_queue_result = {0u, 0u, 0u};
 
 /**
@@ -79,14 +79,14 @@ static void osal_queue_sender_thread_entry(void *arg)
  */
 static void osal_queue_test_thread_entry(void *arg)
 {
-    OsalQueue *queue_temp           = NULL;
-    OsalQueueTestMessage message_1  = {1u, 11u};
-    OsalQueueTestMessage message_2  = {2u, 22u};
-    OsalQueueTestMessage message_3  = {3u, 33u};
+    OsalQueue *queue_temp = NULL;
+    OsalQueueTestMessage message_1 = {1u, 11u};
+    OsalQueueTestMessage message_2 = {2u, 22u};
+    OsalQueueTestMessage message_3 = {3u, 33u};
     OsalQueueTestMessage message_rx = {0u, 0u};
-    uint32_t queue_count            = 0u;
-    uint32_t queue_space            = 0u;
-    OsalThreadAttr sender_attr      = {
+    uint32_t queue_count = 0u;
+    uint32_t queue_space = 0u;
+    OsalThreadAttr sender_attr = {
         "osal_queue_sender",
         512u * OSAL_STACK_WORD_BYTES,
         2u,

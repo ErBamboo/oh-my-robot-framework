@@ -8,7 +8,8 @@ static OmRet pipe_create_sems(Pipe *pipe)
     if (osal_sem_create(&pipe->read_sem, 1u, 0u) != OSAL_OK)
         return OM_ERROR_MEMORY;
 
-    if (osal_sem_create(&pipe->write_sem, 1u, 1u) != OSAL_OK) {
+    if (osal_sem_create(&pipe->write_sem, 1u, 1u) != OSAL_OK)
+    {
         osal_sem_delete(pipe->read_sem);
         pipe->read_sem = NULL;
         return OM_ERROR_MEMORY;
@@ -32,7 +33,8 @@ OmRet pipe_init(Pipe *pipe, uint8_t *buf, unsigned int capacity)
         return OM_ERROR_PARAM;
 
     OmRet ret = pipe_create_sems(pipe);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         memset(&pipe->rb, 0, sizeof(pipe->rb));
         return ret;
     }
@@ -51,7 +53,8 @@ OmRet pipe_alloc(Pipe *pipe, unsigned int capacity, void *(*pmalloc)(size_t))
         return OM_ERROR_MEMORY;
 
     OmRet ret = pipe_create_sems(pipe);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         free_ringbuf(&pipe->rb, NULL);
         memset(&pipe->rb, 0, sizeof(pipe->rb));
         return ret;
@@ -65,11 +68,13 @@ void pipe_deinit(Pipe *pipe)
     if (!pipe)
         return;
 
-    if (pipe->read_sem) {
+    if (pipe->read_sem)
+    {
         osal_sem_delete(pipe->read_sem);
         pipe->read_sem = NULL;
     }
-    if (pipe->write_sem) {
+    if (pipe->write_sem)
+    {
         osal_sem_delete(pipe->write_sem);
         pipe->write_sem = NULL;
     }
@@ -82,11 +87,13 @@ void pipe_free(Pipe *pipe, void (*pfree)(void *))
     if (!pipe)
         return;
 
-    if (pipe->read_sem) {
+    if (pipe->read_sem)
+    {
         osal_sem_delete(pipe->read_sem);
         pipe->read_sem = NULL;
     }
-    if (pipe->write_sem) {
+    if (pipe->write_sem)
+    {
         osal_sem_delete(pipe->write_sem);
         pipe->write_sem = NULL;
     }
@@ -106,7 +113,8 @@ int pipe_write(Pipe *pipe, const void *data, int len, uint32_t timeout_ms)
     bool was_empty = ringbuf_is_empty(&pipe->rb);
     unsigned int n = ringbuf_in(&pipe->rb, data, (unsigned int)len);
 
-    if (n > 0u) {
+    if (n > 0u)
+    {
         if (was_empty)
             osal_sem_post(pipe->read_sem);
         return (int)n;
@@ -120,8 +128,9 @@ int pipe_write(Pipe *pipe, const void *data, int len, uint32_t timeout_ms)
         return (ws == OSAL_WOULD_BLOCK) ? OM_ERROR_WOULD_BLOCK : OM_ERROR_TIMEOUT;
 
     was_empty = ringbuf_is_empty(&pipe->rb);
-    n         = ringbuf_in(&pipe->rb, data, (unsigned int)len);
-    if (n > 0u) {
+    n = ringbuf_in(&pipe->rb, data, (unsigned int)len);
+    if (n > 0u)
+    {
         if (was_empty)
             osal_sem_post(pipe->read_sem);
         return (int)n;
@@ -138,7 +147,8 @@ int pipe_write_from_isr(Pipe *pipe, const void *data, int len)
     bool was_empty = ringbuf_is_empty(&pipe->rb);
     unsigned int n = ringbuf_in(&pipe->rb, data, (unsigned int)len);
 
-    if (n > 0u) {
+    if (n > 0u)
+    {
         if (was_empty)
             osal_sem_post_from_isr(pipe->read_sem);
         return (int)n;
@@ -155,10 +165,11 @@ int pipe_read(Pipe *pipe, void *buf, int len, uint32_t timeout_ms)
     if (osal_is_in_isr())
         return OM_ERROR_PARAM;
 
-    bool was_full  = ringbuf_is_full(&pipe->rb);
+    bool was_full = ringbuf_is_full(&pipe->rb);
     unsigned int n = ringbuf_out(&pipe->rb, buf, (unsigned int)len);
 
-    if (n > 0u) {
+    if (n > 0u)
+    {
         if (was_full)
             osal_sem_post(pipe->write_sem);
         return (int)n;
@@ -172,8 +183,9 @@ int pipe_read(Pipe *pipe, void *buf, int len, uint32_t timeout_ms)
         return (ws == OSAL_WOULD_BLOCK) ? OM_ERROR_WOULD_BLOCK : OM_ERROR_TIMEOUT;
 
     was_full = ringbuf_is_full(&pipe->rb);
-    n        = ringbuf_out(&pipe->rb, buf, (unsigned int)len);
-    if (n > 0u) {
+    n = ringbuf_out(&pipe->rb, buf, (unsigned int)len);
+    if (n > 0u)
+    {
         if (was_full)
             osal_sem_post(pipe->write_sem);
         return (int)n;
@@ -220,9 +232,9 @@ OmRet pipe_skip(Pipe *pipe, int len)
     if (ringbuf_is_empty(&pipe->rb))
         return OM_ERROR_EMPTY;
 
-    bool was_full      = ringbuf_is_full(&pipe->rb);
+    bool was_full = ringbuf_is_full(&pipe->rb);
     unsigned int avail = ringbuf_len(&pipe->rb);
-    unsigned int skip  = ((unsigned int)len < avail) ? (unsigned int)len : avail;
+    unsigned int skip = ((unsigned int)len < avail) ? (unsigned int)len : avail;
     ringbuf_update_out(&pipe->rb, skip);
 
     if (was_full && skip > 0u)
@@ -236,10 +248,11 @@ int pipe_read_from_isr(Pipe *pipe, void *buf, int len)
     if (!pipe || !buf || len <= 0)
         return OM_ERROR_PARAM;
 
-    bool was_full  = ringbuf_is_full(&pipe->rb);
+    bool was_full = ringbuf_is_full(&pipe->rb);
     unsigned int n = ringbuf_out(&pipe->rb, buf, (unsigned int)len);
 
-    if (n > 0u) {
+    if (n > 0u)
+    {
         if (was_full)
             osal_sem_post_from_isr(pipe->write_sem);
         return (int)n;
@@ -269,9 +282,9 @@ OmRet pipe_skip_from_isr(Pipe *pipe, int len)
     if (ringbuf_is_empty(&pipe->rb))
         return OM_ERROR_EMPTY;
 
-    bool was_full      = ringbuf_is_full(&pipe->rb);
+    bool was_full = ringbuf_is_full(&pipe->rb);
     unsigned int avail = ringbuf_len(&pipe->rb);
-    unsigned int skip  = ((unsigned int)len < avail) ? (unsigned int)len : avail;
+    unsigned int skip = ((unsigned int)len < avail) ? (unsigned int)len : avail;
     ringbuf_update_out(&pipe->rb, skip);
 
     if (was_full && skip > 0u)

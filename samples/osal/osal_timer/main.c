@@ -24,15 +24,15 @@ typedef struct
     volatile uint32_t done;
 } OsalTimerTestResult;
 
-static OsalThread *g_test_thread               = NULL;
-static OsalTimer *g_periodic_timer             = NULL;
-static OsalTimer *g_one_shot_timer             = NULL;
-static OsalTimerTestResult g_timer_result      = {0u, 0u, 0u};
-static volatile uint32_t g_periodic_hits       = 0u;
+static OsalThread *g_test_thread = NULL;
+static OsalTimer *g_periodic_timer = NULL;
+static OsalTimer *g_one_shot_timer = NULL;
+static OsalTimerTestResult g_timer_result = {0u, 0u, 0u};
+static volatile uint32_t g_periodic_hits = 0u;
 static volatile uint32_t g_periodic_id_matches = 0u;
-static volatile uint32_t g_one_shot_hits       = 0u;
-static uint32_t g_periodic_id_a                = 0xA5A5A5A5u;
-static uint32_t g_periodic_id_b                = 0x5A5A5A5Au;
+static volatile uint32_t g_one_shot_hits = 0u;
+static uint32_t g_periodic_id_a = 0xA5A5A5A5u;
+static uint32_t g_periodic_id_b = 0x5A5A5A5Au;
 
 /**
  * @brief 简单断言计数器
@@ -69,7 +69,7 @@ static void osal_one_shot_timer_cb(OsalTimer *timer)
  */
 static void osal_timer_test_thread_entry(void *arg)
 {
-    uint32_t snapshot          = 0u;
+    uint32_t snapshot = 0u;
     uint32_t one_shot_snapshot = 0u;
 
     (void)arg;

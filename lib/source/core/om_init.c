@@ -22,19 +22,19 @@
 
 #if defined(__ARMCC_VERSION)
 #define __om_init_0_start Image$$ER_OM_INIT_0$$Base
-#define __om_init_0_end   Image$$ER_OM_INIT_0$$Limit
+#define __om_init_0_end Image$$ER_OM_INIT_0$$Limit
 #define __om_init_1_start Image$$ER_OM_INIT_1$$Base
-#define __om_init_1_end   Image$$ER_OM_INIT_1$$Limit
+#define __om_init_1_end Image$$ER_OM_INIT_1$$Limit
 #define __om_init_2_start Image$$ER_OM_INIT_2$$Base
-#define __om_init_2_end   Image$$ER_OM_INIT_2$$Limit
+#define __om_init_2_end Image$$ER_OM_INIT_2$$Limit
 #define __om_init_3_start Image$$ER_OM_INIT_3$$Base
-#define __om_init_3_end   Image$$ER_OM_INIT_3$$Limit
+#define __om_init_3_end Image$$ER_OM_INIT_3$$Limit
 #define __om_init_4_start Image$$ER_OM_INIT_4$$Base
-#define __om_init_4_end   Image$$ER_OM_INIT_4$$Limit
+#define __om_init_4_end Image$$ER_OM_INIT_4$$Limit
 #define __om_init_5_start Image$$ER_OM_INIT_5$$Base
-#define __om_init_5_end   Image$$ER_OM_INIT_5$$Limit
+#define __om_init_5_end Image$$ER_OM_INIT_5$$Limit
 #define __om_init_6_start Image$$ER_OM_INIT_6$$Base
-#define __om_init_6_end   Image$$ER_OM_INIT_6$$Limit
+#define __om_init_6_end Image$$ER_OM_INIT_6$$Limit
 #endif
 
 extern const OmInitEntry __om_init_0_start[];
@@ -93,12 +93,14 @@ static inline int om_init_prio_key(const OmInitEntry *e)
 static OmRet om_init_call_one(const OmInitEntry *e)
 {
     OmRet ret = e->fn();
-    if (ret == OM_OK) {
+    if (ret == OM_OK)
+    {
         return OM_OK;
     }
-    if (s_first_fail_name == NULL) {
+    if (s_first_fail_name == NULL)
+    {
         s_first_fail_name = e->name;
-        s_first_fail_ret  = ret;
+        s_first_fail_ret = ret;
     }
     return ret;
 }
@@ -112,60 +114,77 @@ const char *om_init_last_fail_name(void)
 OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi)
 {
     s_first_fail_name = NULL;
-    s_first_fail_ret  = OM_OK;
+    s_first_fail_ret = OM_OK;
 
     /* 逐级遍历 [level_lo, level_hi)（级别顺序由链接器按段排列保证） */
-    for (uint8_t lvl = (uint8_t)level_lo; lvl < (uint8_t)level_hi; lvl++) {
+    for (uint8_t lvl = (uint8_t)level_lo; lvl < (uint8_t)level_hi; lvl++)
+    {
         const OmInitEntry *sec_start = s_level_ranges[lvl].start;
-        const OmInitEntry *sec_end   = s_level_ranges[lvl].end;
+        const OmInitEntry *sec_end = s_level_ranges[lvl].end;
 
         /* 统计本级非空表项，决定是否走排序路径 */
         size_t total = 0;
-        for (const OmInitEntry *p = sec_start; p < sec_end; p++) {
-            if (p->fn != NULL) {
+        for (const OmInitEntry *p = sec_start; p < sec_end; p++)
+        {
+            if (p->fn != NULL)
+            {
                 total++;
             }
         }
 
-        if (total <= OM_INIT_MAX_ENTRIES) {
+        if (total <= OM_INIT_MAX_ENTRIES)
+        {
             /* 收集到栈缓冲并按 prio 选择排序 */
             const OmInitEntry *order[OM_INIT_MAX_ENTRIES];
             size_t count = 0;
-            for (const OmInitEntry *p = sec_start; p < sec_end; p++) {
-                if (p->fn != NULL) {
+            for (const OmInitEntry *p = sec_start; p < sec_end; p++)
+            {
+                if (p->fn != NULL)
+                {
                     order[count++] = p;
                 }
             }
 
-            for (size_t i = 0; i + 1 < count; i++) {
+            for (size_t i = 0; i + 1 < count; i++)
+            {
                 size_t min = i;
-                for (size_t j = i + 1; j < count; j++) {
-                    if (om_init_prio_key(order[j]) < om_init_prio_key(order[min])) {
+                for (size_t j = i + 1; j < count; j++)
+                {
+                    if (om_init_prio_key(order[j]) < om_init_prio_key(order[min]))
+                    {
                         min = j;
                     }
                 }
-                if (min != i) {
+                if (min != i)
+                {
                     const OmInitEntry *tmp = order[i];
-                    order[i]               = order[min];
-                    order[min]             = tmp;
+                    order[i] = order[min];
+                    order[min] = tmp;
                 }
             }
 
-            for (size_t i = 0; i < count; i++) {
+            for (size_t i = 0; i < count; i++)
+            {
 #ifdef OM_INIT_ABORT_ON_FAIL
-                if (om_init_call_one(order[i]) != OM_OK) {
+                if (om_init_call_one(order[i]) != OM_OK)
+                {
                     return s_first_fail_ret;
                 }
 #else
                 (void)om_init_call_one(order[i]);
 #endif
             }
-        } else {
+        }
+        else
+        {
             /* 超出缓冲：退化为链接顺序全执行（应调大 OM_INIT_MAX_ENTRIES） */
-            for (const OmInitEntry *p = sec_start; p < sec_end; p++) {
-                if (p->fn != NULL) {
+            for (const OmInitEntry *p = sec_start; p < sec_end; p++)
+            {
+                if (p->fn != NULL)
+                {
 #ifdef OM_INIT_ABORT_ON_FAIL
-                    if (om_init_call_one(p) != OM_OK) {
+                    if (om_init_call_one(p) != OM_OK)
+                    {
                         return s_first_fail_ret;
                     }
 #else

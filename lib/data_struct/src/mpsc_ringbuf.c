@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define IS_NUM_POWER_OF_TWO(x) ((x) && !(((x) & ((x)-1U))))
+#define IS_NUM_POWER_OF_TWO(x) ((x) && !(((x) & ((x) - 1U))))
 
 static unsigned int mpscrb_roundup_pow_of_two(unsigned int v)
 {
@@ -29,12 +29,13 @@ static unsigned int mpscrb_roundup_pow_of_two(unsigned int v)
  */
 static void mpscrb_copy_in(MpscRingbuf *rb, const void *src, unsigned int off)
 {
-    unsigned int size  = rb->mask + 1U;
+    unsigned int size = rb->mask + 1U;
     unsigned int esize = rb->esize;
     unsigned int copy_len;
 
     off &= rb->mask;
-    if (esize != 1U) {
+    if (esize != 1U)
+    {
         off *= esize;
         size *= esize;
     }
@@ -52,12 +53,13 @@ static void mpscrb_copy_in(MpscRingbuf *rb, const void *src, unsigned int off)
  */
 static void mpscrb_copy_out(MpscRingbuf *rb, void *dst, unsigned int off)
 {
-    unsigned int size  = rb->mask + 1U;
+    unsigned int size = rb->mask + 1U;
     unsigned int esize = rb->esize;
     unsigned int copy_len;
 
     off &= rb->mask;
-    if (esize != 1U) {
+    if (esize != 1U)
+    {
         off *= esize;
         size *= esize;
     }
@@ -73,15 +75,17 @@ bool mpscrb_init(MpscRingbuf *rb, uint8_t *buf, OmAtomicU8 *ready, unsigned int 
     if ((rb == NULL) || (buf == NULL) || (ready == NULL) || (item_size == 0U) || (item_count == 0U))
         return false;
 
-    if (!IS_NUM_POWER_OF_TWO(item_count)) {
-        while (1) {
+    if (!IS_NUM_POWER_OF_TWO(item_count))
+    {
+        while (1)
+        {
         }
     }
 
-    rb->buf   = buf;
+    rb->buf = buf;
     rb->ready = ready;
     rb->esize = item_size;
-    rb->mask  = item_count - 1U;
+    rb->mask = item_count - 1U;
     OM_STORE_RLX(&rb->writePos, 0U);
     OM_STORE_RLX(&rb->readPos, 0U);
 
@@ -99,8 +103,8 @@ bool mpscrb_alloc(MpscRingbuf *rb, unsigned int item_size, unsigned int item_cou
     if ((rb == NULL) || (item_size == 0U) || (item_count == 0U))
         return false;
 
-    cap      = mpscrb_roundup_pow_of_two(item_count);
-    data_sz  = (size_t)cap * item_size;
+    cap = mpscrb_roundup_pow_of_two(item_count);
+    data_sz = (size_t)cap * item_size;
     ready_sz = (size_t)cap * sizeof(OmAtomicU8);
 
     /* 数据缓冲区和就绪标志数组合并为一次连续分配 */
@@ -118,7 +122,7 @@ bool mpscrb_alloc(MpscRingbuf *rb, unsigned int item_size, unsigned int item_cou
     memset(rb->ready, MPSCRB_NOT_READY, ready_sz);
 
     rb->esize = item_size;
-    rb->mask  = cap - 1U;
+    rb->mask = cap - 1U;
     OM_STORE_RLX(&rb->writePos, 0U);
     OM_STORE_RLX(&rb->readPos, 0U);
     return true;
@@ -134,7 +138,7 @@ void mpscrb_free(MpscRingbuf *rb, void (*pfree)(void *))
     else
         pfree(rb->buf);
 
-    rb->buf   = NULL;
+    rb->buf = NULL;
     rb->ready = NULL;
 }
 
@@ -147,9 +151,10 @@ bool mpscrb_in(MpscRingbuf *rb, const void *data)
     if ((rb == NULL) || (data == NULL))
         return false;
 
-    do {
-        pos        = OM_LOAD_ACQ(&rb->writePos); /* Acquire：看到其他生产者的最新预留 */
-        read_pos   = OM_LOAD_ACQ(&rb->readPos);  /* Acquire：看到消费者释放的最新进度 */
+    do
+    {
+        pos = OM_LOAD_ACQ(&rb->writePos);     /* Acquire：看到其他生产者的最新预留 */
+        read_pos = OM_LOAD_ACQ(&rb->readPos); /* Acquire：看到消费者释放的最新进度 */
         free_count = (rb->mask + 1U) - (pos - read_pos);
         if (free_count == 0U)
             return false;

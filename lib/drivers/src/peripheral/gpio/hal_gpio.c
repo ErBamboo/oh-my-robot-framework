@@ -23,11 +23,11 @@
  *          所有接口函数均为 NULL，仅用于满足 Device 模型注册要求。
  */
 static DevInterface gpio_dev_interface = {
-    .init    = NULL,
-    .open    = NULL,
-    .close   = NULL,
-    .read    = NULL,
-    .write   = NULL,
+    .init = NULL,
+    .open = NULL,
+    .close = NULL,
+    .read = NULL,
+    .write = NULL,
     .control = NULL,
 };
 
@@ -56,17 +56,18 @@ OmRet gpio_controller_register(GpioController *ctrl, const char *name,
         return OM_ERROR_MEMORY;
     memset(hdrs, 0, pin_count * sizeof(GpioIrqHdr));
 
-    ctrl->parent.type      = DEVICE_TYPE_GPIO;
-    ctrl->parent.handle    = priv;
+    ctrl->parent.type = DEVICE_TYPE_GPIO;
+    ctrl->parent.handle = priv;
     ctrl->parent.interface = &gpio_dev_interface;
-    ctrl->ops              = ops;
-    ctrl->pin_count        = pin_count;
-    ctrl->caps             = caps;
-    ctrl->priv             = priv;
-    ctrl->irq_hdrs         = hdrs;
+    ctrl->ops = ops;
+    ctrl->pin_count = pin_count;
+    ctrl->caps = caps;
+    ctrl->priv = priv;
+    ctrl->irq_hdrs = hdrs;
 
     OmRet ret = device_register(&ctrl->parent, (char *)name, 0);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         ctrl->irq_hdrs = NULL;
         osal_free(hdrs);
         return ret;
@@ -86,7 +87,7 @@ OmRet gpio_pin_get(const GpioPinSpec *spec, GpioPin *pin)
         return OM_ERROR_PARAM;
 
     GpioPin invalid = {NULL, 0, 0};
-    *pin            = invalid;
+    *pin = invalid;
 
     if (!spec || !spec->controller)
         return OM_ERROR_PARAM;
@@ -99,9 +100,9 @@ OmRet gpio_pin_get(const GpioPinSpec *spec, GpioPin *pin)
     if (spec->offset >= ctrl->pin_count)
         return OM_ERROR;
 
-    pin->ctrl   = ctrl;
+    pin->ctrl = ctrl;
     pin->offset = spec->offset;
-    pin->flags  = spec->flags;
+    pin->flags = spec->flags;
     return OM_OK;
 }
 
@@ -178,8 +179,8 @@ OmRet gpio_pin_attach_irq(GpioPin pin, GpioIrqMode mode,
     OsalIrqIsrState key;
     osal_irq_lock(&key);
     pin.ctrl->irq_hdrs[pin.offset].callback = callback;
-    pin.ctrl->irq_hdrs[pin.offset].arg      = arg;
-    pin.ctrl->irq_hdrs[pin.offset].mode     = mode;
+    pin.ctrl->irq_hdrs[pin.offset].arg = arg;
+    pin.ctrl->irq_hdrs[pin.offset].mode = mode;
     osal_irq_unlock(key);
 
     return pin.ctrl->ops->pin_attach_irq(pin.ctrl, pin.offset, mode,
@@ -197,8 +198,8 @@ OmRet gpio_pin_detach_irq(GpioPin pin)
     OsalIrqIsrState key;
     osal_irq_lock(&key);
     pin.ctrl->irq_hdrs[pin.offset].callback = NULL;
-    pin.ctrl->irq_hdrs[pin.offset].arg      = NULL;
-    pin.ctrl->irq_hdrs[pin.offset].mode     = 0;
+    pin.ctrl->irq_hdrs[pin.offset].arg = NULL;
+    pin.ctrl->irq_hdrs[pin.offset].mode = 0;
     osal_irq_unlock(key);
 
     return OM_OK;

@@ -1,5 +1,5 @@
-#include "data_struct/ringbuffer.h"
 #include "core/atomic/atomic_simple.h"
+#include "data_struct/ringbuffer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,10 +27,11 @@ static void host_thread_yield(void)
 }
 #endif
 
-#define RINGBUFFER_CAPACITY     (4096U)
+#define RINGBUFFER_CAPACITY (4096U)
 #define CONCURRENCY_TOTAL_ITEMS (2000000U)
 
-typedef struct RingbufferConcurrencyContext {
+typedef struct RingbufferConcurrencyContext
+{
     Ringbuf rb;
     uint32_t totalItems;
     OmAtomicUint produced;
@@ -44,9 +45,9 @@ typedef struct RingbufferConcurrencyContext {
 static int run_ringbuffer_basic_test(void)
 {
     Ringbuf rb;
-    uint32_t storage[8]  = {0};
-    uint32_t inData[6]   = {1, 2, 3, 4, 5, 6};
-    uint32_t outData[6]  = {0};
+    uint32_t storage[8] = {0};
+    uint32_t inData[6] = {1, 2, 3, 4, 5, 6};
+    uint32_t outData[6] = {0};
     uint32_t peekData[2] = {0};
 
     memset(&rb, 0, sizeof(rb));
@@ -127,9 +128,11 @@ static int host_thread_join(HostThread thread)
 static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 {
     RingbufferConcurrencyContext *ctx = (RingbufferConcurrencyContext *)arg;
-    uint32_t value                    = 1;
-    while (value <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0) {
-        if (ringbuf_in(&ctx->rb, &value, 1) == 1) {
+    uint32_t value = 1;
+    while (value <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0)
+    {
+        if (ringbuf_in(&ctx->rb, &value, 1) == 1)
+        {
             OM_INC_AR(&ctx->produced);
             value++;
             continue;
@@ -148,11 +151,14 @@ static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 static HostThreadRet HOST_THREAD_CALL consumer_thread(void *arg)
 {
     RingbufferConcurrencyContext *ctx = (RingbufferConcurrencyContext *)arg;
-    uint32_t expected                 = 1;
-    while (expected <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0) {
+    uint32_t expected = 1;
+    while (expected <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0)
+    {
         uint32_t value = 0;
-        if (ringbuf_out(&ctx->rb, &value, 1) == 1) {
-            if (value != expected) {
+        if (ringbuf_out(&ctx->rb, &value, 1) == 1)
+        {
+            if (value != expected)
+            {
                 OM_INC_AR(&ctx->errors);
                 OM_STORE_REL(&ctx->stop, 1);
                 break;
@@ -191,7 +197,8 @@ static int run_ringbuffer_concurrency_test(void)
     OM_STORE_RLX(&ctx.errors, 0);
     OM_STORE_RLX(&ctx.stop, 0);
 
-    if (!ringbuf_alloc(&ctx.rb, sizeof(uint32_t), RINGBUFFER_CAPACITY, NULL)) {
+    if (!ringbuf_alloc(&ctx.rb, sizeof(uint32_t), RINGBUFFER_CAPACITY, NULL))
+    {
         printf("[FAIL] ringbuf_alloc failed\n");
         return 0;
     }
@@ -211,13 +218,14 @@ static int run_ringbuffer_concurrency_test(void)
         return 0;
     }
 
-    if (host_thread_join(producer) != 0 || host_thread_join(consumer) != 0) {
+    if (host_thread_join(producer) != 0 || host_thread_join(consumer) != 0)
+    {
         printf("[FAIL] thread join failed\n");
         free_ringbuf(&ctx.rb, NULL);
         return 0;
     }
 
-    endTicks   = clock();
+    endTicks = clock();
     elapsedSec = (double)(endTicks - beginTicks) / (double)CLOCKS_PER_SEC;
 
     printf("produced=%u consumed=%u write_retry=%u read_retry=%u errors=%u elapsed=%.3fs\n",
@@ -231,7 +239,8 @@ static int run_ringbuffer_concurrency_test(void)
     if (OM_LOAD_ACQ(&ctx.errors) != 0 ||
         OM_LOAD_ACQ(&ctx.produced) != ctx.totalItems ||
         OM_LOAD_ACQ(&ctx.consumed) != ctx.totalItems ||
-        !ringbuf_is_empty(&ctx.rb)) {
+        !ringbuf_is_empty(&ctx.rb))
+    {
         free_ringbuf(&ctx.rb, NULL);
         return 0;
     }
@@ -248,23 +257,26 @@ static int run_ringbuffer_concurrency_test(void)
 
 int main(void)
 {
-    int basicOk  = run_ringbuffer_basic_test();
-    int pow2Ok   = run_ringbuffer_non_power_of_two_test();
+    int basicOk = run_ringbuffer_basic_test();
+    int pow2Ok = run_ringbuffer_non_power_of_two_test();
     int concurOk = run_ringbuffer_concurrency_test();
 
-    if (!basicOk) {
+    if (!basicOk)
+    {
         printf("[FAIL] ringbuffer basic test failed\n");
         return 1;
     }
     printf("[PASS] ringbuffer basic test passed\n");
 
-    if (!pow2Ok) {
+    if (!pow2Ok)
+    {
         printf("[FAIL] ringbuffer non-power-of-two init test failed\n");
         return 2;
     }
     printf("[PASS] ringbuffer non-power-of-two init test passed\n");
 
-    if (!concurOk) {
+    if (!concurOk)
+    {
         printf("[FAIL] ringbuffer concurrency test failed\n");
         return 5;
     }

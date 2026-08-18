@@ -21,7 +21,7 @@
  *===========================================================================*/
 
 #define SPI_ASYNC_WQ_STACK_DEPTH 1024U
-#define SPI_ASYNC_WQ_PRIORITY    (OSAL_PRIO_ABOVE_NORMAL_BASE + 0U)
+#define SPI_ASYNC_WQ_PRIORITY (OSAL_PRIO_ABOVE_NORMAL_BASE + 0U)
 
 /*===========================================================================
  * 总线注册表（全局链表 + 关中断保护）
@@ -43,7 +43,8 @@ SpiBus *spi_bus_get(uint8_t idx)
     LIST_FOR_EACH(pos, &gSpiBusList)
     {
         SpiBus *bus = LIST_ENTRY(pos, SpiBus, busNode);
-        if (n == idx) {
+        if (n == idx)
+        {
             found = bus;
             break;
         }
@@ -127,13 +128,15 @@ static OmRet spi_do_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx,
     bus->busy = 1;
 
     OmRet ret = bus->ops->transferOne(bus, tx, rx, len);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         bus->busy = 0;
         return ret;
     }
 
     ret = completion_wait(&bus->transferDone, timeout_ms);
-    if (ret == OM_ERR_TIMEOUT) {
+    if (ret == OM_ERR_TIMEOUT)
+    {
         OsalIrqIsrState k;
         osal_irq_lock(&k);
         bus->busy = 0;
@@ -143,7 +146,7 @@ static OmRet spi_do_transfer_one(SpiBus *bus, const uint8_t *tx, uint8_t *rx,
         return OM_ERR_TIMEOUT;
     }
 
-    bus->busy        = 0;
+    bus->busy = 0;
     *transferred_out = bus->lastTransferred;
     return bus->lastStatus;
 }
@@ -166,7 +169,7 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
 
     memset(bus, 0, sizeof(*bus));
     bus->hwPrivate = hw_private;
-    bus->ops       = ops;
+    bus->ops = ops;
     init_list_head(&bus->deviceList);
 
     OmRet ret;
@@ -177,26 +180,29 @@ OmRet spi_bus_register(SpiBus *bus, void *hw_private,
     bus->lock = mtx;
 
     ret = completion_init(&bus->transferDone);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         osal_mutex_delete(bus->lock);
         bus->lock = NULL;
         return ret;
     }
 
     WorkqueueConfig wq_cfg = {
-        .name        = "spi_async",
+        .name = "spi_async",
         .stack_depth = SPI_ASYNC_WQ_STACK_DEPTH,
-        .priority    = SPI_ASYNC_WQ_PRIORITY,
+        .priority = SPI_ASYNC_WQ_PRIORITY,
     };
     ret = workqueue_init(&bus->asyncWq, &wq_cfg);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         completion_deinit(&bus->transferDone);
         osal_mutex_delete(bus->lock);
         bus->lock = NULL;
         return ret;
     }
     ret = workqueue_start(&bus->asyncWq);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         workqueue_deinit(&bus->asyncWq);
         completion_deinit(&bus->transferDone);
         osal_mutex_delete(bus->lock);
@@ -239,7 +245,7 @@ void spi_bus_deinit(SpiBus *bus)
 
     /* 先取走 mutex 指针再置 NULL，防止 unlock→delete 间隙被其他线程抢锁 */
     OsalMutex *mtx = bus->lock;
-    bus->lock      = NULL;
+    bus->lock = NULL;
     osal_mutex_unlock(mtx);
     osal_mutex_delete(mtx);
 
@@ -266,18 +272,19 @@ OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
     memset(dev, 0, sizeof(*dev));
     dev->cfg = *cfg;
 
-    if (cfg->csSpec.controller != NULL) {
+    if (cfg->csSpec.controller != NULL)
+    {
         OmRet pin_ret = gpio_pin_get(&cfg->csSpec, &dev->cs);
         if (pin_ret != OM_OK)
             return pin_ret;
     }
 
     static const DevInterface g_spi_dev_interface = {
-        .init    = spi_dev_init,
-        .open    = spi_dev_open,
-        .close   = spi_dev_close,
-        .read    = spi_dev_read,
-        .write   = spi_dev_write,
+        .init = spi_dev_init,
+        .open = spi_dev_open,
+        .close = spi_dev_close,
+        .read = spi_dev_read,
+        .write = spi_dev_write,
         .control = spi_dev_control,
     };
     dev->parent.interface = (DevInterface *)&g_spi_dev_interface;
@@ -292,14 +299,18 @@ OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
         LIST_FOR_EACH_ENTRY(iter, &bus->deviceList, busNode)
         {
             bool cs_conflict = false;
-            if (cfg->csSpec.controller != NULL && iter->cfg.csSpec.controller != NULL) {
+            if (cfg->csSpec.controller != NULL && iter->cfg.csSpec.controller != NULL)
+            {
                 cs_conflict = (strcmp(cfg->csSpec.controller,
                                       iter->cfg.csSpec.controller) == 0 &&
                                cfg->csSpec.offset == iter->cfg.csSpec.offset);
-            } else if (cfg->csSpec.controller == NULL && iter->cfg.csSpec.controller == NULL) {
+            }
+            else if (cfg->csSpec.controller == NULL && iter->cfg.csSpec.controller == NULL)
+            {
                 cs_conflict = (cfg->csSpec.offset == iter->cfg.csSpec.offset);
             }
-            if (cs_conflict) {
+            if (cs_conflict)
+            {
                 spi_bus_unlock(bus);
                 return OM_ERR_ALREADY;
             }
@@ -307,7 +318,8 @@ OmRet spi_device_attach(uint8_t busIdx, HalSpiDevice *dev,
     }
 
     ret = device_register(&dev->parent, (char *)name, 0U);
-    if (ret == OM_OK) {
+    if (ret == OM_OK)
+    {
         dev->bus = bus;
         bus->deviceCount++;
         list_add_tail(&dev->busNode, &bus->deviceList);
@@ -329,7 +341,8 @@ void spi_device_detach(HalSpiDevice *dev)
     if (bus->lastCfgDev == dev)
         bus->lastCfgDev = NULL;
 
-    if (bus->deviceCount > 0U) {
+    if (bus->deviceCount > 0U)
+    {
         bus->deviceCount--;
         list_del(&dev->busNode);
     }
@@ -341,7 +354,7 @@ void spi_device_detach(HalSpiDevice *dev)
      * deref NULL 指针触发 HardFault。 */
     device_unregister(&dev->parent);
 
-    dev->bus       = NULL;
+    dev->bus = NULL;
     dev->suspended = 0;
 }
 
@@ -375,7 +388,8 @@ size_t spi_dev_read(Device *dev, void *ctrl_info, void *data, size_t len)
 
     HalSpiDevice *spi_dev = (HalSpiDevice *)dev;
 
-    if (ctrl_info) {
+    if (ctrl_info)
+    {
         OmRet ret = spi_write_then_read(spi_dev,
                                         (const uint8_t *)ctrl_info, 1U,
                                         (uint8_t *)data, len);
@@ -393,24 +407,25 @@ size_t spi_dev_write(Device *dev, void *ctrl_info, void *data, size_t len)
 
     HalSpiDevice *spi_dev = (HalSpiDevice *)dev;
 
-    if (ctrl_info) {
+    if (ctrl_info)
+    {
         SpiTransfer xfers[2];
-        xfers[0].txBuf       = (const uint8_t *)ctrl_info;
-        xfers[0].rxBuf       = NULL;
-        xfers[0].len         = 1U;
-        xfers[0].flags       = SPI_XFER_FLAG_CS_HOLD;
-        xfers[0].speedHz     = 0;
+        xfers[0].txBuf = (const uint8_t *)ctrl_info;
+        xfers[0].rxBuf = NULL;
+        xfers[0].len = 1U;
+        xfers[0].flags = SPI_XFER_FLAG_CS_HOLD;
+        xfers[0].speedHz = 0;
         xfers[0].bitsPerWord = 0;
 
-        xfers[1].txBuf       = (const uint8_t *)data;
-        xfers[1].rxBuf       = NULL;
-        xfers[1].len         = len;
-        xfers[1].flags       = 0;
-        xfers[1].speedHz     = 0;
+        xfers[1].txBuf = (const uint8_t *)data;
+        xfers[1].rxBuf = NULL;
+        xfers[1].len = len;
+        xfers[1].flags = 0;
+        xfers[1].speedHz = 0;
         xfers[1].bitsPerWord = 0;
 
         SpiMessage msg = {.transfers = xfers, .count = 2};
-        OmRet ret      = spi_transfer(spi_dev, &msg);
+        OmRet ret = spi_transfer(spi_dev, &msg);
         return (ret == OM_OK) ? len : 0U;
     }
 
@@ -425,61 +440,67 @@ OmRet spi_dev_control(Device *dev, size_t cmd, void *arg)
 
     HalSpiDevice *spi_dev = (HalSpiDevice *)dev;
 
-    switch (cmd) {
-        case SPI_CMD_SET_CFG: {
-            if (!arg)
-                return OM_ERR_INVALID_ARG;
-            SpiDeviceCfg *new_cfg = (SpiDeviceCfg *)arg;
-            if (new_cfg->maxHz == 0U)
-                return OM_ERR_INVALID_ARG;
+    switch (cmd)
+    {
+    case SPI_CMD_SET_CFG: {
+        if (!arg)
+            return OM_ERR_INVALID_ARG;
+        SpiDeviceCfg *new_cfg = (SpiDeviceCfg *)arg;
+        if (new_cfg->maxHz == 0U)
+            return OM_ERR_INVALID_ARG;
 
-            OmRet ret = spi_bus_lock(spi_dev->bus);
+        OmRet ret = spi_bus_lock(spi_dev->bus);
+        if (ret != OM_OK)
+            return ret;
+
+        if (spi_dev->bus->busy)
+        {
+            spi_bus_unlock(spi_dev->bus);
+            return OM_ERR_BUSY;
+        }
+
+        spi_dev->cfg = *new_cfg;
+        if (new_cfg->csSpec.controller != NULL)
+        {
+            ret = gpio_pin_get(&new_cfg->csSpec, &spi_dev->cs);
             if (ret != OM_OK)
-                return ret;
-
-            if (spi_dev->bus->busy) {
+            {
                 spi_bus_unlock(spi_dev->bus);
-                return OM_ERR_BUSY;
-            }
-
-            spi_dev->cfg = *new_cfg;
-            if (new_cfg->csSpec.controller != NULL) {
-                ret = gpio_pin_get(&new_cfg->csSpec, &spi_dev->cs);
-                if (ret != OM_OK) {
-                    spi_bus_unlock(spi_dev->bus);
-                    return ret;
-                }
-            } else {
-                memset(&spi_dev->cs, 0, sizeof(spi_dev->cs));
-            }
-
-            ret = spi_ensure_configured(spi_dev->bus, spi_dev);
-            spi_bus_unlock(spi_dev->bus);
-            return ret;
-        }
-        case SPI_CMD_GET_CFG: {
-            if (!arg)
-                return OM_ERR_INVALID_ARG;
-            *(SpiDeviceCfg *)arg = spi_dev->cfg;
-            return OM_OK;
-        }
-        case SPI_CMD_SUSPEND:
-            return spi_device_suspend(spi_dev);
-
-        case SPI_CMD_RESUME:
-            return spi_device_resume(spi_dev);
-
-        case SPI_CMD_ABORT: {
-            OmRet ret = spi_bus_lock(spi_dev->bus);
-            if (ret != OM_OK)
                 return ret;
-            ret = spi_dev->bus->ops->control(spi_dev->bus, SPI_CMD_ABORT, NULL);
-            spi_bus_unlock(spi_dev->bus);
-            return ret;
+            }
+        }
+        else
+        {
+            memset(&spi_dev->cs, 0, sizeof(spi_dev->cs));
         }
 
-        default:
-            return OM_ERR_NOT_SUPPORTED;
+        ret = spi_ensure_configured(spi_dev->bus, spi_dev);
+        spi_bus_unlock(spi_dev->bus);
+        return ret;
+    }
+    case SPI_CMD_GET_CFG: {
+        if (!arg)
+            return OM_ERR_INVALID_ARG;
+        *(SpiDeviceCfg *)arg = spi_dev->cfg;
+        return OM_OK;
+    }
+    case SPI_CMD_SUSPEND:
+        return spi_device_suspend(spi_dev);
+
+    case SPI_CMD_RESUME:
+        return spi_device_resume(spi_dev);
+
+    case SPI_CMD_ABORT: {
+        OmRet ret = spi_bus_lock(spi_dev->bus);
+        if (ret != OM_OK)
+            return ret;
+        ret = spi_dev->bus->ops->control(spi_dev->bus, SPI_CMD_ABORT, NULL);
+        spi_bus_unlock(spi_dev->bus);
+        return ret;
+    }
+
+    default:
+        return OM_ERR_NOT_SUPPORTED;
     }
 }
 
@@ -494,8 +515,8 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
     if (!msg->transfers || msg->count == 0U)
         return OM_ERR_INVALID_ARG;
 
-    SpiBus *bus      = dev->bus;
-    msg->status      = OM_OK;
+    SpiBus *bus = dev->bus;
+    msg->status = OM_OK;
     msg->transferred = 0U;
 
     /* 前置检查（无锁） */
@@ -507,18 +528,21 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
         return ret;
 
     /* 持锁后重检 */
-    if (dev->suspended) {
+    if (dev->suspended)
+    {
         spi_bus_unlock(bus);
         return OM_ERR_SPI_DEV_SUSPENDED;
     }
 
-    if (bus->busy) {
+    if (bus->busy)
+    {
         spi_bus_unlock(bus);
         return OM_ERR_BUSY;
     }
 
     ret = spi_ensure_configured(bus, dev);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         spi_bus_unlock(bus);
         return ret;
     }
@@ -526,7 +550,8 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
     /* 遍历所有 transfer */
     bool cs_held = false;
 
-    for (size_t i = 0U; i < msg->count; i++) {
+    for (size_t i = 0U; i < msg->count; i++)
+    {
         SpiTransfer *xfer = &msg->transfers[i];
 
         if (xfer->len == 0U)
@@ -535,7 +560,8 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
             continue;
 
         /* CS assert（仅首次或上次已释放时） */
-        if (!cs_held) {
+        if (!cs_held)
+        {
             spi_cs_assert_dev(dev);
             cs_held = true;
         }
@@ -547,7 +573,8 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
                                   xfer->len, &transferred, timeout);
         msg->transferred += transferred;
 
-        if (ret != OM_OK) {
+        if (ret != OM_OK)
+        {
             spi_cs_deassert_dev(dev);
             msg->status = ret;
             spi_bus_unlock(bus);
@@ -557,7 +584,8 @@ OmRet spi_transfer(HalSpiDevice *dev, SpiMessage *msg)
         /* CS management */
         if (xfer->flags & SPI_XFER_FLAG_CS_HOLD)
             cs_held = true;
-        else {
+        else
+        {
             spi_cs_deassert_dev(dev);
             cs_held = false;
         }
@@ -589,11 +617,11 @@ void spi_cs_deassert(HalSpiDevice *dev)
 OmRet spi_write(HalSpiDevice *dev, const uint8_t *buf, size_t len)
 {
     SpiTransfer xfer = {
-        .txBuf       = buf,
-        .rxBuf       = NULL,
-        .len         = len,
-        .flags       = 0,
-        .speedHz     = 0,
+        .txBuf = buf,
+        .rxBuf = NULL,
+        .len = len,
+        .flags = 0,
+        .speedHz = 0,
         .bitsPerWord = 0,
     };
     SpiMessage msg = {.transfers = &xfer, .count = 1};
@@ -603,11 +631,11 @@ OmRet spi_write(HalSpiDevice *dev, const uint8_t *buf, size_t len)
 OmRet spi_read(HalSpiDevice *dev, uint8_t *buf, size_t len)
 {
     SpiTransfer xfer = {
-        .txBuf       = NULL,
-        .rxBuf       = buf,
-        .len         = len,
-        .flags       = 0,
-        .speedHz     = 0,
+        .txBuf = NULL,
+        .rxBuf = buf,
+        .len = len,
+        .flags = 0,
+        .speedHz = 0,
         .bitsPerWord = 0,
     };
     SpiMessage msg = {.transfers = &xfer, .count = 1};
@@ -620,18 +648,18 @@ OmRet spi_write_then_read(HalSpiDevice *dev,
 {
     SpiTransfer xfers[2];
 
-    xfers[0].txBuf       = tx;
-    xfers[0].rxBuf       = NULL;
-    xfers[0].len         = tx_len;
-    xfers[0].flags       = SPI_XFER_FLAG_CS_HOLD;
-    xfers[0].speedHz     = 0;
+    xfers[0].txBuf = tx;
+    xfers[0].rxBuf = NULL;
+    xfers[0].len = tx_len;
+    xfers[0].flags = SPI_XFER_FLAG_CS_HOLD;
+    xfers[0].speedHz = 0;
     xfers[0].bitsPerWord = 0;
 
-    xfers[1].txBuf       = NULL;
-    xfers[1].rxBuf       = rx;
-    xfers[1].len         = rx_len;
-    xfers[1].flags       = 0;
-    xfers[1].speedHz     = 0;
+    xfers[1].txBuf = NULL;
+    xfers[1].rxBuf = rx;
+    xfers[1].len = rx_len;
+    xfers[1].flags = 0;
+    xfers[1].speedHz = 0;
     xfers[1].bitsPerWord = 0;
 
     SpiMessage msg = {.transfers = xfers, .count = 2};
@@ -660,27 +688,29 @@ OmRet spi_transfer_async(HalSpiDevice *dev, SpiMessage *msg,
      * 不持有 bus->lock，避免受同步传输阻塞导致异步退化为同步。 */
     OsalIrqIsrState k;
     osal_irq_lock(&k);
-    if (dev->asyncBusy) {
+    if (dev->asyncBusy)
+    {
         osal_irq_unlock(k);
         return OM_ERR_BUSY;
     }
-    dev->asyncBusy  = 1;
+    dev->asyncBusy = 1;
     dev->asyncEpoch = ++bus->asyncEpoch;
     osal_irq_unlock(k);
 
     /* 独占 slot，无竞争安全填充 */
-    dev->asyncMsg     = msg;
-    dev->asyncCb      = callback;
+    dev->asyncMsg = msg;
+    dev->asyncCb = callback;
     dev->asyncCbParam = param;
-    dev->asyncCsHeld  = false;
+    dev->asyncCsHeld = false;
 
-    msg->status      = OM_OK;
+    msg->status = OM_OK;
     msg->transferred = 0U;
 
     work_init(&dev->asyncWork, spi_async_worker_func, NULL);
 
     OmRet ret = workqueue_enqueue(&bus->asyncWq, &dev->asyncWork);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         OsalIrqIsrState k2;
         osal_irq_lock(&k2);
         dev->asyncBusy = 0;
@@ -699,42 +729,48 @@ static void spi_async_worker_func(Work *work)
     /* Work 嵌入在 HalSpiDevice.asyncWork 中，通过 container_of 反查设备。
      * bus 指针在 enqueue 时快照，worker 持锁后二次检查 dev->bus 是否为 zombie。 */
     HalSpiDevice *dev = container_of(work, HalSpiDevice, asyncWork);
-    SpiBus *bus       = dev->bus;
-    SpiMessage *msg   = dev->asyncMsg;
+    SpiBus *bus = dev->bus;
+    SpiMessage *msg = dev->asyncMsg;
     OmRet ret;
     bool locked = false;
 
     /* bus 可能已被 detach 置 NULL（注：bus 自身是静态分配，指针有效，仅 dev->bus 成 zombie） */
-    if (!bus) {
+    if (!bus)
+    {
         msg->status = OM_ERR_NOT_SUPPORTED;
         goto done;
     }
 
     ret = spi_bus_lock(bus);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         msg->status = ret;
         goto done;
     }
     locked = true;
 
     /* 持锁后权威检查：设备是否在排队期间被 detach */
-    if (dev->bus != bus) {
+    if (dev->bus != bus)
+    {
         msg->status = OM_ERR_NOT_SUPPORTED;
         goto cleanup;
     }
 
-    if (dev->suspended) {
+    if (dev->suspended)
+    {
         msg->status = OM_ERR_SPI_DEV_SUSPENDED;
         goto cleanup;
     }
 
     ret = spi_ensure_configured(bus, dev);
-    if (ret != OM_OK) {
+    if (ret != OM_OK)
+    {
         msg->status = ret;
         goto cleanup;
     }
 
-    for (size_t i = 0U; i < msg->count; i++) {
+    for (size_t i = 0U; i < msg->count; i++)
+    {
         SpiTransfer *xfer = &msg->transfers[i];
 
         if (xfer->len == 0U)
@@ -742,7 +778,8 @@ static void spi_async_worker_func(Work *work)
         if (!xfer->txBuf && !xfer->rxBuf)
             continue;
 
-        if (!dev->asyncCsHeld) {
+        if (!dev->asyncCsHeld)
+        {
             spi_cs_assert_dev(dev);
             dev->asyncCsHeld = true;
         }
@@ -753,9 +790,10 @@ static void spi_async_worker_func(Work *work)
                                                dev->cfg.transferOverheadMs);
 
         bus->busy = 1;
-        ret       = bus->ops->transferOne(bus, tx_src, xfer->rxBuf, xfer->len);
-        if (ret != OM_OK) {
-            bus->busy   = 0;
+        ret = bus->ops->transferOne(bus, tx_src, xfer->rxBuf, xfer->len);
+        if (ret != OM_OK)
+        {
+            bus->busy = 0;
             msg->status = ret;
             goto cleanup;
         }
@@ -764,52 +802,63 @@ static void spi_async_worker_func(Work *work)
         locked = false;
 
         ret = completion_wait(&bus->transferDone, timeout);
-        if (ret == OM_ERR_TIMEOUT) {
+        if (ret == OM_ERR_TIMEOUT)
+        {
             OsalIrqIsrState k;
             osal_irq_lock(&k);
             bus->busy = 0;
             osal_irq_unlock(k);
             completion_wait(&bus->transferDone, 0U);
             spi_bus_lock(bus);
-            locked      = true;
+            locked = true;
             msg->status = OM_ERR_SPI_TRANSFER_TIMEOUT;
             goto cleanup;
         }
 
         msg->transferred += bus->lastTransferred;
 
-        if (bus->lastStatus != OM_OK) {
+        if (bus->lastStatus != OM_OK)
+        {
             msg->status = bus->lastStatus;
-            bus->busy   = 0;
+            bus->busy = 0;
             goto cleanup;
         }
 
-        if (xfer->flags & SPI_XFER_FLAG_CS_HOLD) {
+        if (xfer->flags & SPI_XFER_FLAG_CS_HOLD)
+        {
             dev->asyncCsHeld = true;
-        } else {
+        }
+        else
+        {
             spi_bus_lock(bus);
             spi_cs_deassert_dev(dev);
             spi_bus_unlock(bus);
             dev->asyncCsHeld = false;
         }
 
-        if (i + 1U < msg->count) {
+        if (i + 1U < msg->count)
+        {
             ret = spi_bus_lock(bus);
-            if (ret != OM_OK) {
+            if (ret != OM_OK)
+            {
                 msg->status = ret;
                 goto done;
             }
             locked = true;
-            if (dev->suspended) {
+            if (dev->suspended)
+            {
                 msg->status = OM_ERR_SPI_DEV_SUSPENDED;
                 goto cleanup;
             }
             /* 重检：设备可能在上一段 DMA 等待期间被 detach */
-            if (dev->bus != bus) {
+            if (dev->bus != bus)
+            {
                 msg->status = OM_ERR_NOT_SUPPORTED;
                 goto cleanup;
             }
-        } else {
+        }
+        else
+        {
             spi_bus_lock(bus);
             bus->busy = 0;
             spi_bus_unlock(bus);
@@ -820,8 +869,10 @@ static void spi_async_worker_func(Work *work)
     goto done;
 
 cleanup:
-    if (dev->asyncCsHeld) {
-        if (!locked) {
+    if (dev->asyncCsHeld)
+    {
+        if (!locked)
+        {
             spi_bus_lock(bus);
             locked = true;
         }
@@ -857,7 +908,8 @@ OmRet spi_device_suspend(HalSpiDevice *dev)
     if (ret != OM_OK)
         return ret;
 
-    if (dev->suspended) {
+    if (dev->suspended)
+    {
         spi_bus_unlock(bus);
         return OM_OK;
     }
@@ -883,7 +935,8 @@ OmRet spi_device_resume(HalSpiDevice *dev)
     if (ret != OM_OK)
         return ret;
 
-    if (!dev->suspended) {
+    if (!dev->suspended)
+    {
         spi_bus_unlock(bus);
         return OM_OK;
     }
@@ -915,6 +968,6 @@ void hal_spi_isr(SpiBus *bus, OmRet status, size_t transferred)
         return;
 
     bus->lastTransferred = transferred;
-    bus->lastStatus      = status;
+    bus->lastStatus = status;
     completion_done(&bus->transferDone);
 }

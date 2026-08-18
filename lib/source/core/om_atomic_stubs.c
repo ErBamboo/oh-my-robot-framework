@@ -21,8 +21,8 @@
  * 由平台 port 层提供具体中断屏蔽策略。
  */
 
-#include <stdint.h>
 #include "core/om_interrupt.h"
+#include <stdint.h>
 
 /*===========================================================================
  * 白名单守卫：仅缺乏硬件原子指令的架构参与编译
@@ -31,7 +31,7 @@
 #if OM_PORT_SOFTWARE_ATOMICS
 
 #define CRITICAL_ENTER(key) uint32_t key = om_hw_disable_interrupt()
-#define CRITICAL_EXIT(key)  om_hw_restore_interrupt(key)
+#define CRITICAL_EXIT(key) om_hw_restore_interrupt(key)
 
 /* --- 1-byte atomics --- */
 
@@ -61,14 +61,17 @@ uint8_t __atomic_compare_exchange_1(volatile void *ptr, void *expected,
     (void)failure;
     CRITICAL_ENTER(k);
     uint8_t *exp = (uint8_t *)expected;
-    uint8_t cur  = *(volatile uint8_t *)ptr;
+    uint8_t cur = *(volatile uint8_t *)ptr;
     uint8_t ok;
-    if (cur == *exp) {
+    if (cur == *exp)
+    {
         *(volatile uint8_t *)ptr = desired;
-        ok                       = 1;
-    } else {
+        ok = 1;
+    }
+    else
+    {
         *exp = cur;
-        ok   = 0;
+        ok = 0;
     }
     CRITICAL_EXIT(k);
     return ok;
@@ -97,7 +100,7 @@ uint32_t __atomic_fetch_or_4(volatile void *ptr, uint32_t val, int memorder)
 {
     (void)memorder;
     CRITICAL_ENTER(k);
-    uint32_t old              = *(volatile uint32_t *)ptr;
+    uint32_t old = *(volatile uint32_t *)ptr;
     *(volatile uint32_t *)ptr = old | val;
     CRITICAL_EXIT(k);
     return old;
@@ -107,7 +110,7 @@ uint32_t __atomic_fetch_and_4(volatile void *ptr, uint32_t val, int memorder)
 {
     (void)memorder;
     CRITICAL_ENTER(k);
-    uint32_t old              = *(volatile uint32_t *)ptr;
+    uint32_t old = *(volatile uint32_t *)ptr;
     *(volatile uint32_t *)ptr = old & val;
     CRITICAL_EXIT(k);
     return old;
@@ -117,7 +120,7 @@ uint32_t __atomic_fetch_add_4(volatile void *ptr, uint32_t val, int memorder)
 {
     (void)memorder;
     CRITICAL_ENTER(k);
-    uint32_t old              = *(volatile uint32_t *)ptr;
+    uint32_t old = *(volatile uint32_t *)ptr;
     *(volatile uint32_t *)ptr = old + val;
     CRITICAL_EXIT(k);
     return old;
@@ -127,7 +130,7 @@ uint32_t __atomic_fetch_sub_4(volatile void *ptr, uint32_t val, int memorder)
 {
     (void)memorder;
     CRITICAL_ENTER(k);
-    uint32_t old              = *(volatile uint32_t *)ptr;
+    uint32_t old = *(volatile uint32_t *)ptr;
     *(volatile uint32_t *)ptr = old - val;
     CRITICAL_EXIT(k);
     return old;

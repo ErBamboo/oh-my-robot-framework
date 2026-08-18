@@ -28,11 +28,11 @@ OmRet test_data_pack(TestProtocol *protocol, uint16_t cmd_id, uint8_t *pdata, ui
     if (!protocol || !pdata || !datasz || datasz > TEST_MAX_DATASZ)
         return OM_ERROR_PARAM;
 
-    TestFmt *fmt       = &protocol->packet.fmt;
+    TestFmt *fmt = &protocol->packet.fmt;
     TestHeader *header = &fmt->header;
-    header->sof        = TEST_SOF;
-    header->seq        = (header->seq != 0xffffffff) ? (header->seq + 1) : 1;
-    header->dataSize   = datasz;
+    header->sof = TEST_SOF;
+    header->seq = (header->seq != 0xffffffff) ? (header->seq + 1) : 1;
+    header->dataSize = datasz;
     test_header_append_check_num(header); // 附加帧头校验值
 
     fmt->cmdId = cmd_id;
@@ -53,7 +53,7 @@ size_t test_data_unpack(TestProtocol *protocol, uint16_t *p_cmd_id, uint8_t *dat
     if (!protocol || !databuf || !bufsz || !p_cmd_id)
         return OM_ERROR_PARAM;
 
-    fmt    = &protocol->packet.fmt;
+    fmt = &protocol->packet.fmt;
     header = &fmt->header;
 
     if (header->sof != TEST_SOF)
@@ -74,18 +74,18 @@ size_t test_data_unpack(TestProtocol *protocol, uint16_t *p_cmd_id, uint8_t *dat
 
 OmRet test_device_init(TestProtocol *protocol, Device *dev)
 {
-    TestFmt *fmt       = &protocol->packet.fmt;
+    TestFmt *fmt = &protocol->packet.fmt;
     TestHeader *header = &fmt->header;
     // ringbuf_t rb = &protocol->unpacker.rb;
 
     // ringbuf_init(rb, protocol->unpacker.buf, sizeof(protocol->packet),
     // (size_t)sizeof(protocol->unpacker.buf)/sizeof(protocol->packet));
 
-    protocol->dev    = dev;
-    fmt->cmdId       = 0;
-    header->sof      = 0;
-    header->seq      = 0;
-    header->crc8     = 0;
+    protocol->dev = dev;
+    fmt->cmdId = 0;
+    header->sof = 0;
+    header->seq = 0;
+    header->crc8 = 0;
     header->dataSize = 0;
     return OM_OK;
 }
