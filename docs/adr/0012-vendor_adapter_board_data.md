@@ -1,4 +1,4 @@
-# ADR-0011：板瘦身——vendor 适配层 + 板数据契约
+# ADR-0012：板瘦身——vendor 适配层 + 板数据契约
 
 - 状态：已实施（CAN 试点，rm-a/rm-c，gnu-rm + armclang 验证通过）
 - 日期：2026-07-30
