@@ -1,4 +1,4 @@
-# ADR-0011：框架接管 main —— 弱符号默认入口 + 逃生通道
+# ADR-0013：框架接管 main —— 弱符号默认入口 + 逃生通道
 
 - 状态：已实施（init 子系统 Phase 2 收尾；rm-a/rm-c-board，gnu-rm + armclang 验证通过）
 - 日期：2026-08-15

@@ -248,8 +248,10 @@ void bsp_pwm_register(void)
 {
     bsp_pwm_pre_init();
 
-    /* BDTR 无条件配置所有实例：非高级定时器无 BDTR 寄存器，写入为硬件 no-op
-     * （Linux pwm-stm32 同款哲学，无需"哪些实例需要"判定）。
+    /* BDTR 按实例能力配置：BDTR 寄存器仅存在于高级定时器（TIM1/TIM8），
+     * IS_TIM_BREAK_INSTANCE 守卫保证 USE_FULL_ASSERT 开启（HAL assert_param）时
+     * 不会对无 BDTR 的定时器触发断言；非高级定时器跳过配置，行为等价于
+     * 原"无条件写入"（无 BDTR 寄存器即硬件 no-op，Linux pwm-stm32 同款哲学）。
      * AOE 保持关闭：break 事件后 PWM 不得自动恢复输出（Linux 2019 年移除 AOE
      * 的安全决策，原 rm-a/rm-c 均开 AOE，此处收敛为关）。 */
     TIM_BreakDeadTimeConfigTypeDef bdtr = {0};
@@ -259,7 +261,10 @@ void bsp_pwm_register(void)
 
     for (uint8_t i = 0; i < BSP_PWM_COUNT; i++)
     {
-        HAL_TIMEx_ConfigBreakDeadTime(&gBspPwm[i].timHandle, &bdtr);
+        if (IS_TIM_BREAK_INSTANCE(gBspPwm[i].timHandle.Instance) != RESET)
+        {
+            HAL_TIMEx_ConfigBreakDeadTime(&gBspPwm[i].timHandle, &bdtr);
+        }
 
         /* 一次性初始化定时器时基——channelConfig 中不再调 HAL_TIM_PWM_Init */
         gBspPwm[i].timHandle.Init.Prescaler         = 0;
