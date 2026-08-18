@@ -36,8 +36,7 @@
 - **唤醒**：队列自带（recv 阻塞 + send 唤醒），零额外原语；**事件标志否决**——ISR set 走 timer service 命令队列（容量软肋 + 依赖 timer 配置）；信号量仅作 mpsc 方案备选
 - **时间戳**：采纳 `osal_time_now_monotonic`（32 位单调 ms、线程/ISR 双安全、回绕语义官方化）
 - **表**：后端/模块表 = 定长数组（临界区保护）；corelist（无并发保护）、avltree（缺陷标注 + 全堆）均否决
-- **新造权衡**：唯一浮现的新造候选 = MPSC 门铃通道（mpsc_ringbuf + 信号量门铃，ipc 层，ipc README 已预留 channel 位、mpsc_design 已预告）——**v2 暂用 osal_queue 不新造**；切换触发条件（写死为本 ADR 约束）：① 出现硬实时高频生产者（入队关中断时间敏感）；② 出现第二个需要 MPSC 数据通道的场景——届时作为 ipc 层独立原语立项（独立 PR + 设计文档 + host 测试），日志 v2 顺手迁移
-- **队列切换无感约束（用户明确）**：log 内部设队列适配层（非阻塞入队 + 阻塞收两条操作），osal_queue 与未来 ipc channel 皆可实现——切换时 **log 外部**（OM_LOG_XXX 宏/调用链/丢弃语义）与 **log 内部**（emit 消费侧/满队列行为）均无感
+- **新造权衡**：唯一浮现的新造候选 = MPSC 门铃通道（mpsc_ringbuf + 信号量门铃，ipc 层，ipc README 已预留 channel 位、mpsc_design 已预告）——**v2 暂用 osal_queue 不新造**；切换触发条件（写死为本 ADR 约束）：① 出现硬实时高频生产者（入队关中断时间敏感）；② 出现第二个需要 MPSC 数据通道的场景——届时作为 ipc 层独立原语立项（独立 PR + 设计文档 + host 测试），日志 v2 迁移为直接调用（队列属 log 内部实现，不做适配层，API 面天然稳定）
 
 ## 最终决策 (Decision)
 
@@ -58,6 +57,6 @@
 - **约束**：后端必须快速提交（违反者中断场景自担临界区长度）；中断里只打 ERROR/FATAL 短消息；一条日志多段（后端不得假设单次 push = 一条）；每 TU 一次注册；枚举只增不改；v1 调度器前无日志（静默丢弃）
 - **兼容**：`om_def.h` 删除 `OmLogLevel`（零类型引用，已验证）；`OM_CPU_LOG_LEVEL_*` 数值与成员语义不变（调用点纯改名，零行为变化）；`OM_LOG_LEVEL_*` 名称易主为 log 服务，任何 TU 同时包含 om_def.h 与 log.h 不再冲突
 - **演进**（阶梯）：
-  - **v2 异步模式**（emit 换执行者 + 统一时间戳）——**基础设施复用（零新造，逐项权衡见 Options）**：队列 = osal 消息队列（定长元素值拷贝 + 阻塞收 + ISR 发 + 满返 WOULD_BLOCK，四合一命中；与"参数包定长区"元素语义互相印证）；日志线程 = osal 线程（LOW 优先级带，该带语义注释即"日志刷新"）；消费者唤醒由队列自带（不用事件标志——其 ISR set 走 timer service 命令队列，有容量软肋）；时间戳 = `osal_time_now_monotonic`（线程/ISR 双安全）；后端/模块表 = 定长数组（不用链表/树：corelist 无并发保护、avltree 有缺陷标注）；**不新造 MPSC 门铃通道**——但 log 内部设队列适配层（非阻塞入队 + 阻塞收），切换 osal_queue ↔ 未来 ipc channel 对 log 内外均无感（触发条件见 Options）
+  - **v2 异步模式**（emit 换执行者 + 统一时间戳）——**基础设施复用（零新造，逐项权衡见 Options）**：队列 = osal 消息队列（定长元素值拷贝 + 阻塞收 + ISR 发 + 满返 WOULD_BLOCK，四合一命中；与"参数包定长区"元素语义互相印证）；日志线程 = osal 线程（LOW 优先级带，该带语义注释即"日志刷新"）；消费者唤醒由队列自带（不用事件标志——其 ISR set 走 timer service 命令队列，有容量软肋）；时间戳 = `osal_time_now_monotonic`（线程/ISR 双安全）；后端/模块表 = 定长数组（不用链表/树：corelist 无并发保护、avltree 有缺陷标注）；**不新造 MPSC 门铃通道**（触发条件与迁移方式见 Options；队列为 log 内部实现，直接调用 osal_queue，不做适配层——公开 API 面天然稳定，迁移成本 = log 内部一处）
   - **v3**：运行时级别调节 + shell 前端 + 非易失持久化后端 + fatal 记录点接入（panic 路径）+ deferred logging
   - **v4**：远程日志链路 + 后端动态管理 + 异步 core host 测试（OS 桩）
