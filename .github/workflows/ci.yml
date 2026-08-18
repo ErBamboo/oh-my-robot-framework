@@ -20,12 +20,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install clang-format-17
-        run: sudo apt-get install -y clang-format-17
+      - name: Install clang-format 21 (pip wheel)
+        # 与本机 LLVM 21 **精确同版本 21.1.8**（17↔21、21.1.0↔21.1.8 判定均有
+        # patch 级差异，曾致 gate 误报——版本必须逐位对齐）；
+        # LLVM 21 的 GitHub release 不含 x86_64 Linux 包（wget 404）——
+        # pip clang-format wheel（ssciwr 提供独立二进制）
+        run: pip install clang-format==21.1.8
 
       - name: Check format
         run: |
-          find lib platform samples -name '*.[ch]' -print0 | xargs -0 clang-format-17 --dry-run --Werror
+          find lib platform samples -name '*.[ch]' -print0 | xargs -0 clang-format --dry-run --Werror
 
   # ② 编译 gate：交叉构建全库（验证 PR 可编译；binary 构建依赖板级 preset 留本地）
   build:
@@ -44,9 +48,9 @@ jobs:
         # 弃用 carlosperate action（latest 版本波动 + 系统依赖不确定导致硬浮点试编译失败）；
         # 官方发布包直装到固定路径（与本地 14.2 同版本），版本固定防漂移。
         # 不装 libncurses5：仅 gdb 依赖 ncurses，编译（gcc/as/ld）不依赖，
-        # CI 只编译库不跑 gdb；且 ubuntu 24.04 已移除 libncurses5
+        # CI 只编译库不跑 gdb；且 ubuntu 24.04 已移除 libncurses5。
+        # 不跑 apt：wget/xz-utils 在 ubuntu-latest 预装
         run: |
-          sudo apt-get install -y xz-utils
           wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz -O /tmp/arm-tc.tar.xz
           sudo mkdir -p /opt/arm-gnu
           sudo tar -xJf /tmp/arm-tc.tar.xz -C /opt/arm-gnu --strip-components=1
