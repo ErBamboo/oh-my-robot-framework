@@ -11,8 +11,8 @@
  *   - g_result.done    : 测试是否已执行完成（1 表示完成）
  */
 
-#include "core/om_init.h"
 #include "async/workqueue.h"
+#include "core/om_init.h"
 #include "data_struct/corelist.h"
 #include "osal/osal.h"
 #include "osal/osal_config.h"

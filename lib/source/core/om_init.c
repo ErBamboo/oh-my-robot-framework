@@ -22,19 +22,19 @@
 
 #if defined(__ARMCC_VERSION)
 #define __om_init_0_start Image$$ER_OM_INIT_0$$Base
-#define __om_init_0_end   Image$$ER_OM_INIT_0$$Limit
+#define __om_init_0_end Image$$ER_OM_INIT_0$$Limit
 #define __om_init_1_start Image$$ER_OM_INIT_1$$Base
-#define __om_init_1_end   Image$$ER_OM_INIT_1$$Limit
+#define __om_init_1_end Image$$ER_OM_INIT_1$$Limit
 #define __om_init_2_start Image$$ER_OM_INIT_2$$Base
-#define __om_init_2_end   Image$$ER_OM_INIT_2$$Limit
+#define __om_init_2_end Image$$ER_OM_INIT_2$$Limit
 #define __om_init_3_start Image$$ER_OM_INIT_3$$Base
-#define __om_init_3_end   Image$$ER_OM_INIT_3$$Limit
+#define __om_init_3_end Image$$ER_OM_INIT_3$$Limit
 #define __om_init_4_start Image$$ER_OM_INIT_4$$Base
-#define __om_init_4_end   Image$$ER_OM_INIT_4$$Limit
+#define __om_init_4_end Image$$ER_OM_INIT_4$$Limit
 #define __om_init_5_start Image$$ER_OM_INIT_5$$Base
-#define __om_init_5_end   Image$$ER_OM_INIT_5$$Limit
+#define __om_init_5_end Image$$ER_OM_INIT_5$$Limit
 #define __om_init_6_start Image$$ER_OM_INIT_6$$Base
-#define __om_init_6_end   Image$$ER_OM_INIT_6$$Limit
+#define __om_init_6_end Image$$ER_OM_INIT_6$$Limit
 #endif
 
 extern const OmInitEntry __om_init_0_start[];
@@ -60,13 +60,13 @@ typedef struct
 } OmInitRange;
 
 static const OmInitRange s_level_ranges[OM_INIT_LEVEL_COUNT] = {
-    { __om_init_0_start, __om_init_0_end },
-    { __om_init_1_start, __om_init_1_end },
-    { __om_init_2_start, __om_init_2_end },
-    { __om_init_3_start, __om_init_3_end },
-    { __om_init_4_start, __om_init_4_end },
-    { __om_init_5_start, __om_init_5_end },
-    { __om_init_6_start, __om_init_6_end },
+    {__om_init_0_start, __om_init_0_end},
+    {__om_init_1_start, __om_init_1_end},
+    {__om_init_2_start, __om_init_2_end},
+    {__om_init_3_start, __om_init_3_end},
+    {__om_init_4_start, __om_init_4_end},
+    {__om_init_5_start, __om_init_5_end},
+    {__om_init_6_start, __om_init_6_end},
 };
 
 /**
@@ -81,7 +81,7 @@ static const OmInitRange s_level_ranges[OM_INIT_LEVEL_COUNT] = {
 
 /* 首个失败记录（无日志子系统时供诊断查询；后续对接 log/诊断服务） */
 static const char *s_first_fail_name;
-static OmRet       s_first_fail_ret;
+static OmRet s_first_fail_ret;
 
 /** @brief 同级内排序键：prio 升序（级别顺序已由链接器保证） */
 static inline int om_init_prio_key(const OmInitEntry *e)
@@ -100,7 +100,7 @@ static OmRet om_init_call_one(const OmInitEntry *e)
     if (s_first_fail_name == NULL)
     {
         s_first_fail_name = e->name;
-        s_first_fail_ret  = ret;
+        s_first_fail_ret = ret;
     }
     return ret;
 }
@@ -114,13 +114,13 @@ const char *om_init_last_fail_name(void)
 OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi)
 {
     s_first_fail_name = NULL;
-    s_first_fail_ret  = OM_OK;
+    s_first_fail_ret = OM_OK;
 
     /* 逐级遍历 [level_lo, level_hi)（级别顺序由链接器按段排列保证） */
     for (uint8_t lvl = (uint8_t)level_lo; lvl < (uint8_t)level_hi; lvl++)
     {
         const OmInitEntry *sec_start = s_level_ranges[lvl].start;
-        const OmInitEntry *sec_end   = s_level_ranges[lvl].end;
+        const OmInitEntry *sec_end = s_level_ranges[lvl].end;
 
         /* 统计本级非空表项，决定是否走排序路径 */
         size_t total = 0;
@@ -158,7 +158,7 @@ OmRet om_do_initcalls(OmInitLevel level_lo, OmInitLevel level_hi)
                 if (min != i)
                 {
                     const OmInitEntry *tmp = order[i];
-                    order[i]   = order[min];
+                    order[i] = order[min];
                     order[min] = tmp;
                 }
             }

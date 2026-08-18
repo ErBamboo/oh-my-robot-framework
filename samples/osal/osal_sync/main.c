@@ -23,16 +23,16 @@ typedef struct
     uint32_t timestampMs;
 } OsalTestMessage;
 
-static OsalQueue* g_queue;
-static OsalMutex* g_mutex;
-static OsalSem* g_sem;
-static OsalEventFlags* g_event;
-static OsalThread* g_producer_thread;
-static OsalThread* g_consumer_thread;
-static OsalThread* g_monitor_thread;
-static OsalThread* g_counter_thread;
-static OsalThread* g_edge_test_thread;
-static OsalTimer* g_timer;
+static OsalQueue *g_queue;
+static OsalMutex *g_mutex;
+static OsalSem *g_sem;
+static OsalEventFlags *g_event;
+static OsalThread *g_producer_thread;
+static OsalThread *g_consumer_thread;
+static OsalThread *g_monitor_thread;
+static OsalThread *g_counter_thread;
+static OsalThread *g_edge_test_thread;
+static OsalTimer *g_timer;
 
 /* 运行状态统计，便于调试观察 */
 static volatile uint32_t g_produced_cnt;
@@ -44,14 +44,14 @@ static volatile uint32_t g_edge_tests;
 static volatile uint32_t g_edge_failures;
 static volatile uint32_t g_edge_done;
 
-static void osal_sync_timer_callback(OsalTimer* timer)
+static void osal_sync_timer_callback(OsalTimer *timer)
 {
     (void)timer;
     /* 定时器回调中发送信号量，唤醒监控线程 */
     (void)osal_sem_post(g_sem);
 }
 
-static void osal_sync_producer_thread_entry(void* arg)
+static void osal_sync_producer_thread_entry(void *arg)
 {
     (void)arg;
     OsalTestMessage message;
@@ -81,7 +81,7 @@ static void osal_sync_producer_thread_entry(void* arg)
     }
 }
 
-static void osal_sync_consumer_thread_entry(void* arg)
+static void osal_sync_consumer_thread_entry(void *arg)
 {
     (void)arg;
     OsalTestMessage message;
@@ -101,7 +101,7 @@ static void osal_sync_consumer_thread_entry(void* arg)
     }
 }
 
-static void osal_sync_monitor_thread_entry(void* arg)
+static void osal_sync_monitor_thread_entry(void *arg)
 {
     (void)arg;
     while (1)
@@ -114,7 +114,7 @@ static void osal_sync_monitor_thread_entry(void* arg)
     }
 }
 
-static void osal_sync_counter_thread_entry(void* arg)
+static void osal_sync_counter_thread_entry(void *arg)
 {
     (void)arg;
     /* 高频竞争互斥锁，用于验证互斥效果 */
@@ -131,7 +131,7 @@ static void osal_sync_counter_thread_entry(void* arg)
     }
 }
 
-static void osal_sync_edge_test_thread_entry(void* arg)
+static void osal_sync_edge_test_thread_entry(void *arg)
 {
     (void)arg;
     uint32_t test_count = 0;
@@ -139,7 +139,7 @@ static void osal_sync_edge_test_thread_entry(void* arg)
 
     /* 队列边界测试 */
     {
-        OsalQueue* test_queue = NULL;
+        OsalQueue *test_queue = NULL;
         uint8_t item = 0x5A;
 
         test_count++;
@@ -189,7 +189,7 @@ static void osal_sync_edge_test_thread_entry(void* arg)
 
     /* 信号量边界测试 */
     {
-        OsalSem* test_semaphore = NULL;
+        OsalSem *test_semaphore = NULL;
         uint32_t semaphore_count = 0u;
 
         test_count++;
@@ -239,7 +239,7 @@ static void osal_sync_edge_test_thread_entry(void* arg)
 
     /* 互斥锁边界测试 */
     {
-        OsalMutex* test_mutex = NULL;
+        OsalMutex *test_mutex = NULL;
 
         test_count++;
         if (osal_mutex_create(&test_mutex) != OSAL_OK)
@@ -273,7 +273,7 @@ static void osal_sync_edge_test_thread_entry(void* arg)
     /* 事件边界测试 */
     {
         uint32_t event_flags_value = 0;
-        OsalEventFlags* test_event_flags = NULL;
+        OsalEventFlags *test_event_flags = NULL;
 
         test_count++;
         if (osal_event_flags_create(&test_event_flags) != OSAL_OK)
@@ -288,7 +288,7 @@ static void osal_sync_edge_test_thread_entry(void* arg)
 
     /* 定时器边界测试 */
     {
-        OsalTimer* test_timer = NULL;
+        OsalTimer *test_timer = NULL;
 
         test_count++;
         if (osal_timer_create(NULL, "bad_timer", 1U, OSAL_TIMER_PERIODIC, NULL, osal_sync_timer_callback) != OSAL_INVALID)

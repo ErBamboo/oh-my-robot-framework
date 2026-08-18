@@ -21,8 +21,8 @@
  * 由平台 port 层提供具体中断屏蔽策略。
  */
 
-#include <stdint.h>
 #include "core/om_interrupt.h"
+#include <stdint.h>
 
 /*===========================================================================
  * 白名单守卫：仅缺乏硬件原子指令的架构参与编译
@@ -30,8 +30,8 @@
 
 #if OM_PORT_SOFTWARE_ATOMICS
 
-#define CRITICAL_ENTER(key)   uint32_t key = om_hw_disable_interrupt()
-#define CRITICAL_EXIT(key)    om_hw_restore_interrupt(key)
+#define CRITICAL_ENTER(key) uint32_t key = om_hw_disable_interrupt()
+#define CRITICAL_EXIT(key) om_hw_restore_interrupt(key)
 
 /* --- 1-byte atomics --- */
 
@@ -53,18 +53,23 @@ void __atomic_store_1(volatile void *ptr, uint8_t val, int memorder)
 }
 
 uint8_t __atomic_compare_exchange_1(volatile void *ptr, void *expected,
-                                     uint8_t desired, int weak,
-                                     int success, int failure)
+                                    uint8_t desired, int weak,
+                                    int success, int failure)
 {
-    (void)weak; (void)success; (void)failure;
+    (void)weak;
+    (void)success;
+    (void)failure;
     CRITICAL_ENTER(k);
     uint8_t *exp = (uint8_t *)expected;
-    uint8_t  cur = *(volatile uint8_t *)ptr;
-    uint8_t  ok;
-    if (cur == *exp) {
+    uint8_t cur = *(volatile uint8_t *)ptr;
+    uint8_t ok;
+    if (cur == *exp)
+    {
         *(volatile uint8_t *)ptr = desired;
         ok = 1;
-    } else {
+    }
+    else
+    {
         *exp = cur;
         ok = 0;
     }

@@ -5,11 +5,11 @@
 #include "osal/osal_time.h"
 #include <string.h>
 
-void serial_read_cb(Device* dev, void* param, size_t paramsz)
+void serial_read_cb(Device *dev, void *param, size_t paramsz)
 {
 }
 
-void serial_write_cb(Device* dev, void* param, size_t paramsz)
+void serial_write_cb(Device *dev, void *param, size_t paramsz)
 {
 }
 
@@ -21,7 +21,7 @@ void serial_write_cb(Device* dev, void* param, size_t paramsz)
  * @param: paramsz 错误参数大小
  * @return: 无
  */
-void serial_err_cb(Device* dev, uint32_t errcode, void* param, size_t paramsz)
+void serial_err_cb(Device *dev, uint32_t errcode, void *param, size_t paramsz)
 {
     switch (errcode)
     {
@@ -34,13 +34,11 @@ void serial_err_cb(Device* dev, uint32_t errcode, void* param, size_t paramsz)
         // device_write(dev, NULL, tx_data, paramsz);
         break;
 
-    case ERR_SERIAL_TXFIFO_OVERFLOW:
-    {
+    case ERR_SERIAL_TXFIFO_OVERFLOW: {
     }
     break;
-    default:
-    {
-        char* notify = "\r\nserial occurred some error\r\n";
+    default: {
+        char *notify = "\r\nserial occurred some error\r\n";
         device_write(dev, NULL, notify, strlen(notify));
         OM_CPU_ERRHANDLER("serial occurred some error", OM_LOG_LEVEL_FATAL);
     }
@@ -48,20 +46,20 @@ void serial_err_cb(Device* dev, uint32_t errcode, void* param, size_t paramsz)
     }
 }
 
-void serial_test_task(void* pvParameters)
+void serial_test_task(void *pvParameters)
 {
-    Device* serial = device_find("usart6");
+    Device *serial = device_find("usart6");
     device_open(serial, SERIAL_O_BLCK_TX | SERIAL_O_BLCK_RX);
     device_set_read_cb(serial, serial_read_cb); // read done callback
     device_set_err_cb(serial, serial_err_cb);
     device_set_write_cb(serial, serial_write_cb);
 
-    char* notify = "\r\nserial test start\r\n";
+    char *notify = "\r\nserial test start\r\n";
     uint8_t buf[128] = {0};
     uint32_t len = 0;
     device_write(serial, NULL, notify, strlen(notify));
     OsalTimeMs last_time = osal_time_now_monotonic();
-    
+
     while (1)
     {
         len = device_read(serial, NULL, buf, 1);
@@ -76,7 +74,7 @@ void serial_test_task(void* pvParameters)
  * 板级自举与硬件初始化由 BOARD 级 initcall 自动完成，无需在此显式调用。 */
 static OmRet serial_crc_app_setup(void)
 {
-    OsalThread* task1 = NULL;
+    OsalThread *task1 = NULL;
     OsalThreadAttr attr = {0};
     attr.name = "SerialTestTask";
     attr.stackSize = 5120u * OSAL_STACK_WORD_BYTES;

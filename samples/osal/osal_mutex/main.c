@@ -19,12 +19,12 @@ typedef struct
     volatile uint32_t done;
 } OsalMutexTestResult;
 
-static OsalMutex* g_mutex = NULL;
-static OsalSem* g_owner_ready_sem = NULL;
-static OsalSem* g_owner_done_sem = NULL;
+static OsalMutex *g_mutex = NULL;
+static OsalSem *g_owner_ready_sem = NULL;
+static OsalSem *g_owner_done_sem = NULL;
 
-static OsalThread* g_test_thread = NULL;
-static OsalThread* g_owner_thread = NULL;
+static OsalThread *g_test_thread = NULL;
+static OsalThread *g_owner_thread = NULL;
 
 static OsalMutexTestResult g_mutex_result = {0u, 0u, 0u};
 
@@ -47,7 +47,7 @@ static void osal_mutex_expect(int condition)
  *   - `g_owner_ready_sem`：已持锁
  *   - `g_owner_done_sem`：已释放并结束
  */
-static void osal_mutex_owner_thread_entry(void* arg)
+static void osal_mutex_owner_thread_entry(void *arg)
 {
     (void)arg;
 
@@ -71,7 +71,7 @@ static void osal_mutex_owner_thread_entry(void* arg)
  * 4) 跨线程持锁期间：非 owner 解锁与非阻塞 lock 行为
  * 5) owner 释放后可再次 lock/unlock 成功
  */
-static void osal_mutex_test_thread_entry(void* arg)
+static void osal_mutex_test_thread_entry(void *arg)
 {
     OsalThreadAttr owner_attr = {
         "osal_mutex_owner",

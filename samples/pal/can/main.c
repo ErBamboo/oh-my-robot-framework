@@ -20,23 +20,23 @@ typedef struct CanTxInfo
     uint8_t data[CAN_TX_MSG_BUF_LEN][8];
 } OM_PACKED CanTxInfo;
 
-static void can_info_init(CanUserMsg* msg, CanFilterHandle filter_handle, uint8_t* data)
+static void can_info_init(CanUserMsg *msg, CanFilterHandle filter_handle, uint8_t *data)
 {
     msg->filterHandle = filter_handle;
     msg->userBuf = data;
 }
 
-static void can_txinfo_init(CanUserMsg* msg, uint8_t* data)
+static void can_txinfo_init(CanUserMsg *msg, uint8_t *data)
 {
     msg->filterHandle = 0;
     msg->userBuf = data;
 }
 
 uint8_t cnt = 0;
-static void can_filter_callback(Device* dev, void* param, CanFilterHandle filter_handle, size_t msg_count)
+static void can_filter_callback(Device *dev, void *param, CanFilterHandle filter_handle, size_t msg_count)
 {
     (void)filter_handle;
-    CanInfo* info = (CanInfo*)param;
+    CanInfo *info = (CanInfo *)param;
     device_read(dev, NULL, &info->msg[cnt], msg_count);
     for (size_t i = 0; i < msg_count; i++)
     {
@@ -50,10 +50,10 @@ static void can_filter_callback(Device* dev, void* param, CanFilterHandle filter
 CanInfo can_info = {0};
 CanTxInfo can_tx_info;
 
-void can_test_task(void* param)
+void can_test_task(void *param)
 {
     OmRet ret = OM_OK;
-    Device* can = device_find("can1");
+    Device *can = device_find("can1");
     while (!can)
     {
     };
@@ -65,7 +65,7 @@ void can_test_task(void* param)
     };
 
     CanFilterAllocArg filter_alloc_arg = {
-        .request = CAN_FILTER_REQUEST_INIT(CAN_FILTER_MODE_MASK, CAN_FILTER_ID_STD_EXT, 0x101, 0x1F0, can_filter_callback, (void*)&can_info),
+        .request = CAN_FILTER_REQUEST_INIT(CAN_FILTER_MODE_MASK, CAN_FILTER_ID_STD_EXT, 0x101, 0x1F0, can_filter_callback, (void *)&can_info),
     };
     ret = device_ctrl(can, CAN_CMD_FILTER_ALLOC, &filter_alloc_arg);
     while (ret != OM_OK)
@@ -91,7 +91,7 @@ void can_test_task(void* param)
  * 板级自举与硬件初始化由 BOARD 级 initcall 自动完成，无需在此显式调用。 */
 static OmRet can_app_setup(void)
 {
-    OsalThread* task1 = NULL;
+    OsalThread *task1 = NULL;
     OsalThreadAttr attr = {0};
     attr.name = "CanTestTask";
     attr.stackSize = 512u * OSAL_STACK_WORD_BYTES;

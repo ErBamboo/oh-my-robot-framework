@@ -21,7 +21,7 @@ typedef struct
     volatile uint32_t done;
 } OsalTimeTestResult;
 
-static OsalThread* g_test_thread = NULL;
+static OsalThread *g_test_thread = NULL;
 static OsalTimeTestResult g_time_result = {0u, 0u, 0u};
 
 /**
@@ -152,7 +152,7 @@ static void osal_time_test_delay_until_catchup_group(void)
  * 4) delay_until 基础行为
  * 5) delay_until 过期追赶行为
  */
-static void osal_time_test_thread_entry(void* arg)
+static void osal_time_test_thread_entry(void *arg)
 {
     (void)arg;
 

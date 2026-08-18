@@ -19,9 +19,9 @@ typedef struct
     volatile uint32_t done;
 } OsalEventTestResult;
 
-static OsalEventFlags* g_event              = NULL;
-static OsalThread* g_test_thread             = NULL;
-static OsalThread* g_setter_thread           = NULL;
+static OsalEventFlags *g_event = NULL;
+static OsalThread *g_test_thread = NULL;
+static OsalThread *g_setter_thread = NULL;
 static OsalEventTestResult g_event_result = {0u, 0u, 0u};
 
 /**
@@ -61,14 +61,14 @@ static void osal_event_setter_thread_entry(void *arg)
  */
 static void osal_event_test_thread_entry(void *arg)
 {
-    OsalEventFlags* event_temp  = NULL;
+    OsalEventFlags *event_temp = NULL;
     OsalThreadAttr setter_attr = {
         "osal_event_setter",
         512u * OSAL_STACK_WORD_BYTES,
         2u,
     };
-    uint32_t out_value          = 0u;
-    uint32_t invalid_flags      = ~OSAL_EVENT_FLAGS_USABLE_MASK;
+    uint32_t out_value = 0u;
+    uint32_t invalid_flags = ~OSAL_EVENT_FLAGS_USABLE_MASK;
     uint32_t invalid_single_bit = invalid_flags & (0u - invalid_flags);
 
     (void)arg;
@@ -102,7 +102,8 @@ static void osal_event_test_thread_entry(void *arg)
     osal_event_expect(osal_event_flags_wait(g_event, 0x04u, &out_value, 0u, 0u) == OSAL_WOULD_BLOCK);
 
     /* 组6：可用位掩码非法输入校验 */
-    if (invalid_single_bit != 0u) {
+    if (invalid_single_bit != 0u)
+    {
         osal_event_expect(osal_event_flags_set(g_event, invalid_single_bit) == OSAL_INVALID);
         osal_event_expect(osal_event_flags_clear(g_event, invalid_single_bit) == OSAL_INVALID);
         osal_event_expect(osal_event_flags_wait(g_event, invalid_single_bit, &out_value, 0u, 0u) == OSAL_INVALID);

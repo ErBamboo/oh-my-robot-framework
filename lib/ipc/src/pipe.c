@@ -3,7 +3,7 @@
 #include "osal/osal_core.h"
 #include <string.h>
 
-static OmRet pipe_create_sems(Pipe* pipe)
+static OmRet pipe_create_sems(Pipe *pipe)
 {
     if (osal_sem_create(&pipe->read_sem, 1u, 0u) != OSAL_OK)
         return OM_ERROR_MEMORY;
@@ -22,7 +22,7 @@ static bool pipe_is_power_of_two(unsigned int v)
     return v != 0u && (v & (v - 1u)) == 0u;
 }
 
-OmRet pipe_init(Pipe* pipe, uint8_t* buf, unsigned int capacity)
+OmRet pipe_init(Pipe *pipe, uint8_t *buf, unsigned int capacity)
 {
     if (!pipe)
         return OM_ERROR_PARAM;
@@ -42,7 +42,7 @@ OmRet pipe_init(Pipe* pipe, uint8_t* buf, unsigned int capacity)
     return OM_OK;
 }
 
-OmRet pipe_alloc(Pipe* pipe, unsigned int capacity, void* (*pmalloc)(size_t))
+OmRet pipe_alloc(Pipe *pipe, unsigned int capacity, void *(*pmalloc)(size_t))
 {
     if (!pipe || !pipe_is_power_of_two(capacity))
         return OM_ERROR_PARAM;
@@ -63,7 +63,7 @@ OmRet pipe_alloc(Pipe* pipe, unsigned int capacity, void* (*pmalloc)(size_t))
     return OM_OK;
 }
 
-void pipe_deinit(Pipe* pipe)
+void pipe_deinit(Pipe *pipe)
 {
     if (!pipe)
         return;
@@ -82,7 +82,7 @@ void pipe_deinit(Pipe* pipe)
     memset(&pipe->rb, 0, sizeof(pipe->rb));
 }
 
-void pipe_free(Pipe* pipe, void (*pfree)(void*))
+void pipe_free(Pipe *pipe, void (*pfree)(void *))
 {
     if (!pipe)
         return;
@@ -102,7 +102,7 @@ void pipe_free(Pipe* pipe, void (*pfree)(void*))
     memset(&pipe->rb, 0, sizeof(pipe->rb));
 }
 
-int pipe_write(Pipe* pipe, const void* data, int len, uint32_t timeout_ms)
+int pipe_write(Pipe *pipe, const void *data, int len, uint32_t timeout_ms)
 {
     if (!pipe || !data || len <= 0)
         return OM_ERROR_PARAM;
@@ -139,7 +139,7 @@ int pipe_write(Pipe* pipe, const void* data, int len, uint32_t timeout_ms)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-int pipe_write_from_isr(Pipe* pipe, const void* data, int len)
+int pipe_write_from_isr(Pipe *pipe, const void *data, int len)
 {
     if (!pipe || !data || len <= 0)
         return OM_ERROR_PARAM;
@@ -157,7 +157,7 @@ int pipe_write_from_isr(Pipe* pipe, const void* data, int len)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-int pipe_read(Pipe* pipe, void* buf, int len, uint32_t timeout_ms)
+int pipe_read(Pipe *pipe, void *buf, int len, uint32_t timeout_ms)
 {
     if (!pipe || !buf || len <= 0)
         return OM_ERROR_PARAM;
@@ -194,7 +194,7 @@ int pipe_read(Pipe* pipe, void* buf, int len, uint32_t timeout_ms)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-int pipe_peek(Pipe* pipe, void* buf, int len, uint32_t timeout_ms)
+int pipe_peek(Pipe *pipe, void *buf, int len, uint32_t timeout_ms)
 {
     if (!pipe || !buf || len <= 0)
         return OM_ERROR_PARAM;
@@ -221,7 +221,7 @@ int pipe_peek(Pipe* pipe, void* buf, int len, uint32_t timeout_ms)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-OmRet pipe_skip(Pipe* pipe, int len)
+OmRet pipe_skip(Pipe *pipe, int len)
 {
     if (!pipe || len <= 0)
         return OM_ERROR_PARAM;
@@ -243,7 +243,7 @@ OmRet pipe_skip(Pipe* pipe, int len)
     return OM_OK;
 }
 
-int pipe_read_from_isr(Pipe* pipe, void* buf, int len)
+int pipe_read_from_isr(Pipe *pipe, void *buf, int len)
 {
     if (!pipe || !buf || len <= 0)
         return OM_ERROR_PARAM;
@@ -261,7 +261,7 @@ int pipe_read_from_isr(Pipe* pipe, void* buf, int len)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-int pipe_peek_from_isr(Pipe* pipe, void* buf, int len)
+int pipe_peek_from_isr(Pipe *pipe, void *buf, int len)
 {
     if (!pipe || !buf || len <= 0)
         return OM_ERROR_PARAM;
@@ -274,7 +274,7 @@ int pipe_peek_from_isr(Pipe* pipe, void* buf, int len)
     return OM_ERROR_WOULD_BLOCK;
 }
 
-OmRet pipe_skip_from_isr(Pipe* pipe, int len)
+OmRet pipe_skip_from_isr(Pipe *pipe, int len)
 {
     if (!pipe || len <= 0)
         return OM_ERROR_PARAM;

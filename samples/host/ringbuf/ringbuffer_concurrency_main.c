@@ -1,5 +1,5 @@
-#include "data_struct/ringbuffer.h"
 #include "core/atomic/atomic_simple.h"
+#include "data_struct/ringbuffer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +19,7 @@ static void host_thread_yield(void)
 #include <pthread.h>
 #include <sched.h>
 typedef pthread_t HostThread;
-typedef void* HostThreadRet;
+typedef void *HostThreadRet;
 #define HOST_THREAD_CALL
 static void host_thread_yield(void)
 {
@@ -27,10 +27,11 @@ static void host_thread_yield(void)
 }
 #endif
 
-#define RINGBUFFER_CAPACITY      (4096U)
-#define CONCURRENCY_TOTAL_ITEMS  (2000000U)
+#define RINGBUFFER_CAPACITY (4096U)
+#define CONCURRENCY_TOTAL_ITEMS (2000000U)
 
-typedef struct RingbufferConcurrencyContext {
+typedef struct RingbufferConcurrencyContext
+{
     Ringbuf rb;
     uint32_t totalItems;
     OmAtomicUint produced;
@@ -50,7 +51,7 @@ static int run_ringbuffer_basic_test(void)
     uint32_t peekData[2] = {0};
 
     memset(&rb, 0, sizeof(rb));
-    if (!ringbuf_init(&rb, (uint8_t*)storage, sizeof(uint32_t), 8))
+    if (!ringbuf_init(&rb, (uint8_t *)storage, sizeof(uint32_t), 8))
         return 0;
 
     if (ringbuf_in(&rb, inData, 6) != 6)
@@ -89,7 +90,7 @@ static int run_ringbuffer_non_power_of_two_test(void)
 
     memset(&rb, 0, sizeof(rb));
     /* 传入 3，应自动取整为 4，不挂死 */
-    if (!ringbuf_init(&rb, (uint8_t*)storage, sizeof(uint32_t), 3))
+    if (!ringbuf_init(&rb, (uint8_t *)storage, sizeof(uint32_t), 3))
         return 0;
 
     cap = ringbuf_cap(&rb);
@@ -100,7 +101,7 @@ static int run_ringbuffer_non_power_of_two_test(void)
 }
 
 #ifdef _WIN32
-static int host_thread_create(HostThread* thread, LPTHREAD_START_ROUTINE entry, void* arg)
+static int host_thread_create(HostThread *thread, LPTHREAD_START_ROUTINE entry, void *arg)
 {
     *thread = CreateThread(NULL, 0, entry, arg, 0, NULL);
     return (*thread == NULL) ? -1 : 0;
@@ -113,7 +114,7 @@ static int host_thread_join(HostThread thread)
     return (waitResult == WAIT_OBJECT_0) ? 0 : -1;
 }
 #else
-static int host_thread_create(HostThread* thread, void* (*entry)(void*), void* arg)
+static int host_thread_create(HostThread *thread, void *(*entry)(void *), void *arg)
 {
     return pthread_create(thread, NULL, entry, arg);
 }
@@ -124,9 +125,9 @@ static int host_thread_join(HostThread thread)
 }
 #endif
 
-static HostThreadRet HOST_THREAD_CALL producer_thread(void* arg)
+static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 {
-    RingbufferConcurrencyContext* ctx = (RingbufferConcurrencyContext*)arg;
+    RingbufferConcurrencyContext *ctx = (RingbufferConcurrencyContext *)arg;
     uint32_t value = 1;
     while (value <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0)
     {
@@ -147,9 +148,9 @@ static HostThreadRet HOST_THREAD_CALL producer_thread(void* arg)
 #endif
 }
 
-static HostThreadRet HOST_THREAD_CALL consumer_thread(void* arg)
+static HostThreadRet HOST_THREAD_CALL consumer_thread(void *arg)
 {
-    RingbufferConcurrencyContext* ctx = (RingbufferConcurrencyContext*)arg;
+    RingbufferConcurrencyContext *ctx = (RingbufferConcurrencyContext *)arg;
     uint32_t expected = 1;
     while (expected <= ctx->totalItems && OM_LOAD_ACQ(&ctx->stop) == 0)
     {
@@ -228,12 +229,12 @@ static int run_ringbuffer_concurrency_test(void)
     elapsedSec = (double)(endTicks - beginTicks) / (double)CLOCKS_PER_SEC;
 
     printf("produced=%u consumed=%u write_retry=%u read_retry=%u errors=%u elapsed=%.3fs\n",
-        OM_LOAD_ACQ(&ctx.produced),
-        OM_LOAD_ACQ(&ctx.consumed),
-        OM_LOAD_ACQ(&ctx.writeRetry),
-        OM_LOAD_ACQ(&ctx.readRetry),
-        OM_LOAD_ACQ(&ctx.errors),
-        elapsedSec);
+           OM_LOAD_ACQ(&ctx.produced),
+           OM_LOAD_ACQ(&ctx.consumed),
+           OM_LOAD_ACQ(&ctx.writeRetry),
+           OM_LOAD_ACQ(&ctx.readRetry),
+           OM_LOAD_ACQ(&ctx.errors),
+           elapsedSec);
 
     if (OM_LOAD_ACQ(&ctx.errors) != 0 ||
         OM_LOAD_ACQ(&ctx.produced) != ctx.totalItems ||

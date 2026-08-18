@@ -61,11 +61,11 @@ OmRet device_unregister(Device *dev)
     list_del(&dev->list);
     osal_irq_unlock_task();
 
-    dev->priv.name      = NULL;
-    dev->priv.refCount  = 0;
-    dev->priv.cFlags    = 0;
-    dev->priv.status    = 0;
-    dev->priv.oparams   = 0;
+    dev->priv.name = NULL;
+    dev->priv.refCount = 0;
+    dev->priv.cFlags = 0;
+    dev->priv.status = 0;
+    dev->priv.oparams = 0;
     dev->priv.regparams = 0;
 
     return OM_OK;

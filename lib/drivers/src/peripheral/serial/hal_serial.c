@@ -710,16 +710,16 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
 
         /* 回绕残留检测与连锁发送 */
         {
-            void  *next_buf  = NULL;
-            size_t next_len  = 0U;
-            int    from_wrap = 0;
+            void *next_buf = NULL;
+            size_t next_len = 0U;
+            int from_wrap = 0;
 
             if (tx_fifo->loadSize == 0)
             {
                 next_len = ringbuf_get_item_linear_space(&tx_fifo->rb, &next_buf);
                 if (next_len > 0U)
                 {
-                    tx_fifo->loadSize = next_len;  /* 回绕残留 */
+                    tx_fifo->loadSize = next_len; /* 回绕残留 */
                     from_wrap = 1;
                 }
                 else
@@ -743,31 +743,31 @@ OmRet serial_hw_isr(HalSerial *serial, SerialEvent event, void *arg, size_t arg_
                 if (next_len > 0U)
                 {
                     size_t tx_start_len = serial->interface->transmit(serial, next_buf, next_len);
-                if (tx_start_len == 0U)
-                {
-                    tx_fifo->status = SERIAL_FIFO_IDLE;
-                    tx_fifo->loadSize = 0;
-                    if (SERIAL_IS_O_BLCK_TX(&serial->parent))
+                    if (tx_start_len == 0U)
                     {
-                        serial_fifo_set_wait_reason(tx_fifo, SERIAL_WAIT_WAKE_ERROR);
-                        (void)completion_done(&tx_fifo->cpt);
+                        tx_fifo->status = SERIAL_FIFO_IDLE;
+                        tx_fifo->loadSize = 0;
+                        if (SERIAL_IS_O_BLCK_TX(&serial->parent))
+                        {
+                            serial_fifo_set_wait_reason(tx_fifo, SERIAL_WAIT_WAKE_ERROR);
+                            (void)completion_done(&tx_fifo->cpt);
+                        }
+                        device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
+                        device_err_cb(&serial->parent, ERR_SERIAL_TX_TIMEOUT, next_len);
                     }
-                    device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
-                    device_err_cb(&serial->parent, ERR_SERIAL_TX_TIMEOUT, next_len);
                 }
             }
-        }
-        else
-        {
-            if (SERIAL_IS_O_BLCK_TX(&serial->parent))
+            else
             {
-                /* 阻塞发送完成通知，重复触发返BUSY 不影响本轮语义*/
-                serial_fifo_set_wait_reason(tx_fifo, SERIAL_WAIT_WAKE_DONE);
-                OmRet cpt_ret = completion_done(&tx_fifo->cpt);
-                (void)cpt_ret;
+                if (SERIAL_IS_O_BLCK_TX(&serial->parent))
+                {
+                    /* 阻塞发送完成通知，重复触发返BUSY 不影响本轮语义*/
+                    serial_fifo_set_wait_reason(tx_fifo, SERIAL_WAIT_WAKE_DONE);
+                    OmRet cpt_ret = completion_done(&tx_fifo->cpt);
+                    (void)cpt_ret;
+                }
+                device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
             }
-            device_clr_status(&serial->parent, DEV_STATUS_BUSY_TX);
-        }
         } /* 回绕残留检测与连锁发送 end */
     }
     break;

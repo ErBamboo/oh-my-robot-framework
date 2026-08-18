@@ -10,23 +10,29 @@
 typedef HANDLE HostThread;
 typedef DWORD HostThreadRet;
 #define HOST_THREAD_CALL WINAPI
-static void host_thread_yield(void) { (void)SwitchToThread(); }
+static void host_thread_yield(void)
+{
+    (void)SwitchToThread();
+}
 #else
 #include <pthread.h>
 #include <sched.h>
 typedef pthread_t HostThread;
-typedef void* HostThreadRet;
+typedef void *HostThreadRet;
 #define HOST_THREAD_CALL
-static void host_thread_yield(void) { (void)sched_yield(); }
+static void host_thread_yield(void)
+{
+    (void)sched_yield();
+}
 #endif
 
-#define MPSCRB_TEST_CAPACITY     (64U)
+#define MPSCRB_TEST_CAPACITY (64U)
 #define MPSCRB_CONCURRENCY_TOTAL (2000000U)
 
 /* ---- thread helpers (same as ringbuf test) ---- */
 
 #ifdef _WIN32
-static int host_thread_create(HostThread* thread, LPTHREAD_START_ROUTINE entry, void* arg)
+static int host_thread_create(HostThread *thread, LPTHREAD_START_ROUTINE entry, void *arg)
 {
     *thread = CreateThread(NULL, 0, entry, arg, 0, NULL);
     return (*thread == NULL) ? -1 : 0;
@@ -38,11 +44,14 @@ static int host_thread_join(HostThread thread)
     return (r == WAIT_OBJECT_0) ? 0 : -1;
 }
 #else
-static int host_thread_create(HostThread* thread, void* (*entry)(void*), void* arg)
+static int host_thread_create(HostThread *thread, void *(*entry)(void *), void *arg)
 {
     return pthread_create(thread, NULL, entry, arg);
 }
-static int host_thread_join(HostThread thread) { return pthread_join(thread, NULL); }
+static int host_thread_join(HostThread thread)
+{
+    return pthread_join(thread, NULL);
+}
 #endif
 
 /* ---- basic test ---- */
@@ -50,7 +59,7 @@ static int host_thread_join(HostThread thread) { return pthread_join(thread, NUL
 static int run_mpscrb_basic_test(void)
 {
     /* layout: 8 slots, 4-byte items */
-    uint8_t     buf[8 * 4];
+    uint8_t buf[8 * 4];
     OmAtomicU8 ready[8];
     MpscRingbuf rb;
 
@@ -124,8 +133,8 @@ typedef struct
 
 typedef struct
 {
-    MpscRingbuf  rb;
-    uint32_t     totalPerProducer;
+    MpscRingbuf rb;
+    uint32_t totalPerProducer;
     OmAtomicUint produced;
     OmAtomicUint consumed;
     OmAtomicUint writeRetry;
@@ -136,23 +145,23 @@ typedef struct
 
 typedef struct
 {
-    MpscConcurrencyCtx* ctx;
-    uint32_t            producer_id;
+    MpscConcurrencyCtx *ctx;
+    uint32_t producer_id;
 } ProducerArg;
 
-static HostThreadRet HOST_THREAD_CALL producer_thread(void* arg)
+static HostThreadRet HOST_THREAD_CALL producer_thread(void *arg)
 {
-    ProducerArg*         parg = (ProducerArg*)arg;
-    MpscConcurrencyCtx*  ctx = parg->ctx;
-    uint32_t              id  = parg->producer_id;
-    uint32_t seq             = 0;
-    uint32_t total           = ctx->totalPerProducer;
+    ProducerArg *parg = (ProducerArg *)arg;
+    MpscConcurrencyCtx *ctx = parg->ctx;
+    uint32_t id = parg->producer_id;
+    uint32_t seq = 0;
+    uint32_t total = ctx->totalPerProducer;
 
     while (seq < total && OM_LOAD_ACQ(&ctx->stop) == 0)
     {
         MpscTestItem item;
         item.producer_id = id;
-        item.seq         = seq;
+        item.seq = seq;
 
         if (mpscrb_in(&ctx->rb, &item))
         {
@@ -171,11 +180,11 @@ static HostThreadRet HOST_THREAD_CALL producer_thread(void* arg)
 #endif
 }
 
-static HostThreadRet HOST_THREAD_CALL consumer_thread(void* arg)
+static HostThreadRet HOST_THREAD_CALL consumer_thread(void *arg)
 {
-    MpscConcurrencyCtx* ctx = (MpscConcurrencyCtx*)arg;
+    MpscConcurrencyCtx *ctx = (MpscConcurrencyCtx *)arg;
     uint32_t expected_seq[2] = {0, 0}; /* per-producer next expected seq */
-    uint32_t total           = ctx->totalPerProducer * 2;
+    uint32_t total = ctx->totalPerProducer * 2;
 
     while (OM_LOAD_ACQ(&ctx->consumed) < total && OM_LOAD_ACQ(&ctx->stop) == 0)
     {
@@ -208,10 +217,10 @@ static HostThreadRet HOST_THREAD_CALL consumer_thread(void* arg)
 static int run_mpscrb_concurrency_test(void)
 {
     MpscConcurrencyCtx ctx;
-    ProducerArg        parg0, parg1;
-    HostThread         prod0, prod1, cons;
-    clock_t            t0, t1;
-    double             elapsed;
+    ProducerArg parg0, parg1;
+    HostThread prod0, prod1, cons;
+    clock_t t0, t1;
+    double elapsed;
 
     memset(&ctx, 0, sizeof(ctx));
     ctx.totalPerProducer = MPSCRB_CONCURRENCY_TOTAL / 2;
@@ -249,7 +258,7 @@ static int run_mpscrb_concurrency_test(void)
     host_thread_join(prod1);
     host_thread_join(cons);
 
-    t1      = clock();
+    t1 = clock();
     elapsed = (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
 
     printf("produced=%u consumed=%u write_retry=%u read_retry=%u errors=%u elapsed=%.3fs\n",
@@ -271,7 +280,7 @@ static int run_mpscrb_concurrency_test(void)
 
 int main(void)
 {
-    int basic  = run_mpscrb_basic_test();
+    int basic = run_mpscrb_basic_test();
     int concur = run_mpscrb_concurrency_test();
 
     if (!basic)
