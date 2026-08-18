@@ -18,7 +18,6 @@
 #include "core/om_def.h"
 
 #include <stddef.h>
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,8 +54,7 @@ typedef struct OmLogBackend {
  * @param level 编译期级别（其下整条编出去，常量折叠零成本）
  * @note 同一 TU 重复调用 = 重复定义；未注册就使用调用宏 = 编译错误（特性）
  */
-#define OM_LOG_MODULE(name, level) \
-    static const OmLogModule _om_log_module = {(name), (level)}
+#define OM_LOG_MODULE(name, level) OM_USED static const OmLogModule _om_log_module = {(name), (level)}
 
 /** @brief 调用宏（引用本 TU 的 _om_log_module；fmt 为 printf 风格子集） */
 #define OM_LOG_DEBUG(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_DEBUG, __VA_ARGS__)
@@ -66,16 +64,21 @@ typedef struct OmLogBackend {
 #define OM_LOG_FATAL(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, __VA_ARGS__)
 
 /** @brief 日志入口：过滤（编译期+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
- *  @note 无失败路径（打日志不打扰调用方）；参数非法/未就绪静默返回；线程/中断上下文均可调 */
+ *  @note 无失败路径（打日志不打扰调用方）；参数非法静默返回；未就绪（无后端接受）走过滤流水线返回；
+ *        线程/中断上下文均可调 */
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
 
-/** @brief 注册输出后端（默认级别 DEBUG=全收，可用 om_log_backend_set_level 收紧） */
+/** @brief 注册输出后端（默认级别 DEBUG=全收，可用 om_log_backend_set_level 收紧）
+ *  @note 重复注册 → OM_ERR_ALREADY；表满 → OM_ERR_FULL；参数非法 → OM_ERR_INVALID_ARG */
 OmRet om_log_backend_register(OmLogBackend *backend);
 
-/** @brief 注销输出后端 */
+/** @brief 注销输出后端
+ *  @note 未注册（指针不在表内）→ OM_ERR_NOT_FOUND；参数非法 → OM_ERR_INVALID_ARG */
 OmRet om_log_backend_unregister(OmLogBackend *backend);
 
-/** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关 */
+/** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关
+ *  @note 按名称查找：未找到 → OM_ERR_NOT_FOUND；级别越界（>= OM_LOG_LEVEL_MAX）或参数非法 →
+ *        OM_ERR_INVALID_ARG */
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 
 #ifdef __cplusplus
