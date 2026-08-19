@@ -98,10 +98,11 @@ OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level); /* �
    ```
 2. **过滤语义**：`msg.level >= threshold` 通过（set WARN → 只出 WARN/ERROR/FATAL）
 3. **并发保护**：临界区贯穿整条（③⑤ 之间）；**中断上下文可调用**（同一路径，不穿插）——文档约束：中断里只打 ERROR/FATAL 短消息，格式化开销由调用方自担
-4. **后端契约**：`push` 必须快速提交（提交 DMA/推发送缓冲，绝不轮询等待）——这是临界区短、中断调用成立的前提；后端不得假设一次 `push` = 一条日志（分段友好）
-5. **打日志无失败路径**：后端 push 失败 → 该段丢弃，调用方不受影响。**失败感知分层**（业界共识：输出回调不带状态——Zephyr backend process / printk console write / spdlog sink 均 void）：后端提交被拒（如发送缓冲满）由后端自持诊断；队列满丢弃由 log 服务在队列层计数（v2 异步，printk"丢日志不丢调用"语义）；v1 同步模式 log 服务侧无失败可感知——这是无失败路径契约的推论，非缺陷
-6. **未就绪行为**：调度器前（init 早期级别）调用 → 模块未注册/无后端 → 走 ①② 返回（静默丢弃）；deferred logging（早期缓冲 → 服务就绪后 flush）列入演进阶梯 v3
-7. **枚举只增不改**：`OmLogLevel` 只增（后续补 TRACE 安全）；级别常量 `OM_LOG_LEVEL_*` 为本服务唯一属主（kernel 侧 vestigial errhandler 路径使用改名后的 `OM_CPU_LOG_LEVEL_*`，见 ADR-0015）
+4. **FIFO 边界（logger 侧承诺）**：logger 按"单生产者 FIFO + 消息原子"语义**提交**消息给后端——同生产者调用序 = push 调用序（v1 = 临界区程序序，v2 = 队列 FIFO，结构性保证零额外机制）；一条消息的所有段连续推送、消息边界不穿插；广播一致（所有接受的后端在同一临界区内收到完整段序列）。**事务完成点 = push 返回**（同步模式下调用返回前全部 push 已完成）——push 是"提交"而非"送达"；边界之后（后端时序/乱序/送达/持久化，如 CAN 总线仲裁重排、DMA 排空延迟、后端内部队列）由后端自持，logger 不承诺
+5. **后端契约**：`push` 必须快速提交（提交 DMA/推发送缓冲，绝不轮询等待）——这是临界区短、中断调用成立的前提；后端不得假设一次 `push` = 一条日志（分段友好）
+6. **打日志无失败路径**：后端 push 失败 → 该段丢弃，调用方不受影响。**失败感知分层**（业界共识：输出回调不带状态——Zephyr backend process / printk console write / spdlog sink 均 void）：后端提交被拒（如发送缓冲满）由后端自持诊断；队列满丢弃由 log 服务在队列层计数（v2 异步，printk"丢日志不丢调用"语义）；v1 同步模式 log 服务侧无失败可感知——这是无失败路径契约的推论，非缺陷
+7. **未就绪行为**：调度器前（init 早期级别）调用 → 模块未注册/无后端 → 走 ①② 返回（静默丢弃）；deferred logging（早期缓冲 → 服务就绪后 flush）列入演进阶梯 v3
+8. **枚举只增不改**：`OmLogLevel` 只增（后续补 TRACE 安全）；级别常量 `OM_LOG_LEVEL_*` 为本服务唯一属主（kernel 侧 vestigial errhandler 路径使用改名后的 `OM_CPU_LOG_LEVEL_*`，见 ADR-0015）
 
 ## 用户指南
 
