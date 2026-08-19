@@ -9,6 +9,7 @@
 
 #include "core/om_init.h" /* OM_INIT_DRIVER / OM_INIT_APPLICATION */
 #include "drivers/peripheral/serial/log_serial_backend.h"
+#include "osal/osal.h"
 #include "services/log/log.h"
 
 #include "bsp_serial.h" /* BSP_LOG_SERIAL_NAME：板级日志口选择 */
@@ -26,12 +27,28 @@ static OmRet log_port_init(void)
 }
 OM_INIT_DRIVER(log_port_init);
 
-/** @brief 样例日志（APPLICATION 级：业务就绪后打样）
+/** @brief 心跳日志线程：持续输出验证（串口观察用）
+ *  @param arg 未使用 */
+static void log_heartbeat(void *arg)
+{
+    int i = 0;
+    (void)arg;
+    for (;;)
+    {
+        OM_LOG_INFO("log heartbeat %d", i++);
+        osal_sleep_ms(500);
+    }
+}
+
+/** @brief 样例日志（APPLICATION 级：业务就绪后打样 + 建心跳线程）
  *  @return OM_OK */
 static OmRet log_demo(void)
 {
+    OsalThread *thread = NULL;
+    OsalThreadAttr attr = {"log_hb", 1024U, OSAL_PRIO_LOW_BASE};
     OM_LOG_INFO("log serial backend demo: %d", 42);
     OM_LOG_ERROR("error path demo");
+    (void)osal_thread_create(&thread, &attr, log_heartbeat, NULL);
     return OM_OK;
 }
 OM_INIT_APPLICATION(log_demo);

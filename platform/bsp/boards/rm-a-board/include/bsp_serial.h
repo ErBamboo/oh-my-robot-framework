@@ -38,26 +38,10 @@
 #define RM_A_SERIAL_DMA_PROFILE RM_A_SERIAL37_PROFILE
 #endif
 
-#define USE_SERIAL_1
-#ifdef USE_SERIAL_1
-#define SERIAL_1_REG_PARAMS (SERIAL_REG_DMA_RX | SERIAL_REG_DMA_TX) /* 注册参数 */
-#define USE_SERIAL1_DMA_TX                                          /* 使用DMA发送 */
-#define USE_SERIAL1_DMA_RX                                          /* 使用DMA接收 */
-#ifdef USE_SERIAL1_DMA_TX
-#define SERIAL_1_DMA_TX_DMA_STREAM DMA2_Stream7
-#define SERIAL_1_DMA_TX_DMA_CHANNEL DMA_CHANNEL_4
-#define SERIAL_1_DMA_TX_IRQn DMA2_Stream7_IRQn
-#define SERIAL_1_DMA_TX_IRQ_Handler DMA2_Stream7_IRQHandler
-#endif
-#ifdef USE_SERIAL1_DMA_RX
-#define SERIAL_1_RX_MULTIBUF_SIZE (256U) /* 多缓冲区接收长度 */
-#define USE_SERIAL1_CONTAINER1           /* 使用多缓冲区接收 */
-#define SERIAL_1_DMA_RX_DMA_STREAM DMA2_Stream2
-#define SERIAL_1_DMA_RX_DMA_CHANNEL DMA_CHANNEL_4
-#define SERIAL_1_DMA_RX_IRQn DMA2_Stream2_IRQn
-#define SERIAL_1_DMA_RX_IRQ_Handler DMA2_Stream2_IRQHandler
-#endif
-#endif
+/* 注：A 板未引出 USART1——不得定义 USE_SERIAL_1。
+ * SerialIdx_e 枚举由 USE_SERIAL_* 宏驱动，残留该宏会导致枚举与
+ * g_bsp_serial 数据表索引错位（所有串口 ISR 按枚举取句柄 → 静默取错设备，
+ * 表现为 DMA 完成中断风暴/传输停滞——2026-08-20 实测根因）。 */
 
 #define USE_SERIAL_3
 #ifdef USE_SERIAL_3
