@@ -20,8 +20,18 @@
 #include <stdarg.h>
 #include <string.h>
 
-/* 级别名（3 字符；索引 = 级别数值 0..4，过滤已保证不越界） */
-static const char *const log_level_name[] = {"DBG", "INF", "WRN", "ERR", "FTL"};
+/* 级别名表（3 字符）：尺寸绑定 OM_LOG_LEVEL_OFF——级别枚举扩展必须同步本表，
+ * 否则下方编译期断言拦截（运行时无需再校验：emit 入口已保证 level < OFF） */
+static const char *const log_level_name[OM_LOG_LEVEL_OFF] = {
+    [OM_LOG_LEVEL_DEBUG] = "DBG",
+    [OM_LOG_LEVEL_INFO] = "INF",
+    [OM_LOG_LEVEL_WARN] = "WRN",
+    [OM_LOG_LEVEL_ERROR] = "ERR",
+    [OM_LOG_LEVEL_FATAL] = "FTL",
+};
+
+_Static_assert(OM_LOG_LEVEL_FATAL + 1 == OM_LOG_LEVEL_OFF,
+               "log 级别枚举扩展需同步 log_level_name 级别名表");
 
 /** @brief 扇出回调：把格式化段推给所有接受该级别的后端（临界区内调用）
  *  @param ctx 编码的日志级别（(uintptr_t)OmLogLevel，由 log_emit 传入）
@@ -37,7 +47,8 @@ static void emit_fanout(void *ctx, const char *seg, size_t len)
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
  *  @param level 消息级别
- *  @note log_level_name[level] 下标安全：om_log_log 的 OFF 检查已保证 level ∈ 0..4 */
+ *  @note log_level_name[level] 下标安全：入口 OFF 检查保证 level < OM_LOG_LEVEL_OFF，
+ *        表尺寸 = OM_LOG_LEVEL_OFF（编译期断言保证枚举与表同步） */
 static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel level)
 {
     log_buf_putc(w, '[');
