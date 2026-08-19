@@ -20,10 +20,12 @@
 extern "C" {
 #endif
 
-/** @brief 串口日志后端实例（调用者静态分配；backend 内嵌任意位置——container_of 经 offsetof 定位）
+/** @brief 串口日志后端实例（调用者静态分配；backend **须为首成员**——本实现回调经
+ *         首成员直接强转取实例，_Static_assert 编译期保障（log.h 框架侧无此要求，
+ *         其他后端实现可用 container_of 任意位置内嵌））
  *  @note 多实例支持：每实例一个变量，各自持有 Device；实例生命周期由调用者管理 */
 typedef struct {
-    OmLogBackend backend; /* 内嵌成员（任意位置均可；回调经 container_of 反查实例） */
+    OmLogBackend backend; /* 首成员（offset 0；本文件 _Static_assert 强制） */
     Device *dev;          /* 串口设备（register 内部 open 后持有） */
 } LogSerialBackend;
 

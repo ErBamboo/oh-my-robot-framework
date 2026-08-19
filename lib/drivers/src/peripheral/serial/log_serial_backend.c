@@ -10,13 +10,20 @@
 
 #include "drivers/peripheral/serial/pal_serial_dev.h"
 
+#include <stddef.h> /* offsetof */
+
+/* 首成员强转取实例的前提：backend 位于 offset 0（约束锁定在本文件，编译期保障，
+ * 重构结构体顺序会立即编译报错） */
+_Static_assert(offsetof(LogSerialBackend, backend) == 0,
+               "LogSerialBackend.backend 须为首成员（直接强转取实例的前提）");
+
 /** @brief 段推送：非阻塞提交到串口设备（log 临界区内被调；线程/中断上下文均可能）
- *  @param backend 后端实例（container_of 反查 LogSerialBackend）
+ *  @param backend 后端实例（首成员强转反查 LogSerialBackend，offset 0 由 _Static_assert 保障）
  *  @param seg 段数据
  *  @param len 段字节数 */
 static void log_serial_push(OmLogBackend *backend, const char *seg, size_t len)
 {
-    LogSerialBackend *inst = container_of(backend, LogSerialBackend, backend);
+    LogSerialBackend *inst = (LogSerialBackend *)backend;
     /* device_write：NBLCK 打开 → 非阻塞提交（BUSY_TX 时入 txFifo，满则截断）；
      * ISR 中自动走 serial_tx_nonblock（hal_serial 已处理）——快速提交契约 */
     (void)device_write(inst->dev, NULL, (void *)seg, len);
