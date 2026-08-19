@@ -154,6 +154,12 @@
 #define BSP_SERIAL6_BAUD 115200u
 #endif
 
+/* 日志口 TX FIFO 容量（构建期可覆盖；消息 > FIFO 时尾部段丢失 → 半行——
+ * 保证完整性的前提是 FIFO ≥ 最大消息长度，测试见 feature/log-serial-backend） */
+#ifndef BSP_SERIAL6_TXBUFSZ
+#define BSP_SERIAL6_TXBUFSZ 1024
+#endif
+
 #include "serial/bsp_serial_f4.h"
 
 #endif
