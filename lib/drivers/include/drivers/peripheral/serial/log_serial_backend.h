@@ -4,7 +4,7 @@
  * @details 依赖 services/log/log.h——ADR-0016 (drivers_services_one_way_dependency)
  *          开放的首个 drivers→services 跨层依赖（按服务逐个开放，当前仅 log）。
  *          实例由调用者静态分配（Workqueue 先例），container_of 模式取实例
- *          （backend 为首成员，多实例支持）。
+ *          （backend 内嵌位置任意，多实例支持）。
  *          接线（组合层，3 行）：
  *            static LogSerialBackend g_log_serial;
  *            OM_INIT_DRIVER(log_port_init);  // device_find(BSP_LOG_SERIAL_NAME) → register
@@ -20,10 +20,10 @@
 extern "C" {
 #endif
 
-/** @brief 串口日志后端实例（调用者静态分配；backend 为首成员——container_of 取实例）
+/** @brief 串口日志后端实例（调用者静态分配；backend 内嵌任意位置——container_of 经 offsetof 定位）
  *  @note 多实例支持：每实例一个变量，各自持有 Device；实例生命周期由调用者管理 */
 typedef struct {
-    OmLogBackend backend; /* 首成员（log.h 契约：内嵌须为首成员） */
+    OmLogBackend backend; /* 内嵌成员（任意位置均可；回调经 container_of 反查实例） */
     Device *dev;          /* 串口设备（register 内部 open 后持有） */
 } LogSerialBackend;
 
