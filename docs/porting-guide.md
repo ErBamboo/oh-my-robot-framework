@@ -107,8 +107,8 @@ osal_event.h:
 /* 开启 sync 加速后端 */
 #define OM_SYNC_ACCEL 1
 
-/* 自定义日志级别 */
-#define OM_DEFAULT_LOG_LEVEL  OM_LOG_LEVEL_WARN
+/* 自定义日志级别：log 服务就绪后经 services/log/log.h 的 OM_LOG_LEVEL_* 配置
+ * （om_config.h 的 OM_USE_LOG / OM_LOG_* 宏），appcfg 阶段无级别常量 */
 ```
 
 ### 工作机制

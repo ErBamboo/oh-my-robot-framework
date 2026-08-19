@@ -92,6 +92,15 @@ Cputime om_cpu_get_delta_time_s(CputimeCnt *last_time_cnt);
  */
 void om_cpu_errhandler(char *file, uint32_t line, uint8_t level, char *msg);
 
+/* CPU errhandler 级别常量（vestigial errhandler 路径专用，数值与日志级别一致；
+ * 日志级别常量 OM_LOG_LEVEL_* 归 log 服务（services/log/log.h），见 ADR-0015） */
+#define OM_CPU_LOG_LEVEL_DEBUG        0U
+#define OM_CPU_LOG_LEVEL_INFO         1U
+#define OM_CPU_LOG_LEVEL_WARN         2U
+#define OM_CPU_LOG_LEVEL_ERROR        3U
+#define OM_CPU_LOG_LEVEL_FATAL        4U
+#define OM_CPU_LOG_LEVEL_MAX          5U
+
 #define OM_CPU_ERRHANDLER(msg, level) om_cpu_errhandler(__FILE__, __LINE__, level, msg)
 
 /**

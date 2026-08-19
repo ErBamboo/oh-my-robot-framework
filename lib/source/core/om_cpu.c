@@ -38,9 +38,9 @@ Cputime om_cpu_get_delta_time_s(CputimeCnt *last_time_cnt)
 void om_cpu_errhandler(char *file, uint32_t line, uint8_t level, char *msg)
 {
     // TODO: 根据level打印不同的日志
-    if (level >= OM_LOG_LEVEL_MAX)
-        level = OM_LOG_LEVEL_ERROR;
-    if (level == OM_LOG_LEVEL_FATAL)
+    if (level >= OM_CPU_LOG_LEVEL_MAX)
+        level = OM_CPU_LOG_LEVEL_ERROR;
+    if (level == OM_CPU_LOG_LEVEL_FATAL)
         om_cpu.interface->errhandler();
 }
 

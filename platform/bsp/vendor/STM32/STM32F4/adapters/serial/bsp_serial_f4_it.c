@@ -120,7 +120,7 @@ void bsp_serial_dma_cfg(bsp_serial_t bsp_serial, uint32_t dma_regparams)
     hdma->Init.FIFOMode = DMA_FIFOMODE_DISABLE;
     if (HAL_DMA_Init(hdma) != HAL_OK)
     {
-        OM_CPU_ERRHANDLER("HAL_DMA_Init failed", OM_LOG_LEVEL_FATAL);
+        OM_CPU_ERRHANDLER("HAL_DMA_Init failed", OM_CPU_LOG_LEVEL_FATAL);
     }
     if (dma_regparams == SERIAL_REG_DMA_RX)
     {
