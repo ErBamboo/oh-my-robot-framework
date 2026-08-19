@@ -76,10 +76,10 @@ typedef enum {
 
 ```c
 typedef struct OmLogBackend {
-    const char *name;                              /* 查找/调试用 */
-    void (*push)(const char *segment, size_t len); /* 流式段推送：快速提交，不得阻塞 */
-    void (*flush)(void);                           /* 可选：强制刷出，可为 NULL */
-} OmLogBackend;
+    const char *name;                                                          /* 查找/调试用 */
+    void (*push)(struct OmLogBackend *backend, const char *segment, size_t len); /* 流式段推送：快速提交，不得阻塞 */
+    void (*flush)(struct OmLogBackend *backend);                               /* 可选：强制刷出，可为 NULL */
+} OmLogBackend;  /* push/flush 携带 backend 指针——container_of 取实例状态（多实例，Zephyr 同构） */
 
 OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level); /* 注册携带初始级别；重复 → ALREADY；表满 → FULL */
 OmRet om_log_backend_unregister(OmLogBackend *backend);                /* 未注册 → OM_ERR_NOT_FOUND */

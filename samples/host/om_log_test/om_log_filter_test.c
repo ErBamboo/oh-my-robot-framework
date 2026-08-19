@@ -22,29 +22,35 @@ typedef struct
 static CaptureBackend g_cap_a;
 static CaptureBackend g_cap_b;
 
-/** @brief capA 捕获 push（push 契约无 ctx——README 同款：一后端一 push + 静态状态）
+/** @brief capA 捕获 push（一后端一 push + 静态状态；backend 指针未用——测试捕获不需要实例区分）
+ *  @param backend 后端实例（本测试未用）
  *  @param seg 段数据
  *  @param len 段字节数 */
-static void capture_push_a(const char *seg, size_t len)
+static void capture_push_a(OmLogBackend *backend, const char *seg, size_t len)
 {
+    (void)backend;
     (void)memcpy(g_cap_a.buf + g_cap_a.len, seg, len);
     g_cap_a.len += len;
     g_cap_a.seg_count++;
 }
 
 /** @brief capB 捕获 push（同 capture_push_a，写 g_cap_b）
+ *  @param backend 后端实例（本测试未用）
  *  @param seg 段数据
  *  @param len 段字节数 */
-static void capture_push_b(const char *seg, size_t len)
+static void capture_push_b(OmLogBackend *backend, const char *seg, size_t len)
 {
+    (void)backend;
     (void)memcpy(g_cap_b.buf + g_cap_b.len, seg, len);
     g_cap_b.len += len;
     g_cap_b.seg_count++;
 }
 
-/** @brief 捕获 flush（无操作占位，接口完整性；v1 无调用点） */
-static void capture_flush(void)
+/** @brief 捕获 flush（无操作占位，接口完整性；v1 无调用点）
+ *  @param backend 后端实例（本测试未用） */
+static void capture_flush(OmLogBackend *backend)
 {
+    (void)backend;
 }
 
 /* 后端实例：文件级静态（unregister 按指针，main 需访问） */

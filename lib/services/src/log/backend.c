@@ -48,7 +48,7 @@ void log_backend_push_all(OmLogLevel level, const char *seg, size_t len)
     {
         if (g_backends[i].used && level >= g_backends[i].level)
         {
-            g_backends[i].backend->push(seg, len);
+            g_backends[i].backend->push(g_backends[i].backend, seg, len);
         }
     }
 }
