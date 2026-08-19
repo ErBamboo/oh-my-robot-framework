@@ -30,7 +30,7 @@
 >
 > **设计思想**：下层为**单一功能原语**（sync 提供同步语义、async 提供执行调度、ipc 提供跨上下文数据传输、kernel 提供平台无关基底与 OS 抽象、algorithm 提供可选计算原语），中层（services、drivers）是原语组合而成的**领域模块**，各有独立语义。业务（systems）可直取任意一层——原语或组合，不受中间层约束。
 
-**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调（参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层）；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
+**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**例外（services 单向开放）**：services 定位为通用服务（面向全体消费者），允许被 `drivers` **单向**依赖——依赖面按服务逐个开放（ADR-0016 (drivers_services_one_way_dependency)，当前开放：`services/log/log.h`）；`services` 自身永不依赖 `drivers`，业务子系统之间仍互不依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调（参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层）；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
 
 **头文件引用规则**：对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件，避免通过聚合头引入隐式耦合。
 
@@ -94,13 +94,13 @@
 
 ### 2.4 领域模块 — drivers / services
 
-基于下层原语组合而成的领域模块，各有独立语义。二者对等、互不依赖，均可直取任意原语层。
+基于下层原语组合而成的领域模块，各有独立语义；services 可被 drivers 单向依赖（ADR-0016 (drivers_services_one_way_dependency)），services 自身不依赖 drivers。
 
 **drivers — 驱动与 PAL**
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
 - **边界**：保持硬件无关抽象，板级差异通过 PAL 接口交由 `platform` 处理。
-- **可依赖**：`kernel`、`sync`、`async`。
-- **禁止依赖**：`platform`（任意代码）、`services` 核心路径、`systems`。
+- **可依赖**：`kernel`、`sync`、`async`；`services` 开放清单内的服务接口（当前：`services/log/log.h`）。
+- **禁止依赖**：`platform`（任意代码）、`services` 内部实现路径、`systems`。
 
 **services — 通用服务层**
 
@@ -108,6 +108,7 @@
 - **边界**：服务语义必须保持项目无关，不得绑定具体机器人机构或业务。
 - **可依赖**：`kernel`、`sync`、`ipc`。
 - **禁止依赖**：`drivers` 、`systems`。
+- **可被依赖**：`drivers` 可按开放清单单向依赖本层服务接口（ADR-0016 (drivers_services_one_way_dependency)，当前：log）。
 
 ### 2.5 业务 — systems
 
