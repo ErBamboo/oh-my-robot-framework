@@ -52,17 +52,17 @@ static OmLogBackend g_backend_a = {"capA", capture_push_a, capture_flush};
 static OmLogBackend g_backend_b = {"capB", capture_push_b, capture_flush};
 
 /** @brief 注册 capA/capB 并验证管理 API 错误码
- *  @note capA 默认 DEBUG（全收）；capB set_level 收紧到 ERROR 以上；本函数即
- *        管理 API 的负向用例（重复注册/NULL/未找到/级别越界） */
+ *  @note capA 注册级别 DEBUG（全收）；capB 注册级别 ERROR（收紧）；本函数即
+ *        管理 API 的负向用例（重复注册/NULL/级别越界/按名查找未找到） */
 static void setup_backends(void)
 {
     memset(&g_cap_a, 0, sizeof(g_cap_a));
     memset(&g_cap_b, 0, sizeof(g_cap_b));
-    EXPECT(om_log_backend_register(&g_backend_a) == OM_OK);
-    EXPECT(om_log_backend_register(&g_backend_b) == OM_OK);
-    EXPECT(om_log_backend_register(&g_backend_a) == OM_ERR_ALREADY); /* 重复注册 */
-    EXPECT(om_log_backend_register(NULL) == OM_ERR_INVALID_ARG);
-    EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_ERROR) == OM_OK);
+    EXPECT(om_log_backend_register(&g_backend_a, OM_LOG_LEVEL_DEBUG) == OM_OK);
+    EXPECT(om_log_backend_register(&g_backend_b, OM_LOG_LEVEL_ERROR) == OM_OK);
+    EXPECT(om_log_backend_register(&g_backend_a, OM_LOG_LEVEL_INFO) == OM_ERR_ALREADY); /* 重复注册 */
+    EXPECT(om_log_backend_register(NULL, OM_LOG_LEVEL_INFO) == OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_register(&g_backend_b, OM_LOG_LEVEL_MAX) == OM_ERR_INVALID_ARG); /* 级别越界 */
     EXPECT(om_log_backend_set_level("no_such", OM_LOG_LEVEL_ERROR) == OM_ERR_NOT_FOUND);
     EXPECT(om_log_backend_set_level("capA", OM_LOG_LEVEL_MAX) == OM_ERR_INVALID_ARG);
 }

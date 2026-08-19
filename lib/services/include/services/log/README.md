@@ -81,9 +81,9 @@ typedef struct OmLogBackend {
     void (*flush)(void);                           /* 可选：强制刷出，可为 NULL */
 } OmLogBackend;
 
-OmRet om_log_backend_register(OmLogBackend *backend);   /* 重复注册 → OM_ERR_ALREADY；表满 → OM_ERR_FULL */
-OmRet om_log_backend_unregister(OmLogBackend *backend); /* 未注册 → OM_ERR_NOT_FOUND */
-OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
+OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level); /* 注册携带初始级别；重复 → ALREADY；表满 → FULL */
+OmRet om_log_backend_unregister(OmLogBackend *backend);                /* 未注册 → OM_ERR_NOT_FOUND */
+OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level); /* 运行时动态调整（per-backend 过滤） */
 ```
 
 ## 语义契约
@@ -128,7 +128,7 @@ static OmLogBackend g_serial_backend = { "serial", serial_push, NULL };
 
 OmRet serial_log_init(void)
 {
-    return om_log_backend_register(&g_serial_backend);
+    return om_log_backend_register(&g_serial_backend, OM_LOG_LEVEL_INFO); /* 初始级别：只收 INFO 及以上 */
 }
 OM_INIT_DRIVER(serial_log_init);  /* 早于任何打日志的业务代码 */
 ```

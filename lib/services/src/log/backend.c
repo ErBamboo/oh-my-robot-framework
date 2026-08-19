@@ -2,8 +2,8 @@
  * @file backend.c
  * @brief log 输出后端注册表（定长数组，临界区保护；多生产者广播的扇出端）
  * @details 注册/注销/级别调节为管理类 API（线程上下文）；any_accepts/push_all
- *          在 log 临界区内被 core 调用（线程或中断上下文）。默认注册级别
- *          OM_LOG_LEVEL_DEBUG（全收），om_log_backend_set_level 收紧。
+ *          在 log 临界区内被 core 调用（线程或中断上下文）。注册携带初始级别
+ *          （过滤阈值），om_log_backend_set_level 为运行时动态调整。
  */
 
 #include "core/om_config.h"
@@ -53,11 +53,15 @@ void log_backend_push_all(OmLogLevel level, const char *seg, size_t len)
     }
 }
 
-OmRet om_log_backend_register(OmLogBackend *backend)
+OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level)
 {
     size_t i;
     port_critical_key_t key;
     if (backend == NULL || backend->name == NULL || backend->push == NULL)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+    if (level >= OM_LOG_LEVEL_MAX)
     {
         return OM_ERR_INVALID_ARG;
     }
@@ -75,7 +79,7 @@ OmRet om_log_backend_register(OmLogBackend *backend)
         if (!g_backends[i].used)
         {
             g_backends[i].backend = backend;
-            g_backends[i].level = OM_LOG_LEVEL_DEBUG;
+            g_backends[i].level = level;
             g_backends[i].used = 1;
             om_hw_restore_interrupt(key);
             return OM_OK;

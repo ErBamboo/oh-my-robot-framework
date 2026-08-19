@@ -72,10 +72,12 @@ typedef struct OmLogBackend {
  *        线程/中断上下文均可调 */
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
 
-/** @brief 注册输出后端（默认级别 DEBUG=全收，可用 om_log_backend_set_level 收紧）
+/** @brief 注册输出后端（携带初始级别；运行时用 om_log_backend_set_level 动态调整）
  *  @param backend 后端实例（name 与 push 不得为 NULL）
- *  @return OM_OK 成功；OM_ERR_ALREADY 重复注册；OM_ERR_FULL 表满；OM_ERR_INVALID_ARG 参数非法 */
-OmRet om_log_backend_register(OmLogBackend *backend);
+ *  @param level 初始级别（过滤语义同 set_level：只接收 level >= 目标级别的消息）
+ *  @return OM_OK 成功；OM_ERR_ALREADY 重复注册；OM_ERR_FULL 表满；
+ *          OM_ERR_INVALID_ARG 参数非法或级别越界（>= OM_LOG_LEVEL_MAX） */
+OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level);
 
 /** @brief 注销输出后端
  *  @param backend 已注册的后端实例指针
