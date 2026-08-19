@@ -23,14 +23,21 @@
 /* 级别名（3 字符；索引 = 级别数值 0..4，过滤已保证不越界） */
 static const char *const log_level_name[] = {"DBG", "INF", "WRN", "ERR", "FTL"};
 
-/* 扇出回调：把格式化段推给所有接受该级别的后端（临界区内调用） */
+/** @brief 扇出回调：把格式化段推给所有接受该级别的后端（临界区内调用）
+ *  @param ctx 编码的日志级别（(uintptr_t)OmLogLevel，由 log_emit 传入）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
 static void emit_fanout(void *ctx, const char *seg, size_t len)
 {
     OmLogLevel level = (OmLogLevel)(uintptr_t)ctx;
     log_backend_push_all(level, seg, len);
 }
 
-/* 头部生成（独立函数——结构预留：v2 统一时间戳在此加字段） */
+/** @brief 头部生成：输出 "[LVL][module] "（独立函数——结构预留：v2 统一时间戳在此加字段）
+ *  @param w 写器
+ *  @param module 模块实例（name 已由入口校验非 NULL）
+ *  @param level 消息级别
+ *  @note log_level_name[level] 下标安全：om_log_log 的 OFF 检查已保证 level ∈ 0..4 */
 static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel level)
 {
     log_buf_putc(w, '[');
@@ -41,7 +48,13 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
     log_buf_write(w, "] ", 2);
 }
 
-/* emit（结构预留：v2 异步 = 日志线程调同一函数，只换执行者） */
+/** @brief emit：后端接受判定 → 头部 + 流式格式化 + 尾部 \r\n + 扇出（临界区内调用）
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param ap 可变参数
+ *  @note 结构预留：v2 异步 = 日志线程调同一函数，只换执行者；栈占用 = 段缓冲
+ *        （OM_LOG_SEGMENT_SIZE）+ 写器状态，不随消息长度增长 */
 static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
 {
     if (!log_backend_any_accepts(level))

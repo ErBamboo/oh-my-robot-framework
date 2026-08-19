@@ -10,10 +10,14 @@
 #include <stdarg.h>
 #include <string.h>
 
-static char g_buf[1024];
-static size_t g_len;
-static unsigned g_seg_count;
+static char g_buf[1024];     /* 捕获拼接缓冲（整条比对用） */
+static size_t g_len;         /* 已捕获字节数 */
+static unsigned g_seg_count; /* 段回调次数（段切分验证用） */
 
+/** @brief 段捕获回调：拼接进 g_buf 并计数（模拟 log 服务的扇出目标）
+ *  @param ctx 未使用（LogOutFn 签名要求）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
 static void capture(void *ctx, const char *seg, size_t len)
 {
     (void)ctx;
@@ -22,6 +26,10 @@ static void capture(void *ctx, const char *seg, size_t len)
     g_seg_count++;
 }
 
+/** @brief 格式化并捕获：每次清零缓冲后执行一次 log_format，供断言比对
+ *  @param fmt 格式串（printf 风格子集）
+ *  @note 必须经 varargs 入口包装——log_format 形参是 va_list（x86_64 下为数组
+ *        类型），直接传普通实参是 UB（T3 实测段错误后修复） */
 static void format_check(const char *fmt, ...)
 {
     LogBufWriter w;

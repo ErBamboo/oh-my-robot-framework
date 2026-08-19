@@ -17,6 +17,7 @@
 
 #include <string.h>
 
+/** @brief 后端表项：level = 该后端运行时过滤阈值（msg.level >= level 才投递） */
 typedef struct
 {
     OmLogBackend *backend;
@@ -24,6 +25,7 @@ typedef struct
     uint8_t used;
 } LogBackendEntry;
 
+/** @brief 后端注册表（定长数组，静态零初始化；所有读写均在临界区内，无初始化生命周期） */
 static LogBackendEntry g_backends[OM_LOG_MAX_BACKENDS];
 
 bool log_backend_any_accepts(OmLogLevel level)

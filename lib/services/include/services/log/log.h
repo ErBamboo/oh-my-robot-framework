@@ -23,8 +23,9 @@
 extern "C" {
 #endif
 
-/* 级别：升序严重度（spdlog/log.c 同款方向）；OFF 置顶（set OFF = 全关，
- * msg >= OFF 永不成立）；MAX 计数哨兵。只增不改。 */
+/** @brief 日志级别：升序严重度（spdlog/log.c 同款方向）
+ *  @note OFF 置顶——设置为 OFF = 全关（msg >= OFF 永不成立）；MAX 为计数哨兵；
+ *        枚举只增不改（后补 TRACE 安全） */
 typedef enum {
     OM_LOG_LEVEL_DEBUG = 0,
     OM_LOG_LEVEL_INFO,
@@ -64,21 +65,27 @@ typedef struct OmLogBackend {
 #define OM_LOG_FATAL(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, __VA_ARGS__)
 
 /** @brief 日志入口：过滤（编译期+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
- *  @note 无失败路径（打日志不打扰调用方）；参数非法静默返回；未就绪（无后端接受）走过滤流水线返回；
+ *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
+ *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
+ *  @param fmt printf 风格子集格式串（NULL 时静默返回）
+ *  @note 无失败路径（打日志不打扰调用方）；未就绪（无后端接受）走过滤流水线返回；
  *        线程/中断上下文均可调 */
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
 
 /** @brief 注册输出后端（默认级别 DEBUG=全收，可用 om_log_backend_set_level 收紧）
- *  @note 重复注册 → OM_ERR_ALREADY；表满 → OM_ERR_FULL；参数非法 → OM_ERR_INVALID_ARG */
+ *  @param backend 后端实例（name 与 push 不得为 NULL）
+ *  @return OM_OK 成功；OM_ERR_ALREADY 重复注册；OM_ERR_FULL 表满；OM_ERR_INVALID_ARG 参数非法 */
 OmRet om_log_backend_register(OmLogBackend *backend);
 
 /** @brief 注销输出后端
- *  @note 未注册（指针不在表内）→ OM_ERR_NOT_FOUND；参数非法 → OM_ERR_INVALID_ARG */
+ *  @param backend 已注册的后端实例指针
+ *  @return OM_OK 成功；OM_ERR_NOT_FOUND 指针不在表内；OM_ERR_INVALID_ARG 参数非法 */
 OmRet om_log_backend_unregister(OmLogBackend *backend);
 
 /** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关
- *  @note 按名称查找：未找到 → OM_ERR_NOT_FOUND；级别越界（>= OM_LOG_LEVEL_MAX）或参数非法 →
- *        OM_ERR_INVALID_ARG */
+ *  @param backend_name 后端名称（strcmp 按名查找）
+ *  @param level 目标级别（>= OM_LOG_LEVEL_MAX 为越界）
+ *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 
 #ifdef __cplusplus

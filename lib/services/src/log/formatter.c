@@ -27,6 +27,8 @@ void log_buf_writer_init(LogBufWriter *w, LogOutFn out, void *out_ctx, char *seg
     w->segLen = 0;
 }
 
+/** @brief 刷出当前段：段非空时回调 out 一次，随后复位段长
+ *  @param w 写器 */
 static void fmt_flush(LogBufWriter *w)
 {
     if (w->segLen > 0)
@@ -63,6 +65,10 @@ void log_buf_putc(LogBufWriter *w, char c)
     log_buf_write(w, &c, 1);
 }
 
+/** @brief 填充 n 个 pad 字符（宽度对齐用）
+ *  @param w 写器
+ *  @param pad 填充字符（空格或 '0'）
+ *  @param n 填充数量 */
 static void fmt_pad(LogBufWriter *w, char pad, size_t n)
 {
     while (n > 0)
@@ -72,7 +78,10 @@ static void fmt_pad(LogBufWriter *w, char pad, size_t n)
     }
 }
 
-/* 无符号整数转字符串（逆序填充后反转）；返回长度 */
+/** @brief 无符号整数转字符串（先逆序填充再反转，避免移位运算）
+ *  @param base 进制（10/16）
+ *  @param upper 十六进制大写输出
+ *  @return 数字长度（不含符号） */
 static size_t fmt_utoa(unsigned long v, char *tmp, int base, int upper)
 {
     static const char digits[] = "0123456789abcdef";
@@ -100,6 +109,16 @@ static size_t fmt_utoa(unsigned long v, char *tmp, int base, int upper)
     return len;
 }
 
+/** @brief 数值转换输出：宽度/零填充/左对齐/符号 统一处理
+ *  @param w 写器
+ *  @param v 无符号数值
+ *  @param sign 符号字符（0 = 无符号，'-' = 负号）
+ *  @param base 进制（10/16）
+ *  @param upper 十六进制大写输出
+ *  @param width 最小宽度（0 = 不填充）
+ *  @param pad 填充字符（' ' 或 '0'）
+ *  @param left 左对齐（'-' 标志）
+ *  @note 零填充时符号先出再补零（"%05d" → "-0001"，与 libc printf 一致） */
 static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int upper, int width, char pad, int left)
 {
     char tmp[32];
@@ -108,7 +127,7 @@ static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int up
     size_t pad_count = (size_t)(width > (int)total ? width - (int)total : 0);
     if (sign != 0 && pad == '0')
     {
-        /* 零填充：符号先出再补零（"-0001"），与 libc printf 一致 */
+        /* 零填充快路径：符号先出再补零，数字紧随（"    " 与 "-0001" 的差异就在此） */
         log_buf_putc(w, (char)sign);
         fmt_pad(w, '0', pad_count);
         log_buf_write(w, tmp, len);

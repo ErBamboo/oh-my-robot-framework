@@ -11,6 +11,7 @@
 #include <string.h>
 
 /* ---- capture 后端 ---- */
+/** @brief 捕获后端状态：拼接接收字节 + 段计数（断言比对与段切分验证用） */
 typedef struct
 {
     char buf[1024];
@@ -21,7 +22,9 @@ typedef struct
 static CaptureBackend g_cap_a;
 static CaptureBackend g_cap_b;
 
-/* push 契约无 ctx（README 同款：后端自带静态状态，一后端一 push） */
+/** @brief capA 捕获 push（push 契约无 ctx——README 同款：一后端一 push + 静态状态）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
 static void capture_push_a(const char *seg, size_t len)
 {
     (void)memcpy(g_cap_a.buf + g_cap_a.len, seg, len);
@@ -29,6 +32,9 @@ static void capture_push_a(const char *seg, size_t len)
     g_cap_a.seg_count++;
 }
 
+/** @brief capB 捕获 push（同 capture_push_a，写 g_cap_b）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
 static void capture_push_b(const char *seg, size_t len)
 {
     (void)memcpy(g_cap_b.buf + g_cap_b.len, seg, len);
@@ -36,6 +42,7 @@ static void capture_push_b(const char *seg, size_t len)
     g_cap_b.seg_count++;
 }
 
+/** @brief 捕获 flush（无操作占位，接口完整性；v1 无调用点） */
 static void capture_flush(void)
 {
 }
@@ -44,7 +51,9 @@ static void capture_flush(void)
 static OmLogBackend g_backend_a = {"capA", capture_push_a, capture_flush};
 static OmLogBackend g_backend_b = {"capB", capture_push_b, capture_flush};
 
-/* 注册两个后端：capA 默认 DEBUG（全收），capB 只收 ERROR 以上 */
+/** @brief 注册 capA/capB 并验证管理 API 错误码
+ *  @note capA 默认 DEBUG（全收）；capB set_level 收紧到 ERROR 以上；本函数即
+ *        管理 API 的负向用例（重复注册/NULL/未找到/级别越界） */
 static void setup_backends(void)
 {
     memset(&g_cap_a, 0, sizeof(g_cap_a));
