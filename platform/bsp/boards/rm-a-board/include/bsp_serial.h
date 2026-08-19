@@ -162,6 +162,9 @@
 /* 实例数：必须等于 bsp_serial_data.c 中 g_bsp_serial 条目数（数据文件内编译期校验） */
 #define BSP_SERIAL_COUNT (4U)
 
+/* 日志口：串口实例名称（device_find 用；实例配置在 bsp_serial_data.c 表内） */
+#define BSP_LOG_SERIAL_NAME "usart6"
+
 #include "serial/bsp_serial_f4.h"
 
 #endif

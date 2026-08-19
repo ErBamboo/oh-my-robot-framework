@@ -101,6 +101,7 @@ target("tar_awapi_driver")
     set_kind("headeronly")
     add_deps("tar_awdatastruct", {public = true})
     add_includedirs("drivers/include", {public = true})
+    add_includedirs("services/include", {public = true}) -- drivers→services 单向依赖（ADR-0016，当前仅 log）
     add_deps("tar_awapi_osal", {public = true})
     add_deps("tar_awapi_sync", {public = true})
     add_deps("tar_awapi_ipc", {public = true})
