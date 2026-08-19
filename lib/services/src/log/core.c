@@ -59,7 +59,7 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
     log_buf_write(w, "] ", 2);
 }
 
-/** @brief emit：后端接受判定 → 头部 + 流式格式化 + 尾部 \r\n + 扇出（临界区内调用）
+/** @brief emit：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出（临界区内调用）
  *  @param module 模块实例
  *  @param level 消息级别
  *  @param fmt 格式串
@@ -77,7 +77,7 @@ static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fm
     log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)level, seg, sizeof(seg));
     emit_header(&w, module, level);
     log_format(&w, fmt, ap);
-    log_buf_write(&w, "\r\n", 2);
+    log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
     log_buf_flush(&w);
 }
 
