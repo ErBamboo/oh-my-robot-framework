@@ -21,7 +21,7 @@
 
 - **依赖规则修订**：`drivers` 可**单向**依赖 `services` 的**服务接口**（公开头文件）；`services` 永不依赖 `drivers`；业务子系统之间、drivers 内部各模块之间仍互不依赖；`platform` 依赖规则不变（只能依赖 kernel/third_party——后端实现不落 platform）
 - **依赖面按服务开放**：当前开放清单 = `services/log/log.h`；其余服务按需另议（新 ADR 或本 ADR 增补）
-- **后端实现按依赖分散存放**（不设集中目录）：驱动型后端（串口/flash/SD）落 **drivers 层**（如 `lib/drivers/src/log/`）；零驱动依赖后端（RAM 缓冲）落 `services/log/backends/`；接口与注册机制（`OmLogBackend` + 后端表）保持 **services 单一属主**（ADR-0015）
+- **后端实现随依赖的驱动家族存放**（参照 Zephyr：log_backend_uart 在 drivers/console、log_backend_net 在网络栈——后端跟随它依赖的子系统，无集中目录）：串口日志后端落 `lib/drivers/src/peripheral/serial/`（与 hal_serial 同族——依赖其开放语义 SERIAL_O_NBLCK_TX/txFifo/溢出错误回调）；未来 flash/SD 后端随 flash 驱动家族存放；零驱动依赖后端（RAM 缓冲）落 `services/log/backends/`；接口与注册机制（`OmLogBackend` + 后端表）保持 **services 单一属主**（ADR-0015）
 - **串口日志后端形态**：drivers 层提供工厂 `om_log_serial_backend_register(Device *serial_dev, const char *name, OmLogLevel level)`；组合层（app/samples）接线（device_find + open + register）
 
 ## 影响 (Consequences)
@@ -29,4 +29,4 @@
 - **正面**：drivers 错误路径获得框架级日志通道（file/line 现场）；串口后端合法落位 drivers 层（依赖方向由文件归属决定）；与业界对齐（Zephyr/Linux/RT-Thread）
 - **约束**：`services` 不得 include 任何 drivers 头（单向铁律，CI/审查按 include 方向把关）；drivers 仅依赖开放清单内的 services 公开接口，不触碰 services 内部实现；新服务开放需独立决策
 - **兼容**：services 现有 API 零变化；drivers 现有代码零变化（规则开放不强制）；分层图语义更新（services 可被 drivers 依赖）
-- **演进**：config 等服务的 drivers 依赖按需开放；drivers 层日志后端家族（串口 → flash/SD）随需求增补
+- **演进**：config 等服务的 drivers 依赖按需开放；各驱动家族随需求增补日志后端（串口 → flash/SD）
