@@ -160,7 +160,7 @@
 #endif
 
 /* 实例数：必须等于 bsp_serial_data.c 中 g_bsp_serial 条目数（数据文件内编译期校验） */
-#define BSP_SERIAL_COUNT (5U)
+#define BSP_SERIAL_COUNT (4U)
 
 #include "serial/bsp_serial_f4.h"
 

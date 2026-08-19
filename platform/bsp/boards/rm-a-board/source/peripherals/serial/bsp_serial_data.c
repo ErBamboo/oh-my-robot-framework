@@ -7,9 +7,6 @@
 
 /* 实例表（顺序 = SerialIdx_e 枚举） */
 bsp_serial_s g_bsp_serial[BSP_SERIAL_COUNT] = {
-#ifdef USE_SERIAL_1
-    BSP_SERIAL_STATIC_INIT(USART1, "usart1", SERIAL_1_REG_PARAMS),
-#endif
 #ifdef USE_SERIAL_3
     BSP_SERIAL_STATIC_INIT(USART3, "usart3", SERIAL_3_REG_PARAMS),
 #endif
