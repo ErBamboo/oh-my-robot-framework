@@ -47,3 +47,20 @@ OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev,
     inst->backend.flush = NULL; /* v1 无调用点；串口设备无 flush 语义 */
     return om_log_backend_register(&inst->backend, level);
 }
+
+OmRet om_log_serial_backend_unregister(LogSerialBackend *inst)
+{
+    OmRet ret;
+    if (inst == NULL || inst->dev == NULL)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+    ret = om_log_backend_unregister(&inst->backend);
+    if (ret != OM_OK)
+    {
+        return ret; /* 未注册：NOT_FOUND，设备保持打开（无副作用） */
+    }
+    (void)device_close(inst->dev); /* 注销后端后设备不再被日志引用，安全关闭 */
+    inst->dev = NULL;
+    return OM_OK;
+}
