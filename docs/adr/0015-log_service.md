@@ -38,6 +38,9 @@
 - **表**：后端/模块表 = 定长数组（临界区保护）；corelist（无并发保护）、avltree（缺陷标注 + 全堆）均否决
 - **新造权衡**：唯一浮现的新造候选 = MPSC 门铃通道（mpsc_ringbuf + 信号量门铃，ipc 层，ipc README 已预留 channel 位、mpsc_design 已预告）——**v2 暂用 osal_queue 不新造**；切换触发条件（写死为本 ADR 约束）：① 出现硬实时高频生产者（入队关中断时间敏感）；② 出现第二个需要 MPSC 数据通道的场景——届时作为 ipc 层独立原语立项（独立 PR + 设计文档 + host 测试），日志 v2 迁移为直接调用（队列属 log 内部实现，不做适配层，API 面天然稳定）
 
+### 输出失败感知（接口形态）
+- **输出回调返回状态（否决）**：LogOutFn / 后端 push 返回 OmRet 以让 log 服务感知输出失败——违背业界共识（Zephyr backend process / printk console write / spdlog sink 均 void）；失败信息源在后端内部，返回值无消费者（"无失败路径"契约禁止传给调用方）；且快速提交语义下"提交成功"几乎恒真，计数信息量低。**采纳 void + 失败感知分层**：后端提交被拒由后端自持诊断、队列满丢弃由 log 服务在队列层计数（v2 异步）
+
 ## 最终决策 (Decision)
 
 - **定位**：services 层独立服务，对标 Zephyr LOG 级能力；fatal 是下游消费方（panic 路径接入列 v3）
@@ -45,7 +48,7 @@
 - **级别体系**（`services/log/log.h`）：`OM_LOG_LEVEL_DEBUG=0/INFO/WARN/ERROR/FATAL/OFF/MAX`（OFF 置顶、MAX 计数哨兵、只增不改）；过滤 `msg.level >= threshold`
 - **API**：`OM_LOG_MODULE(name, level)` 每 TU 一次（生成静态模块实例 {name, compileLevel}，编译期裁剪 = 常量折叠）；调用宏 `OM_LOG_DEBUG/INFO/WARN/ERROR/FATAL(fmt, ...)`（引用本 TU 实例，未注册 = 编译错误）；后端接口 `OmLogBackend{name, push, flush}`（push 快速提交、flush 可 NULL）+ `om_log_backend_register/unregister/set_level`（错误码：`OM_ERR_ALREADY/FULL/NOT_FOUND/INVALID_ARG`）
 - **过滤流水线**：① 编译期模块级别（折叠）→ ② 运行时无后端接受 → 返回（零格式化）→ ③ 临界区 → ④ emit（头部 + 流式格式化 + per-backend 过滤广播）→ ⑤ 退临界区
-- **打日志无失败路径**：后端失败 → 段丢弃 + 最小丢计数；调度器前未就绪 → 静默丢弃（deferred 列 v3）
+- **打日志无失败路径**：后端失败 → 段丢弃，调用方不受影响；失败感知分层——后端提交被拒由后端自持诊断、队列满丢弃由 log 服务在队列层计数（v2 异步），v1 同步模式 log 服务侧无失败可感知；调度器前未就绪 → 静默丢弃（deferred 列 v3）
 - **配置**（`core/om_config.h`，appcfg 可覆写）：`OM_USE_LOG` / `OM_LOG_MAX_BACKENDS`（默认 4）/ `OM_LOG_SEGMENT_SIZE`（默认 32）
 - **级别常量归位**：`om_def.h` 删除 `OmLogLevel` 枚举（typedef 零引用）；`OM_CPU_LOG_LEVEL_*`（数值不变）迁 om_cpu.h（errhandler 路径属主，使用点均已包含该头，零新增 include）；log.h 成为 `OM_LOG_LEVEL_*` 唯一属主
 - **架构**：services 层 log 模块三分（formatter 纯 C 流式 / core 过滤判定纯函数 + 临界区编排 / backend 注册表）；经 selfreg 规则直接注入 binary；**无初始化生命周期**（静态零初始化，无 OM_INIT entry）——**仅限同步模式**：异步模式（v2）引入 `OM_INIT_SERVICE` 建日志线程，"零 init"是同步模式的属性而非服务永恒属性

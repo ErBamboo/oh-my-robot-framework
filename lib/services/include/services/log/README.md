@@ -99,7 +99,7 @@ OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 2. **过滤语义**：`msg.level >= threshold` 通过（set WARN → 只出 WARN/ERROR/FATAL）
 3. **并发保护**：临界区贯穿整条（③⑤ 之间）；**中断上下文可调用**（同一路径，不穿插）——文档约束：中断里只打 ERROR/FATAL 短消息，格式化开销由调用方自担
 4. **后端契约**：`push` 必须快速提交（提交 DMA/推发送缓冲，绝不轮询等待）——这是临界区短、中断调用成立的前提；后端不得假设一次 `push` = 一条日志（分段友好）
-5. **打日志无失败路径**：后端 push 失败 → 该段丢弃 + 最小丢计数（诊断可观测）；调用方不受影响
+5. **打日志无失败路径**：后端 push 失败 → 该段丢弃，调用方不受影响。**失败感知分层**（业界共识：输出回调不带状态——Zephyr backend process / printk console write / spdlog sink 均 void）：后端提交被拒（如发送缓冲满）由后端自持诊断；队列满丢弃由 log 服务在队列层计数（v2 异步，printk"丢日志不丢调用"语义）；v1 同步模式 log 服务侧无失败可感知——这是无失败路径契约的推论，非缺陷
 6. **未就绪行为**：调度器前（init 早期级别）调用 → 模块未注册/无后端 → 走 ①② 返回（静默丢弃）；deferred logging（早期缓冲 → 服务就绪后 flush）列入演进阶梯 v3
 7. **枚举只增不改**：`OmLogLevel` 只增（后续补 TRACE 安全）；级别常量 `OM_LOG_LEVEL_*` 为本服务唯一属主（kernel 侧 vestigial errhandler 路径使用改名后的 `OM_CPU_LOG_LEVEL_*`，见 ADR-0015）
 
