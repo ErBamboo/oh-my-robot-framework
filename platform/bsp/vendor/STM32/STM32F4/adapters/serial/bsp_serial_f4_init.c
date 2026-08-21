@@ -125,7 +125,7 @@ static void _bsp_serial3_pre_init(bsp_serial_t bsp_serial, uint8_t is_enalbe_int
         .parity = PARITY_NONE,
         .flowCtrl = FLOW_CTRL_NONE,
         .overSampling = OVERSAMPLING_16,
-        .txBufSize = BSP_SERIAL6_TXBUFSZ,
+        .txBufSize = 1024,
         .rxBufSize = 128,
     };
     // 赋值串口参数
@@ -279,7 +279,7 @@ static void _bsp_serial7_pre_init(bsp_serial_t bsp_serial, uint8_t is_enalbe_int
         .parity = PARITY_NONE,
         .flowCtrl = FLOW_CTRL_NONE,
         .overSampling = OVERSAMPLING_16,
-        .txBufSize = BSP_SERIAL6_TXBUFSZ,
+        .txBufSize = 1024,
         .rxBufSize = 128,
     };
     bsp_serial->parent.cfg = cfg;
@@ -348,7 +348,7 @@ static void _bsp_serial8_pre_init(bsp_serial_t bsp_serial, uint8_t is_enalbe_int
         .parity = PARITY_NONE,
         .flowCtrl = FLOW_CTRL_NONE,
         .overSampling = OVERSAMPLING_16,
-        .txBufSize = BSP_SERIAL6_TXBUFSZ,
+        .txBufSize = 1024,
         .rxBufSize = 128,
     };
     bsp_serial->parent.cfg = cfg;
