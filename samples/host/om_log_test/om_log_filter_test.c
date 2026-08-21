@@ -22,25 +22,31 @@ typedef struct
 static CaptureBackend g_cap_a;
 static CaptureBackend g_cap_b;
 
-/** @brief capA 捕获 push（一后端一 push + 静态状态；backend 指针未用——测试捕获不需要实例区分）
- *  @param backend 后端实例（本测试未用）
+/* 前向声明（capture_push_a/b 断言 backend==&g_backend_*，需先见实例声明） */
+static OmLogBackend g_backend_a;
+static OmLogBackend g_backend_b;
+
+/** @brief capA 捕获 push（一后端一 push + 静态状态）
+ *  @param backend 后端实例（must be &g_backend_a——校验回调收到的是注册的实例指针而非
+ *         表项地址；2026-08-22 实测的 push(&g_backends[i].backend) 双重指针 bug 即由此
+ *         断言拦截（真机 dev==NULL，host 因忽略参数漏检））
  *  @param seg 段数据
  *  @param len 段字节数 */
 static void capture_push_a(OmLogBackend *backend, const char *seg, size_t len)
 {
-    (void)backend;
+    EXPECT(backend == &g_backend_a);
     (void)memcpy(g_cap_a.buf + g_cap_a.len, seg, len);
     g_cap_a.len += len;
     g_cap_a.seg_count++;
 }
 
-/** @brief capB 捕获 push（同 capture_push_a，写 g_cap_b）
- *  @param backend 后端实例（本测试未用）
+/** @brief capB 捕获 push（同 capture_push_a，写 g_cap_b；校验 backend == &g_backend_b）
+ *  @param backend 后端实例（must be &g_backend_b）
  *  @param seg 段数据
  *  @param len 段字节数 */
 static void capture_push_b(OmLogBackend *backend, const char *seg, size_t len)
 {
-    (void)backend;
+    EXPECT(backend == &g_backend_b);
     (void)memcpy(g_cap_b.buf + g_cap_b.len, seg, len);
     g_cap_b.len += len;
     g_cap_b.seg_count++;
