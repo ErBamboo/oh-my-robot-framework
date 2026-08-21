@@ -44,7 +44,8 @@ typedef struct OmLogModule {
 
 /** @brief 输出后端：分段友好（一条日志多段回调）+ 快速提交（绝不阻塞轮询）
  *  @note push/flush 携带 backend 指针——实现者经 container_of 取实例状态（支持多实例，
- *        Zephyr/Linux/RT-Thread 同构）；后端结构体内嵌进实例结构体时须为首成员 */
+ *        Zephyr/Linux/RT-Thread 同构）；后端结构体内嵌进实例结构体，位置任意
+ *        （container_of 经 offsetof 定位，无需首成员） */
 typedef struct OmLogBackend {
     const char *name;                                                            /* 查找/调试用 */
     void (*push)(struct OmLogBackend *backend, const char *segment, size_t len); /* 流式段推送（线程/中断上下文均可能） */

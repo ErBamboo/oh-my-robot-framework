@@ -196,13 +196,13 @@ static void _bsp_serial6_pre_init(bsp_serial_t bsp_serial, uint8_t is_enalbe_int
     UART_HandleTypeDef* huart = &bsp_serial->handle;
     GPIO_InitTypeDef GPIO_InitStruct = {0};
     SerialCfg cfg = {
-        .baudrate = 115200u,
+        .baudrate = BSP_SERIAL6_BAUD,
         .dataBits = DATA_BITS_8,
         .stopBits = STOP_BITS_1,
         .parity = PARITY_NONE,
         .flowCtrl = FLOW_CTRL_NONE,
         .overSampling = OVERSAMPLING_16,
-        .txBufSize = 1024,
+        .txBufSize = BSP_SERIAL6_TXBUFSZ,
         .rxBufSize = 128,
     };
     // 赋值串口参数

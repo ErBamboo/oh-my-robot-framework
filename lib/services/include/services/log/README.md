@@ -103,6 +103,7 @@ OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level); /* �
 6. **打日志无失败路径**：后端 push 失败 → 该段丢弃，调用方不受影响。**失败感知分层**（业界共识：输出回调不带状态——Zephyr backend process / printk console write / spdlog sink 均 void）：后端提交被拒（如发送缓冲满）由后端自持诊断；队列满丢弃由 log 服务在队列层计数（v2 异步，printk"丢日志不丢调用"语义）；v1 同步模式 log 服务侧无失败可感知——这是无失败路径契约的推论，非缺陷
 7. **未就绪行为**：调度器前（init 早期级别）调用 → 模块未注册/无后端 → 走 ①② 返回（静默丢弃）；deferred logging（早期缓冲 → 服务就绪后 flush）列入演进阶梯 v3
 8. **枚举只增不改**：`OmLogLevel` 只增（后续补 TRACE 安全）；级别常量 `OM_LOG_LEVEL_*` 为本服务唯一属主（kernel 侧 vestigial errhandler 路径使用改名后的 `OM_CPU_LOG_LEVEL_*`，见 ADR-0015）
+9. **消息结束符**：框架统一追加 `\n`（emit 一处，广播一致——所有后端收到同一行边界；后端可做表示层映射（如转 CRLF）但不得改变行边界语义；未来协议化（\n/NUL 帧/长度前缀）改 emit 一处即全局一致）
 
 ## 用户指南
 
