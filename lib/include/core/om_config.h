@@ -22,7 +22,11 @@
 #endif
 
 #ifndef OM_LOG_MAX_ARGS
-#define OM_LOG_MAX_ARGS 8 /* 参数包上限（uintptr_t 宽度 ×8 = 64B；超限整条丢弃+计数——调用者需约束格式串参数数） */
+#define OM_LOG_MAX_ARGS 8 /* 参数包上限（uintptr_t 宽度 ×8 = 64B）；取值 1..16（va 计数表上限）—— \
+                            超限编译期报错（log.h ARG_LIMIT 负数组）+ 运行期丢弃计数 */
+#endif
+#if OM_LOG_MAX_ARGS > 16
+#error "OM_LOG_MAX_ARGS 超出 va 计数表上限（1..16）——扩展 OM_LOG_VA_COUNT 表再调大"
 #endif
 
 #ifndef OM_LOG_QUEUE_LEN
