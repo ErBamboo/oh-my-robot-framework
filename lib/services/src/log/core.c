@@ -65,7 +65,9 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
  *  @param fmt 格式串
  *  @param ap 可变参数
  *  @note 结构预留：v2 异步 = 日志线程调同一函数，只换执行者；栈占用 = 段缓冲
- *        （OM_LOG_SEGMENT_SIZE）+ 写器状态，不随消息长度增长 */
+ *        （OM_LOG_SEGMENT_SIZE）+ 写器状态，不随消息长度增长
+ *  @note 仅同步模式编译（ASYNC 由 log_async_emit → log_emit_args 承接） */
+#ifndef OM_LOG_MODE_ASYNC
 static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
 {
     if (!log_backend_any_accepts(level))
@@ -80,10 +82,32 @@ static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fm
     log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
     log_buf_flush(&w);
 }
+#endif /* OM_LOG_MODE_ASYNC */
+
+/** @brief emit（日志线程/同步共用）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param args 参数数组（参数包）
+ *  @param n 参数个数
+ *  @note 异步模式 = 日志线程调此函数（v1 结构预留兑现）；同步模式 = 调用侧（va_list 版） */
+void log_emit_args(const OmLogModule *module, OmLogLevel level, const char *fmt, const uintptr_t *args, size_t n)
+{
+    if (!log_backend_any_accepts(level))
+    {
+        return; /* ② 无后端接受 → 零格式化开销 */
+    }
+    LogBufWriter w;
+    char seg[OM_LOG_SEGMENT_SIZE];
+    log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)level, seg, sizeof(seg));
+    emit_header(&w, module, level);
+    log_format_args(&w, fmt, args, n);
+    log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
+    log_buf_flush(&w);
+}
 
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
 {
-    port_critical_key_t key;
     va_list ap;
     if (module == NULL || module->name == NULL || fmt == NULL)
     {
@@ -98,10 +122,25 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
         return; /* ① 编译期裁剪（compileLevel 为编译期常量 → 折叠零成本） */
     }
     va_start(ap, fmt);
-    key = om_hw_disable_interrupt(); /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */
-    log_emit(module, level, fmt, ap);
-    om_hw_restore_interrupt(key); /* ⑤ */
+#ifdef OM_LOG_MODE_ASYNC
+    {
+        OmLogMsg msg;
+        if (log_msg_build(&msg, module, level, fmt, ap))
+        {
+            (void)log_async_send(&msg); /* 队列满内部计数丢弃 */
+        }
+    }
     va_end(ap);
+    return; /* 异步：调用侧到此（~1-2µs，无临界区——打包本地 + 非阻塞入队） */
+#else
+    {
+        port_critical_key_t key;
+        key = om_hw_disable_interrupt(); /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */
+        log_emit(module, level, fmt, ap);
+        om_hw_restore_interrupt(key); /* ⑤ */
+    }
+    va_end(ap);
+#endif
 }
 
 #endif /* OM_USE_LOG */
