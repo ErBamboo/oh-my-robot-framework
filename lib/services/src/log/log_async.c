@@ -2,8 +2,8 @@
  * @file log_async.c
  * @brief log 异步模式：参数包入队（调用侧 ~1-2µs）→ 日志线程格式化+扇出
  * @details OM_LOG_MODE_ASYNC 专属（同文件 #ifdef OM_LOG_MODE_ASYNC 包裹）。
- *          生产者（线程上下文）只经 log_async_send 入队（非阻塞，满即丢+计数；
- *          ISR 生产需 send_from_isr 分流——当前未接线，见 ADR-0015 后续）；
+ *          生产者经 log_async_send 入队：线程（osal_queue_send 非阻塞）/ ISR 自动分流
+ *          （osal_is_in_isr 判定 → osal_queue_send_from_isr）——ISR 安全入队；
  *          日志线程（LOW 带）循环 recv → log_format_args → 复用 emit 链路。
  *          队列满丢弃+计数（printk 语义，T6 查询 API 读取）。
  */
@@ -14,6 +14,7 @@
 
 #include "core/om_def.h"
 #include "core/om_init.h"
+#include "core/om_interrupt.h"
 #include "log_internal.h"
 #include "osal/osal.h"
 
@@ -32,9 +33,21 @@ bool log_async_send(const OmLogMsg *msg)
     {
         return false;
     }
-    if (osal_queue_send(s_log_queue, msg, 0) != OSAL_OK) /* 非阻塞：满即 WOULD_BLOCK */
+    OsalStatus st;
+    if (osal_is_in_isr())
     {
+        st = osal_queue_send_from_isr(s_log_queue, msg); /* ISR：非阻塞，无断言 */
+    }
+    else
+    {
+        st = osal_queue_send(s_log_queue, msg, 0); /* 线程：非阻塞，满即 WOULD_BLOCK */
+    }
+    if (st != OSAL_OK)
+    {
+        /* 计数临界区保护（ISR 与线程并发增量的竞态） */
+        port_critical_key_t key = om_hw_disable_interrupt();
         s_dropped_queue++;
+        om_hw_restore_interrupt(key);
         return false;
     }
     return true;
@@ -73,8 +86,8 @@ OmRet log_async_init(void)
         return OM_ERR_NO_MEM;
     }
     OsalThreadAttr attr = {"log_thread", 0U, OSAL_PRIO_LOW_BASE};
-    OsalThread *attr_thread = NULL;
-    if (osal_thread_create(&attr_thread, &attr, log_async_thread, NULL) != OSAL_OK)
+    OsalThread *thread = NULL;
+    if (osal_thread_create(&thread, &attr, log_async_thread, NULL) != OSAL_OK)
     {
         return OM_ERR_NO_MEM;
     }
