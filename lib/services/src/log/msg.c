@@ -27,12 +27,15 @@ static uint32_t g_dropped_overflow;
 static char log_spec_next(const char **fmtp, int *is_long)
 {
     const char *p = *fmtp;
-    int flag      = 0;
+    int flag = 0;
     p++; /* 越过 '%' */
-    for (;;) {
+    for (;;)
+    {
         char c = *p;
-        if (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l') {
-            if (c == 'l') {
+        if (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l')
+        {
+            if (c == 'l')
+            {
                 flag = 1;
             }
             p++;
@@ -40,10 +43,11 @@ static char log_spec_next(const char **fmtp, int *is_long)
         }
         break;
     }
-    if (*p == '\0') {
+    if (*p == '\0')
+    {
         return '\0'; /* 不完整：不前进，调用方按"余下全字面"处理 */
     }
-    *fmtp    = p + 1;
+    *fmtp = p + 1;
     *is_long = flag;
     return *p;
 }
@@ -55,17 +59,21 @@ static char log_spec_next(const char **fmtp, int *is_long)
 static uint32_t log_msg_count_args(const char *fmt)
 {
     uint32_t count = 0;
-    while (*fmt != '\0') {
-        if (*fmt != '%') {
+    while (*fmt != '\0')
+    {
+        if (*fmt != '%')
+        {
             fmt++;
             continue;
         }
         int is_long = 0;
-        char spec   = log_spec_next(&fmt, &is_long);
-        if (spec == '\0') {
+        char spec = log_spec_next(&fmt, &is_long);
+        if (spec == '\0')
+        {
             break; /* 尾部不完整规格：无参 */
         }
-        if (spec != '%') {
+        if (spec != '%')
+        {
             count++;
         }
     }
@@ -75,56 +83,61 @@ static uint32_t log_msg_count_args(const char *fmt)
 bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
 {
     uint32_t n = log_msg_count_args(fmt);
-    if (n > OM_LOG_MAX_ARGS) {
+    if (n > OM_LOG_MAX_ARGS)
+    {
         g_dropped_overflow++; /* 超限丢弃（计数已增；T6 接入查询 API） */
         return false;
     }
-    msg->fmt      = fmt;
-    msg->level    = level;
-    msg->module   = module;
+    msg->fmt = fmt;
+    msg->level = level;
+    msg->module = module;
     msg->argCount = 0;
-    while (*fmt != '\0') {
-        if (*fmt != '%') {
+    while (*fmt != '\0')
+    {
+        if (*fmt != '%')
+        {
             fmt++;
             continue;
         }
         int is_long = 0;
-        char spec   = log_spec_next(&fmt, &is_long);
-        if (spec == '\0') {
+        char spec = log_spec_next(&fmt, &is_long);
+        if (spec == '\0')
+        {
             break; /* 尾部不完整规格：余下字面（format_args 原样输出），无参可取 */
         }
-        switch (spec) {
-            case '%':
-                break; /* 字面 '%'，不取参 */
-            case 'd':
-            case 'i':
-                msg->argBuf[msg->argCount] = is_long ? (uintptr_t)va_arg(ap, long) : (uintptr_t)va_arg(ap, int);
-                msg->argCount++;
-                break;
-            case 'u':
-            case 'x':
-            case 'X':
-                msg->argBuf[msg->argCount] =
-                    is_long ? (uintptr_t)va_arg(ap, unsigned long) : (uintptr_t)(unsigned int)va_arg(ap, unsigned int);
-                msg->argCount++;
-                break;
-            case 'p':
-                msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, void *);
-                msg->argCount++;
-                break;
-            case 'c':
-                msg->argBuf[msg->argCount] = (uintptr_t)(char)va_arg(ap, int);
-                msg->argCount++;
-                break;
-            case 's':
-                msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, const char *);
-                msg->argCount++;
-                break;
-            default:
-                /* 未知转换符：按 1 参防御取参（与 count 一致）——调用方已超出文档化格式子集 */
-                msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, int);
-                msg->argCount++;
-                break;
+        switch (spec)
+        {
+        case '%':
+            break; /* 字面 '%'，不取参 */
+        case 'd':
+        case 'i':
+            msg->argBuf[msg->argCount] = is_long ? (uintptr_t)va_arg(ap, long) : (uintptr_t)va_arg(ap, int);
+            msg->argCount++;
+            break;
+        case 'u':
+        case 'x':
+        case 'X':
+            msg->argBuf[msg->argCount] =
+                is_long ? (uintptr_t)va_arg(ap, unsigned long) : (uintptr_t)(unsigned int)va_arg(ap, unsigned int);
+            msg->argCount++;
+            break;
+        case 'p':
+            msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, void *);
+            msg->argCount++;
+            break;
+        case 'c':
+            msg->argBuf[msg->argCount] = (uintptr_t)(char)va_arg(ap, int);
+            msg->argCount++;
+            break;
+        case 's':
+            msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, const char *);
+            msg->argCount++;
+            break;
+        default:
+            /* 未知转换符：按 1 参防御取参（与 count 一致）——调用方已超出文档化格式子集 */
+            msg->argBuf[msg->argCount] = (uintptr_t)va_arg(ap, int);
+            msg->argCount++;
+            break;
         }
     }
     return true;
