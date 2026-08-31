@@ -38,9 +38,9 @@
 | **稳定方向律（SDP）** | 依赖方向应指向"更不易变"的一方：容易变的模块依赖不易变的模块，反之即危险 |
 | **抽象指向律（DIP）** | 依赖应指向抽象而非实现：细节依赖策略，策略不依赖细节 |
 
-本框架的**依赖规则**（下）与 services 单向开放正是三条律的具体化：单向约束保证无环、依赖指向下层（稳定）、开放的是服务接口而非实现。反向依赖仅在"被依赖方 API 冻结 + 稳定经多平台验证"时方可辩护（当前框架未开此口）。
+本框架的**依赖规则**（下）正是三条律的具体化：单向约束保证无环、依赖指向下层（稳定）、开放的是服务接口而非实现。反向依赖仅在"被依赖方 API 冻结 + 稳定经多平台验证"时方可辩护（当前框架未开此口）。
 
-**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**例外（services 单向开放）**：services 定位为通用服务（面向全体消费者），允许被 `drivers` **单向**依赖——依赖面按服务逐个开放（当前仅 `services/log/log.h`）；`services` 自身永不依赖 `drivers`，业务子系统之间仍互不依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
+**依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层（无环律的直接形态：下层反向依赖上层即构成环）。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**services 的通用性**：services 是对全体消费者开放的通用服务——语义面向全体、接口稳定（抽象而非实现），只要不违反无环律（`services` 永不依赖 `drivers` 等下层即无环），可服务于任意层级：当前 `drivers` 可按服务逐个开放单向依赖（当前仅 `services/log/log.h`）；业务子系统之间仍互不依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
 
 **头文件引用规则**：对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件，避免通过聚合头引入隐式耦合。
 
@@ -58,18 +58,18 @@
 - **职责**：所有平台适配代码的有序聚合，配合构建系统选择性编译。涵盖板级初始化与外设配置（bsp）、OSAL 端口实现、sync 加速后端、工具链/ABI 适配、RTOS 绑定。
 - **可依赖**：`kernel`、`third_party`。
 - **禁止依赖**：`services`、`systems`。
-- **vendor 共享适配层（板瘦身，见 ADR-0012）**：外设实现按 MCU 家族收敛于 `platform/bsp/vendor/<V>/<family>/adapters/<periph>/`（共享实现 + 契约头 + ISR），板侧只留数据表（实例/波特率/引脚/中断）——"板=数据、驱动=通用"（Zephyr devicetree 思路）。板 opt-in 在板级 `selfreg_sources`（实现，含自注册）/ `override_sources`（ISR）显式引用适配层文件；**永不进 vendor/chip sources**（不用该外设的板零改动）。
+- **vendor 共享适配层**：外设实现按 MCU 家族收敛于 `platform/bsp/vendor/<V>/<family>/adapters/<periph>/`（共享实现 + 契约头 + ISR），板侧只留数据表（实例/波特率/引脚/中断）——"板=数据、驱动=通用"。板 opt-in 在板级 `selfreg_sources`（实现，含自注册）/ `override_sources`（ISR）显式引用适配层文件；**永不进 vendor/chip sources**（不用该外设的板零改动）。
 
 ### 2.3 单一功能原语 — kernel / algorithm / sync / async / ipc
 
 这些层各自提供单一、独立的功能原语，不承载业务或领域语义。任何上层模块（drivers、services、systems）均可按需直取任意原语进行组合。
 
-**kernel — 核心与 OS 抽象**（原 `core` 与 `osal` 合并，参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层的做法）
+**kernel — 核心与 OS 抽象**（原 `core` 与 `osal` 合并为同层）
 
 - **职责**：平台无关基础（基础类型、错误码、通用宏、原子操作、平台无关数据结构）与操作系统抽象（线程、互斥、信号量、队列、时间、定时器、事件对象），以及**分散加载自动注册初始化系统**（init 级别、`om_do_initcalls`、启动编排 `om_system_startup`）。
 - **内部子模块**（构建上仍是独立 target，架构上同一层，可互调）：
   - `kernel-core`（原 core）：定义/原语 + init 注册机制（`OmInitEntry`/`OM_INIT`/`om_do_initcalls`）。**保持 OS 无关（不调用 osal），由约定保证**——供主机侧编译测试（samples/host）；
-  - `kernel-os`（原 osal）：OS 抽象 API；init 子系统（含 `om_system_startup`）可调用 osal——调度器分裂在此编排（调度器前 `EARLIEST/BOARD/DRIVER` 跑在框架默认 main（弱符号，用户不写，见 ADR-0013），调度器后 `SERVICE/SYSTEM/LATE` 跑 init 线程）。
+  - `kernel-os`（原 osal）：OS 抽象 API；init 子系统（含 `om_system_startup`）可调用 osal——调度器分裂在此编排（调度器前 `EARLIEST/BOARD/DRIVER` 跑在框架默认 main（弱符号，用户不写），调度器后 `SERVICE/SYSTEM/LATE` 跑 init 线程）。
 - **规则**：kernel 内部子模块可互调；OSAL 端口实现位于 `platform/`，由构建系统按目标选择性编译，不得混杂在 osal 公共接口中。
 - **可依赖**：`third_party`（经 platform 端口间接注入，方向仍自上而下）。
 - **禁止依赖**：`sync`、`async`、`ipc`、`drivers`、`services`、`systems`、`platform`。
@@ -104,7 +104,7 @@
 
 ### 2.4 领域模块 — drivers / services
 
-基于下层原语组合而成的领域模块，各有独立语义；services 可被 drivers 单向依赖（ADR-0016 (drivers_services_one_way_dependency)），services 自身不依赖 drivers。
+基于下层原语组合而成的领域模块，各有独立语义；services 可被 drivers 单向依赖（见依赖规则"services 的通用性"），services 自身不依赖 drivers。
 
 **drivers — 驱动与 PAL**
 - **职责**：设备模型、外设驱动、平台适配层（PAL），面向可复用/可移植的硬件抽象。
@@ -118,7 +118,7 @@
 - **边界**：服务语义必须保持项目无关，不得绑定具体机器人机构或业务。
 - **可依赖**：`kernel`、`sync`、`ipc`。
 - **禁止依赖**：`drivers` 、`systems`。
-- **可被依赖**：`drivers` 可按开放清单单向依赖本层服务接口（ADR-0016 (drivers_services_one_way_dependency)，当前：log）。
+- **可被依赖**：`drivers` 可按开放清单单向依赖本层服务接口（当前仅 log）。
 
 ### 2.5 业务 — systems
 
