@@ -14,6 +14,20 @@
 #define OM_LOG_SEGMENT_SIZE 32 /* formatter 段缓冲（字节，栈占用 = 段 + 常量状态） */
 #endif
 
+/* 日志投递模式：SYNC 调用侧格式化（v1 语义）；ASYNC 调用侧打包入队+日志线程格式化
+ * （1kHz 控制环/ISR 打日志的唯一可接受形态——实测调用侧 36µs/条 vs 参数包 ~1-2µs，见 ADR-0015 */
+#if !defined(OM_LOG_MODE_SYNC) && !defined(OM_LOG_MODE_ASYNC)
+#define OM_LOG_MODE_SYNC
+#endif
+
+#ifndef OM_LOG_MAX_ARGS
+#define OM_LOG_MAX_ARGS 8 /* 参数包上限（uintptr_t 宽度 ×8 = 64B；超限整条丢弃+计数——调用者需约束格式串参数数） */
+#endif
+
+#ifndef OM_LOG_QUEUE_LEN
+#define OM_LOG_QUEUE_LEN 8 /* 异步队列深度（消息槽数；满丢弃+计数，printk 语义） */
+#endif
+
 /* 抽象层裁剪 */
 #define OM_USE_HAL_SERIALS
 #define OM_USE_HAL_CAN
