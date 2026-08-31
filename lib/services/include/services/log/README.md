@@ -93,7 +93,7 @@ OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level); /* �
    ① 编译期：level < 模块 compileLevel → 返回（常量折叠，零成本）
    ② 运行时：无后端接受该级别（无后端 / 全部 per-backend 过滤不通过）→ 返回（零格式化开销）
    ③ 临界区（kernel 层临界区原语，中断上下文嵌套安全）
-   ④ emit：头部（级别+模块名）→ 流式格式化 → 每段对每个通过过滤的后端调 push
+   ④ emit：头部（级别+时间戳 `[HH:MM:SS.mmm]`+模块名）→ 流式格式化 → 每段对每个通过过滤的后端调 push
    ⑤ 退出临界区
    ```
 2. **过滤语义**：`msg.level >= threshold` 通过（set WARN → 只出 WARN/ERROR/FATAL）
