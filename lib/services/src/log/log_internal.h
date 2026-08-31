@@ -63,9 +63,9 @@ void log_buf_flush(LogBufWriter *w);
  *  @note 未知/不完整转换符降级为整段规格字面输出；LONG_MIN 取负未处理（文档约束） */
 void log_format(LogBufWriter *w, const char *fmt, va_list ap);
 
-/** @brief 参数包（异步投递的消息载体——Zephyr log_msg 同款；fmt+args 延后到日志线程格式化）
+/** @brief 参数包（异步投递的消息载体 —— fmt+args 延后到日志线程格式化）
  *  @note argBuf 为 uintptr_t 宽参数数组（8 个 = 64B）：整型/指针直接存；
- *        %s 只存指针——字符串生命周期由调用方保证（doxygen 文档约束，Zephyr 同款） */
+ *        %s 只存指针——字符串生命周期由调用方保证 */
 typedef struct
 {
     const char *fmt;
@@ -77,6 +77,15 @@ typedef struct
 
 /** @brief 参数数组版格式化（与 log_format(va_list) 并存——日志线程/同步模式均可） */
 void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, size_t n);
+
+/** @brief 规格解析（格式化语法唯一事实源）：从 '%' 起解析标志（-/0/宽度/l），输出完整规格
+ *  @param fmtp inout：指向 '%'；成功时前进到转换符之后；不完整（解析至 '\0'）时**不前进**
+ *  @param is_long 输出：长度修饰 l（类型宽判定）
+ *  @param width 输出：最小宽度（0 = 无）
+ *  @param pad 输出：填充字符（' ' 或 '0'）
+ *  @param left 输出：左对齐（'-' 标志）
+ *  @return 转换符字符；'\0' = 尾部不完整规格（余下全为字面） */
+char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *left);
 
 /** @brief 单调 ms → HH:MM:SS.mmm（十进制，"：" 分隔时分、"." 分隔毫秒）
  *  @param buf 输出缓冲（>=13B，含 NUL）

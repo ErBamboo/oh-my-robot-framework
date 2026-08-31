@@ -152,6 +152,59 @@ static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int up
     }
 }
 
+/** @brief 规格解析（格式化语法唯一事实源）——从 '%' 起解析：- / 0 / 宽度 / l
+ *  输出完整规格（is_long/width/pad/left，NULL 可忽略）；返回转换符（'\0'=尾部不完整，不前进） */
+char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *left)
+{
+    const char *p = *fmtp;
+    int l_flag = 0;
+    int w = 0;
+    int lf = 0;
+    char pd = ' ';
+    p++; /* 越过 '%' */
+    for (;;)
+    {
+        char c = *p;
+        if (c == '-')
+        {
+            lf = 1;
+            pd = ' ';
+        }
+        else if (c == '0' && w == 0 && !lf)
+        {
+            pd = '0';
+        }
+        else if (c >= '0' && c <= '9')
+        {
+            w = w * 10 + (c - '0');
+        }
+        else if (c == 'l')
+        {
+            l_flag = 1;
+        }
+        else
+        {
+            break;
+        }
+        p++;
+    }
+    if (*p == '\0')
+    {
+        *fmtp = p; /* 不完整：前进到 '\0'——调用方按"余下全字面"处理（长度覆盖已扫字符） */
+        return '\0';
+    }
+    if (is_long != NULL)
+        *is_long = l_flag;
+    if (width != NULL)
+        *width = w;
+    if (pad != NULL)
+        *pad = pd;
+    if (left != NULL)
+        *left = lf;
+    *fmtp = p + 1;
+    return *p;
+}
+
 void log_format(LogBufWriter *w, const char *fmt, va_list ap)
 {
     while (*fmt != '\0')
@@ -162,40 +215,22 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
             log_buf_putc(w, c);
             continue;
         }
-        /* 解析规格：- / 0 / 宽度 / l；spec_start 供未知/不完整规格整体字面输出 */
-        const char *spec_start = fmt - 1; /* '%' 起始位 */
+        /* 解析规格：- / 0 / 宽度 / l（唯一事实源 log_spec_next）；spec_start 供字面输出 */
+        const char *spec_start = fmt - 1; /* '%' 位置 */
         int width = 0;
         char pad = ' ';
         int left = 0;
         int is_long = 0;
-        c = *fmt;
-        while (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l')
         {
-            if (c == '-')
+            const char *spec_p = spec_start; /* log_spec_next 约定输入指向 '%' */
+            c = log_spec_next(&spec_p, &is_long, &width, &pad, &left);
+            if (c == '\0')
             {
-                left = 1;
-                pad = ' ';
+                /* 尾部不完整规格：整体字面输出（spec_p 已前进到 '\0'——覆盖已扫字符） */
+                log_buf_write(w, spec_start, (size_t)(spec_p - spec_start));
+                break;
             }
-            else if (c == '0' && width == 0 && !left)
-            {
-                pad = '0';
-            }
-            else if (c >= '0' && c <= '9')
-            {
-                width = width * 10 + (c - '0');
-            }
-            else if (c == 'l')
-            {
-                is_long = 1;
-            }
-            fmt++;
-            c = *fmt;
-        }
-        c = *fmt++;
-        if (c == '\0')
-        {
-            log_buf_write(w, spec_start, (size_t)(fmt - spec_start)); /* 尾部不完整规格整体字面输出 */
-            break;
+            fmt = spec_p; /* 转换符之后（log_spec_next 成功时已前进） */
         }
         switch (c)
         {
@@ -304,40 +339,22 @@ void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, si
             log_buf_putc(w, c);
             continue;
         }
-        /* 解析规格：- / 0 / 宽度 / l；spec_start 供未知/不完整规格整体字面输出 */
-        const char *spec_start = fmt - 1; /* '%' 起始位 */
+        /* 解析规格：- / 0 / 宽度 / l（唯一事实源 log_spec_next）；spec_start 供字面输出 */
+        const char *spec_start = fmt - 1; /* '%' 位置 */
         int width = 0;
         char pad = ' ';
         int left = 0;
         int is_long = 0;
-        c = *fmt;
-        while (c == '-' || c == '0' || (c >= '1' && c <= '9') || c == 'l')
         {
-            if (c == '-')
+            const char *spec_p = spec_start; /* log_spec_next 约定输入指向 '%' */
+            c = log_spec_next(&spec_p, &is_long, &width, &pad, &left);
+            if (c == '\0')
             {
-                left = 1;
-                pad = ' ';
+                /* 尾部不完整规格：整体字面输出（spec_p 已前进到 '\0'——覆盖已扫字符） */
+                log_buf_write(w, spec_start, (size_t)(spec_p - spec_start));
+                break;
             }
-            else if (c == '0' && width == 0 && !left)
-            {
-                pad = '0';
-            }
-            else if (c >= '0' && c <= '9')
-            {
-                width = width * 10 + (c - '0');
-            }
-            else if (c == 'l')
-            {
-                is_long = 1;
-            }
-            fmt++;
-            c = *fmt;
-        }
-        c = *fmt++;
-        if (c == '\0')
-        {
-            log_buf_write(w, spec_start, (size_t)(fmt - spec_start)); /* 尾部不完整规格整体字面输出 */
-            break;
+            fmt = spec_p; /* 转换符之后（log_spec_next 成功时已前进） */
         }
         switch (c)
         {
