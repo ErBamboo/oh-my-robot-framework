@@ -1,7 +1,10 @@
 /**
  * @file log_async.c
- * @brief log 异步模式：参数包入队（调用侧 ~1-2µs）→ 日志线程格式化+扇出
- * @details OM_LOG_MODE_ASYNC 专属（同文件 #ifdef OM_LOG_MODE_ASYNC 包裹）。
+ * @brief log 异步路径：参数包入队（调用侧 ~1-2µs）→ 日志线程格式化+扇出
+ * @details OM_LOG_ASYNC 专属（同文件 #if OM_LOG_ASYNC 包裹；最小配置 #undef
+ *          OM_LOG_ASYNC 时本文件编译为空——调用侧走向上的同步兜底）。
+ *          就绪判定 log_async_can_enqueue（队列已建）：调度器前/SERVICE init 前为
+ *          false——调用方（core.c om_log_log）走同步兜底，无需 deferred。
  *          生产者经 log_async_send 入队：线程（osal_queue_send 非阻塞）/ ISR 自动分流
  *          （osal_is_in_isr 判定 → osal_queue_send_from_isr）——ISR 安全入队；
  *          日志线程（LOW 带）循环 recv → log_format_args → 复用 emit 链路。
@@ -10,7 +13,7 @@
 
 #include "core/om_config.h"
 
-#ifdef OM_LOG_MODE_ASYNC
+#if OM_LOG_ASYNC
 
 #include "core/om_def.h"
 #include "core/om_init.h"
@@ -26,6 +29,13 @@ static OsalQueue *s_log_queue;
 
 /** @brief 丢计数（队列满——T6 查询 API 汇总） */
 static uint32_t s_dropped_queue;
+
+/** @brief 异步路径就绪？队列已建（调度器后、线程创建前窗口内为 false——调用方走同步兜底）
+ *  @return true = 就绪（log_async_send 可用） */
+bool log_async_can_enqueue(void)
+{
+    return s_log_queue != NULL;
+}
 
 bool log_async_send(const OmLogMsg *msg)
 {
@@ -100,6 +110,7 @@ OmRet log_async_init(void)
     }
     return OM_OK;
 }
-OM_INIT_SERVICE(log_async_init); /* SERVICE 级：调度器后，可阻塞/建线程（ADR-0015 异步引入 init） */
+OM_INIT_SERVICE(log_async_init); /* SERVICE 级：调度器后，可阻塞/建线程（ADR-0015 异步引入 init）；
+                                  * 之前日志走同步兜底（未就绪判定） */
 
-#endif /* OM_LOG_MODE_ASYNC */
+#endif /* OM_LOG_ASYNC */

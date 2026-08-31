@@ -2,8 +2,9 @@
  * @file stats.c
  * @brief log 统计查询（丢弃计数汇总——om_log_stats 事实源）
  * @details 汇总两个丢弃点的跨文件访问器：参数包超限（msg.c g_dropped_overflow）+
- *          异步队列满（log_async.c s_dropped_queue，仅 ASYNC 存在；SYNC 下调用点
- *          #ifdef 包裹——队列项恒 0）。丢弃可观测（printk 语义）见 services/log/log.h。
+ *          异步队列满（log_async.c s_dropped_queue，仅 OM_LOG_ASYNC 存在；最小配置/
+ *          兜底下调用点 #ifdef 包裹——队列项恒 0）。丢弃可观测（printk 语义）见
+ *          services/log/log.h。
  */
 
 #include "core/om_config.h"
@@ -25,7 +26,7 @@ OmRet om_log_stats(OmLogStats *stats)
         return OM_ERR_INVALID_ARG;
     }
     stats->dropped = log_dropped_overflow();
-#ifdef OM_LOG_MODE_ASYNC
+#if OM_LOG_ASYNC
     stats->dropped += log_dropped_queue();
 #endif
     return OM_OK;

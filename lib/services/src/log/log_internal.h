@@ -92,25 +92,29 @@ bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, c
  *  @return 累计超限丢弃数（自启动以来） */
 uint32_t log_dropped_overflow(void);
 
-/** @brief emit（日志线程/同步共用）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
+/** @brief emit（日志线程）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
  *  @param module 模块实例
  *  @param level 消息级别
  *  @param fmt 格式串
  *  @param args 参数数组（参数包）
  *  @param n 参数个数
- *  @note 异步模式 = 日志线程调此函数（v1 结构预留兑现）；同步模式 = 调用侧（va_list 版） */
+ *  @note 就绪路径 = 日志线程调此函数（v1 结构预留兑现）；兜底路径 = 调用侧（va_list 版） */
 void log_emit_args(const OmLogModule *module, OmLogLevel level, const char *fmt, const uintptr_t *args, size_t n);
 
-#ifdef OM_LOG_MODE_ASYNC
-/** @brief 异步模式初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；仅异步模式存在） */
+#if OM_LOG_ASYNC
+/** @brief 异步路径初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；最小配置无此声明） */
 OmRet log_async_init(void);
 
-/** @brief 异步模式入队（build 成功后调用；队列满 → 丢弃+计数）
+/** @brief 异步路径就绪？队列已建（调度器后、线程创建前窗口内为 false——调用方走同步兜底）
+ *  @return true = 就绪（log_async_send 可用） */
+bool log_async_can_enqueue(void);
+
+/** @brief 异步路径入队（build 成功后调用；队列满 → 丢弃+计数）
  *  @return true = 已入队 */
 bool log_async_send(const OmLogMsg *msg);
 
-/** @brief 读取丢计数（异步队列满——log_async.c 维护；同步模式恒 0）
- *  @note 仅在 OM_LOG_MODE_ASYNC 下编译/调用（stats.c 以同样 #ifdef 包裹调用点）
+/** @brief 读取丢计数（异步队列满——log_async.c 维护；最小配置/兜底恒 0）
+ *  @note 仅在 OM_LOG_ASYNC 下编译/调用（stats.c 以同样 #ifdef 包裹调用点）
  *  @return 累计队列满丢弃数（自启动以来） */
 uint32_t log_dropped_queue(void);
 #endif

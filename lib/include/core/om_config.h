@@ -14,14 +14,11 @@
 #define OM_LOG_SEGMENT_SIZE 32 /* formatter 段缓冲（字节，栈占用 = 段 + 常量状态） */
 #endif
 
-/* 日志投递模式：SYNC 调用侧格式化（v1 语义）；ASYNC 调用侧打包入队+日志线程格式化
- * （1kHz 控制环/ISR 打日志的唯一可接受形态——实测调用侧 36µs/条 vs 参数包 ~1-2µs，见 ADR-0015） */
-#if !defined(OM_LOG_MODE_SYNC) && !defined(OM_LOG_MODE_ASYNC)
-#define OM_LOG_MODE_SYNC
-#endif
-
-#if defined(OM_LOG_MODE_SYNC) && defined(OM_LOG_MODE_ASYNC)
-#error "OM_LOG_MODE_SYNC 与 OM_LOG_MODE_ASYNC 互斥，只能定义其一"
+/* log 服务异步能力（统一异步形态：就绪=打包入队+日志线程格式化；未就绪/裁剪=同步兜底）
+ * 默认定义（能力常驻）；最小配置（无 RTOS/裸机）可 #undef——此时调用侧格式化（同步兜底，
+ * 即 v1 语义）。详见服务 README 投递形态节。 */
+#ifndef OM_LOG_ASYNC
+#define OM_LOG_ASYNC 1 /* 值语义（OM_SYNC_ACCEL 同款）：=0 或 appcfg #undef（#if 未定义=0）即裁剪 */
 #endif
 
 #ifndef OM_LOG_MAX_ARGS
