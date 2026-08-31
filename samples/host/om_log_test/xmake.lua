@@ -42,5 +42,6 @@ target("om_log_filter_test")
     add_files("om_log_test_common.c", "om_log_filter_test.c", "om_log_port_stub.c",
               "om_log_osal_stub.c",
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
-              path.join(log_src, "backend.c"))
+              path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
+              path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
 target_end()

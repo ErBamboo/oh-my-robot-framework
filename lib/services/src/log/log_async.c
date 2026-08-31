@@ -53,6 +53,13 @@ bool log_async_send(const OmLogMsg *msg)
     return true;
 }
 
+/** @brief 读取队列满丢弃计数（static s_dropped_queue 的跨文件访问器——om_log_stats 汇总）
+ *  @return 累计队列满丢弃数 */
+uint32_t log_dropped_queue(void)
+{
+    return s_dropped_queue;
+}
+
 /** @brief 异步 emit：与同步 log_emit 同构——头部（含时间戳 T5 后）+ format_args + 扇出 + \n
  *  @param msg 参数包（fmt/level/module/args——%s 指针生命周期调用方保证，Zephyr 同款文档约束） */
 static void log_async_emit(const OmLogMsg *msg)

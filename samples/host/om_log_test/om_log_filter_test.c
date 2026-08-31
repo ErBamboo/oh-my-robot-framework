@@ -1,13 +1,16 @@
 /**
  * @file om_log_filter_test.c
  * @brief log 管线测试：om_log_log 全链（编译期门控/后端扇出/per-backend 过滤/
- *        OFF/注册注销错误码/段切分拼接/头部格式）
+ *        OFF/注册注销错误码/段切分拼接/头部格式）+ om_log_stats 丢计数（T6）
  */
 
 #include "services/log/log.h"
 
 #include "om_log_test_common.h"
 
+#include "log_internal.h" /* OmLogMsg/log_msg_build（超限丢弃探针——T6） */
+
+#include <stdarg.h>
 #include <string.h>
 
 /* ---- capture 后端 ---- */
@@ -82,6 +85,27 @@ static void setup_backends(void)
 /* ---- 被测模块（注册宏 + 调用宏冒烟） ---- */
 OM_LOG_MODULE(testmod, OM_LOG_LEVEL_INFO);
 
+/* ---- om_log_stats 超限探针（T6） ---- */
+
+/** @brief 打包探针用模块实例（独立于 testmod——探针直调 log_msg_build，
+ *         不走调用宏；本 TU 静态，与 formatter_test 的 fake_mod 无冲突） */
+static const OmLogModule g_fake_module = {"stats_probe", OM_LOG_LEVEL_INFO};
+
+/** @brief 超限打包探针：9 参（> OM_LOG_MAX_ARGS 8）→ log_msg_build false（内部超限计数递增）
+ *  @param fmt 格式串
+ *  @return 打包结果（false = 超限丢弃）
+ *  @note log_msg_build 形参为 va_list（x86_64 下为数组类型），必须经 varargs 包装入口调用
+ *        （T3 build_check 同款模式——main 内不能直接 va_start 取参） */
+static bool build_over_limit_probe(const char *fmt, ...)
+{
+    OmLogMsg m;
+    va_list ap;
+    va_start(ap, fmt);
+    bool ok = log_msg_build(&m, &g_fake_module, OM_LOG_LEVEL_INFO, fmt, ap);
+    va_end(ap);
+    return ok;
+}
+
 int main(void)
 {
     setup_backends();
@@ -132,6 +156,21 @@ int main(void)
     size_t len_b_off = g_cap_b.len;
     OM_LOG_ERROR("all off");
     EXPECT(g_cap_b.len == len_b_off);
+
+    /* om_log_stats：初始 0 → 超限丢弃后 dropped 递增（T6） */
+    {
+        OmLogStats st;
+        EXPECT(om_log_stats(&st) == OM_OK);
+        EXPECT(st.dropped == 0);
+        EXPECT(om_log_stats(NULL) == OM_ERR_INVALID_ARG);
+    }
+    /* 超限丢弃计数：9 参 > OM_LOG_MAX_ARGS 8 → false + g_dropped_overflow 递增 */
+    EXPECT(build_over_limit_probe("%d %d %d %d %d %d %d %d %d", 1, 2, 3, 4, 5, 6, 7, 8, 9) == false);
+    {
+        OmLogStats st;
+        EXPECT(om_log_stats(&st) == OM_OK);
+        EXPECT(st.dropped >= 1);
+    }
 
     /* 注销：OK → 重复 NOT_FOUND → NULL INVALID_ARG */
     EXPECT(om_log_backend_unregister(&g_backend_a) == OM_OK);

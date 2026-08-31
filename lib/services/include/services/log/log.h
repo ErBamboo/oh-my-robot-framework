@@ -93,6 +93,19 @@ OmRet om_log_backend_unregister(OmLogBackend *backend);
  *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 
+/** @brief 日志统计（查询 API——丢弃可观测）
+ *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）；
+ *        异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数） */
+typedef struct
+{
+    uint32_t dropped;
+} OmLogStats;
+
+/** @brief 读取日志统计（累计丢弃数——超限 + 异步队列满）
+ *  @param stats 输出（NULL → OM_ERR_INVALID_ARG）
+ *  @return OM_OK 成功；OM_ERR_INVALID_ARG 参数非法 */
+OmRet om_log_stats(OmLogStats *stats);
+
 #ifdef __cplusplus
 }
 #endif

@@ -143,4 +143,11 @@ bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, c
     return true;
 }
 
+/** @brief 读取超限丢弃计数（static g_dropped_overflow 的跨文件访问器——om_log_stats 汇总）
+ *  @return 累计超限丢弃数 */
+uint32_t log_dropped_overflow(void)
+{
+    return g_dropped_overflow;
+}
+
 #endif /* OM_USE_LOG */

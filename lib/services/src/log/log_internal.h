@@ -88,6 +88,10 @@ size_t log_time_format(char *buf, uint32_t ms);
  *  @return true = 打包成功（<= OM_LOG_MAX_ARGS 参）；false = 超限丢弃（已计数） */
 bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);
 
+/** @brief 读取丢计数（参数包超限——msg.c 维护；om_log_stats 汇总用）
+ *  @return 累计超限丢弃数（自启动以来） */
+uint32_t log_dropped_overflow(void);
+
 /** @brief emit（日志线程/同步共用）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
  *  @param module 模块实例
  *  @param level 消息级别
@@ -104,6 +108,11 @@ OmRet log_async_init(void);
 /** @brief 异步模式入队（build 成功后调用；队列满 → 丢弃+计数）
  *  @return true = 已入队 */
 bool log_async_send(const OmLogMsg *msg);
+
+/** @brief 读取丢计数（异步队列满——log_async.c 维护；同步模式恒 0）
+ *  @note 仅在 OM_LOG_MODE_ASYNC 下编译/调用（stats.c 以同样 #ifdef 包裹调用点）
+ *  @return 累计队列满丢弃数（自启动以来） */
+uint32_t log_dropped_queue(void);
 #endif
 
 /** @brief 是否有后端接受该级别（过滤流水线第②步，临界区内调用）
