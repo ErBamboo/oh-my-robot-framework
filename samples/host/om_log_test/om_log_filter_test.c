@@ -86,20 +86,21 @@ int main(void)
 {
     setup_backends();
 
-    /* INFO：capA（DEBUG 全收）收，capB（ERROR）不收 */
+    /* INFO：capA（DEBUG 全收）收，capB（ERROR）不收
+     * （时间戳 = osal 单调 ms host 桩恒 0 → "00:00:00.000"——头部格式自检） */
     OM_LOG_INFO("hello %d", 42);
-    EXPECT(strcmp(g_cap_a.buf, "[INF][testmod] hello 42\n") == 0);
+    EXPECT(strcmp(g_cap_a.buf, "[INF][00:00:00.000][testmod] hello 42\n") == 0);
     EXPECT(g_cap_b.len == 0);
 
     /* DEBUG < 编译期 INFO → 全静默（编译期门控） */
     OM_LOG_DEBUG("below compile level");
-    EXPECT(g_cap_a.len == strlen("[INF][testmod] hello 42\n"));
+    EXPECT(g_cap_a.len == strlen("[INF][00:00:00.000][testmod] hello 42\n"));
 
     /* ERROR：capA + capB 都收 */
     OM_LOG_ERROR("oops %s", "x");
-    EXPECT(strcmp(g_cap_b.buf, "[ERR][testmod] oops x\n") == 0);
-    EXPECT(strcmp(g_cap_a.buf + strlen("[INF][testmod] hello 42\n"),
-                  "[ERR][testmod] oops x\n") == 0);
+    EXPECT(strcmp(g_cap_b.buf, "[ERR][00:00:00.000][testmod] oops x\n") == 0);
+    EXPECT(strcmp(g_cap_a.buf + strlen("[INF][00:00:00.000][testmod] hello 42\n"),
+                  "[ERR][00:00:00.000][testmod] oops x\n") == 0);
 
     /* 段切分：>32B 消息多段回调，拼接一致 */
     {
@@ -113,7 +114,7 @@ int main(void)
         g_cap_a.seg_count = 0;
         OM_LOG_INFO("long:%s", long_msg);
         char expect[240];
-        (void)snprintf(expect, sizeof(expect), "[INF][testmod] long:%s\n", long_msg);
+        (void)snprintf(expect, sizeof(expect), "[INF][00:00:00.000][testmod] long:%s\n", long_msg);
         EXPECT(strcmp(g_cap_a.buf + g_cap_a.len - strlen(expect), expect) == 0);
         EXPECT(g_cap_a.seg_count > 1);
     }

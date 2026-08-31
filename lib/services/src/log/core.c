@@ -14,6 +14,7 @@
 
 #include "core/om_def.h"
 #include "core/om_interrupt.h"
+#include "osal/osal_time.h" /* 时间戳来源 osal_time_now_monotonic（ADR-0015；host 测试经本地桩头） */
 
 #include "log_internal.h"
 
@@ -43,16 +44,23 @@ static void emit_fanout(void *ctx, const char *seg, size_t len)
     log_backend_push_all(level, seg, len);
 }
 
-/** @brief 头部生成：输出 "[LVL][module] "（独立函数——结构预留：v2 统一时间戳在此加字段）
+/** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（v2 时间戳字段在此统一加——同步/异步共用）
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
  *  @param level 消息级别
+ *  @note 时间戳 = osal_time_now_monotonic（32 位单调 ms，线程/ISR 双安全，ADR-0015）；
+ *        格式换算 log_time_format（纯函数，逐字符填数——不经过 log_format，避免依赖格式化器）
  *  @note log_level_name[level] 下标安全：入口 OFF 检查保证 level < OM_LOG_LEVEL_OFF，
  *        表尺寸 = OM_LOG_LEVEL_OFF（编译期断言保证枚举与表同步） */
 static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel level)
 {
+    char ts[13];
+    size_t n = log_time_format(ts, osal_time_now_monotonic()); /* 恒 12 */
     log_buf_putc(w, '[');
     log_buf_write(w, log_level_name[level], 3);
+    log_buf_putc(w, ']');
+    log_buf_putc(w, '[');
+    log_buf_write(w, ts, n);
     log_buf_putc(w, ']');
     log_buf_putc(w, '[');
     log_buf_write(w, module->name, strlen(module->name));

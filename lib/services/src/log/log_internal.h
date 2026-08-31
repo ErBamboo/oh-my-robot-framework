@@ -78,6 +78,12 @@ typedef struct
 /** @brief 参数数组版格式化（与 log_format(va_list) 并存——日志线程/同步模式均可） */
 void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, size_t n);
 
+/** @brief 单调 ms → HH:MM:SS.mmm（十进制，"：" 分隔时分、"." 分隔毫秒）
+ *  @param buf 输出缓冲（>=13B，含 NUL）
+ *  @param ms 单调毫秒（osal_time_now_monotonic）
+ *  @return 写入字节数（不含 NUL，恒 12） */
+size_t log_time_format(char *buf, uint32_t ms);
+
 /** @brief 打包：按 fmt 解析参数数 → va_list 逐参抓取进 argBuf（超限丢弃）
  *  @return true = 打包成功（<= OM_LOG_MAX_ARGS 参）；false = 超限丢弃（已计数） */
 bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);

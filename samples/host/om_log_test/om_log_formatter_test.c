@@ -35,7 +35,7 @@ static void format_check(const char *fmt, ...)
     LogBufWriter w;
     char seg[32];
     va_list ap;
-    g_len       = 0;
+    g_len = 0;
     g_seg_count = 0;
     log_buf_writer_init(&w, capture, NULL, seg, sizeof(seg));
     va_start(ap, fmt);
@@ -53,7 +53,7 @@ static void format_check_args(const char *fmt, const uintptr_t *args, size_t n)
 {
     LogBufWriter w;
     char seg[32];
-    g_len       = 0;
+    g_len = 0;
     g_seg_count = 0;
     log_buf_writer_init(&w, capture, NULL, seg, sizeof(seg));
     log_format_args(&w, fmt, args, n);
@@ -82,7 +82,8 @@ static bool build_check(const char *fmt, ...)
     va_start(ap, fmt);
     bool ok = log_msg_build(&m, &fake_mod, OM_LOG_LEVEL_INFO, fmt, ap);
     va_end(ap);
-    if (ok) {
+    if (ok)
+    {
         g_built_msg = m;
         format_check_args(m.fmt, m.argBuf, m.argCount);
     }
@@ -215,7 +216,23 @@ int main(void)
     EXPECT(g_built_msg.argCount == 1);
     EXPECT(strcmp(g_buf, "7 %") == 0);
 
-    if (g_log_test_failed) {
+    /* log_time_format：HH:MM:SS.mmm 换算（T5） */
+    {
+        char ts[13];
+        size_t n = log_time_format(ts, (12U * 3600U + 34U * 60U + 56U) * 1000U + 789U);
+        EXPECT(n == 12 && strcmp(ts, "12:34:56.789") == 0);
+        log_time_format(ts, 0);
+        EXPECT(strcmp(ts, "00:00:00.000") == 0);
+        log_time_format(ts, (23U * 3600U + 59U * 60U + 59U) * 1000U + 999U);
+        EXPECT(strcmp(ts, "23:59:59.999") == 0);
+        log_time_format(ts, 1U); /* 毫秒补零 */
+        EXPECT(strcmp(ts, "00:00:00.001") == 0);
+        log_time_format(ts, 120U * 3600000U + 4000U + 567U); /* >99h 截断防御：%100 回绕显示 */
+        EXPECT(strcmp(ts, "20:00:04.567") == 0);
+    }
+
+    if (g_log_test_failed)
+    {
         printf("om_log_formatter_test: FAIL\n");
         return 1;
     }

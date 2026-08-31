@@ -5,6 +5,7 @@
  *          未知/不完整转换符降级为整段规格字面输出（"%5f" 原样打印）；任意长
  *          消息分段回调，栈占用 = 段缓冲 + 常量状态，不随消息长度增长（ADR-0015）。
  *          LONG_MIN 的取负溢出未处理（嵌入式整型格式化惯例，文档约束）。
+ *          另含时间戳换算 log_time_format（纯字符填数，无 OS 依赖——host 可测）。
  */
 
 #include "core/om_config.h"
@@ -262,6 +263,34 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
         }
     }
     fmt_flush(w);
+}
+
+/** @brief 单调 ms → HH:MM:SS.mmm（"HH:MM:SS.mmm" 12 字符 + NUL；手写填数不依赖 printf）
+ *  @param buf 输出缓冲（>=13B）
+ *  @param ms 单调毫秒
+ *  @return 12（恒满写） */
+size_t log_time_format(char *buf, uint32_t ms)
+{
+    uint32_t h = ms / 3600000U;
+    uint32_t m = (ms / 60000U) % 60U;
+    uint32_t s = (ms / 1000U) % 60U;
+    uint32_t milli = ms % 1000U;
+    /* 两位字段补零（>=10 用 2 位，<10 前导 0）——直接字符填 */
+    h %= 100U; /* 截断防御：uptime 超 99h 回绕显示（毫秒时基自然回绕，仅显示语义） */
+    buf[0] = (char)('0' + (h / 10));
+    buf[1] = (char)('0' + (h % 10));
+    buf[2] = ':';
+    buf[3] = (char)('0' + (m / 10));
+    buf[4] = (char)('0' + (m % 10));
+    buf[5] = ':';
+    buf[6] = (char)('0' + (s / 10));
+    buf[7] = (char)('0' + (s % 10));
+    buf[8] = '.';
+    buf[9] = (char)('0' + (milli / 100));
+    buf[10] = (char)('0' + ((milli / 10) % 10));
+    buf[11] = (char)('0' + (milli % 10));
+    buf[12] = '\0';
+    return 12;
 }
 
 void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, size_t n)
