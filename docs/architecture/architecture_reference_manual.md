@@ -30,6 +30,16 @@
 >
 > **设计思想**：下层为**单一功能原语**（sync 提供同步语义、async 提供执行调度、ipc 提供跨上下文数据传输、kernel 提供平台无关基底与 OS 抽象、algorithm 提供可选计算原语），中层（services、drivers）是原语组合而成的**领域模块**，各有独立语义。业务（systems）可直取任意一层——原语或组合，不受中间层约束。
 
+**依赖管理原则（第一性原理）**：模块化不是为了分组好看，而是让**每个模块可独立修改、独立测试、独立替换**——"一个决策的变化，影响范围与该决策相关，而不受无关模块牵连"（David Parnas, *On the Criteria To Be Used in Decomposing Systems into Modules*, CACM 1972——信息隐蔽 Information Hiding：按**最可能变化的设计决策**切分，接口只暴露不可变的抽象）。依赖管理的本质 = **把"变化传播路径"限制在业务上确实相关的模块之间**。由该原理导出的三条可执行律（公认工程定律）：
+
+| 定律 | 出处 | 内容 |
+|---|---|---|
+| **无环律（DAG）** | 公理级（拓扑学推理） | 依赖图必须是有向无环——环使"局部修改"升级为"全局协调"、使初始化顺序不可定（本框架 `OM_INIT_*` 分级正是依赖拓扑的线性化） |
+| **稳定方向律（SDP）** | Robert C. Martin, *Design Principles and Design Patterns* (2000) | **Depend in the direction of stability**——依赖方向应指向"更不易变"的一方：容易变的模块依赖不易变的模块，反之即危险 |
+| **抽象指向律（DIP）** | 同上书 / Clean Architecture | 依赖应指向抽象而非实现：细节依赖策略，策略不依赖细节 |
+
+**本框架的应用**：上述**依赖规则**（分层/单向/例外）与 **ADR-0016 的"单向 + 逐服务开放"** 正是三条律的具体化——无环（单向约束）、指向稳定（services/drivers 上层依赖 kernel 下层）、依赖抽象（services 开放接口而非实现）。**可辩护的反向依赖**（如未来 services 足够稳定后被 platform 直接依赖）判据 = SDP：被依赖方 API 冻结 + 经多平台验证稳定；此时约束退化为工程纪律而非原理冲突（当前框架未开此口）。
+
 **依赖规则**：架构约束跨层依赖方向——上层可依赖下层（可跨层），禁止下层反向依赖上层。同层独立子系统之间不应存在依赖、不允许存在循环依赖。**例外（services 单向开放）**：services 定位为通用服务（面向全体消费者），允许被 `drivers` **单向**依赖——依赖面按服务逐个开放（ADR-0016 (drivers_services_one_way_dependency)，当前开放：`services/log/log.h`）；`services` 自身永不依赖 `drivers`，业务子系统之间仍互不依赖。**kernel 层内部**（core 定义/原语 · osal 抽象 · init 子系统）允许互调（参考 Linux/Zephyr/RT-Thread 把核心定义与 OS 抽象合为一层）；由内部约定保证 `kernel-core` 子模块保持 OS 无关（不调用 osal），供主机侧测试（samples/host）。
 
 **头文件引用规则**：对外入口可包含聚合头（如 `omlib.h`、`osal/osal.h`），框架内部实现应优先包含最小必需头文件，避免通过聚合头引入隐式耦合。
