@@ -45,6 +45,22 @@ static void format_check(const char *fmt, ...)
     g_buf[g_len] = '\0';
 }
 
+/** @brief 参数数组版格式化并捕获（log_format_args 入口，供参数包语义断言）
+ *  @param fmt 格式串（printf 风格子集）
+ *  @param args 参数数组（uintptr_t 宽，LOG_ARG 游标按序取）
+ *  @param n 参数个数上限（越界返回 0 防御） */
+static void format_check_args(const char *fmt, const uintptr_t *args, size_t n)
+{
+    LogBufWriter w;
+    char seg[32];
+    g_len = 0;
+    g_seg_count = 0;
+    log_buf_writer_init(&w, capture, NULL, seg, sizeof(seg));
+    log_format_args(&w, fmt, args, n);
+    log_buf_flush(&w);
+    g_buf[g_len] = '\0';
+}
+
 int main(void)
 {
     format_check("%d", -42);
@@ -101,6 +117,44 @@ int main(void)
         format_check("%s", long_msg);
         EXPECT(strcmp(g_buf, long_msg) == 0);
         EXPECT(g_seg_count > 1);
+    }
+
+    /* log_format_args（参数数组版）：与 va_list 版语义等价 */
+    {
+        uintptr_t a1[4] = {(uintptr_t)-42, (uintptr_t)7, (uintptr_t)0x1A2B, (uintptr_t)(const char *)"hi"};
+        format_check_args("%d %u %x %s", a1, 4);
+        EXPECT(strcmp(g_buf, "-42 7 1a2b hi") == 0);
+    }
+    {
+        uintptr_t a2[3] = {(uintptr_t)(long)-5, (uintptr_t)0xCAFE, (uintptr_t)(void *)0x1234};
+        format_check_args("%ld %lx %p", a2, 3);
+        EXPECT(strcmp(g_buf, "-5 cafe 1234") == 0);
+    }
+    {
+        uintptr_t a3[2] = {(uintptr_t)'A', (uintptr_t)(const char *)NULL};
+        format_check_args("%c %s", a3, 2);
+        EXPECT(strcmp(g_buf, "A (null)") == 0);
+    }
+    {
+        uintptr_t a4[3] = {(uintptr_t)1, (uintptr_t)2, (uintptr_t)3};
+        format_check_args("%5d %-5d %05d", a4, 3); /* 宽度/零填充/左对齐走同路径 */
+        EXPECT(strcmp(g_buf, "    1 2     00003") == 0);
+    }
+    /* 越界防御：n=1 但 fmt 用 2 参 → 第二参返回 0 */
+    {
+        uintptr_t a5[1] = {(uintptr_t)7};
+        format_check_args("%d %d", a5, 1);
+        EXPECT(strcmp(g_buf, "7 0") == 0);
+    }
+    /* 等价性：args 版 vs va 版（同参数同输出——防两版解析漂移） */
+    {
+        uintptr_t a[4] = {(uintptr_t)-42, (uintptr_t)7, (uintptr_t)0x1A2B, (uintptr_t)(const char *)"hi"};
+        char buf_args[64], buf_va[64];
+        format_check_args("%d %u %x %s", a, 4);
+        memcpy(buf_args, g_buf, g_len + 1);
+        format_check("%d %u %x %s", -42, 7, 0x1A2B, "hi");
+        memcpy(buf_va, g_buf, g_len + 1);
+        EXPECT(strcmp(buf_args, buf_va) == 0);
     }
 
     if (g_log_test_failed)
