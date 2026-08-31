@@ -35,7 +35,7 @@ static void format_check(const char *fmt, ...)
     LogBufWriter w;
     char seg[32];
     va_list ap;
-    g_len = 0;
+    g_len       = 0;
     g_seg_count = 0;
     log_buf_writer_init(&w, capture, NULL, seg, sizeof(seg));
     va_start(ap, fmt);
@@ -53,12 +53,40 @@ static void format_check_args(const char *fmt, const uintptr_t *args, size_t n)
 {
     LogBufWriter w;
     char seg[32];
-    g_len = 0;
+    g_len       = 0;
     g_seg_count = 0;
     log_buf_writer_init(&w, capture, NULL, seg, sizeof(seg));
     log_format_args(&w, fmt, args, n);
     log_buf_flush(&w);
     g_buf[g_len] = '\0';
+}
+
+/* ---- log_msg_build（T3） ---- */
+
+/** @brief 临时模块探针（filter 测试的 testmod 经 OM_LOG_MODULE 宏展开——此处用独立
+ *         静态实例，避免同名重复定义；type 与 _om_log_module 同构） */
+static const OmLogModule fake_mod = {"probe", OM_LOG_LEVEL_INFO};
+
+/** @brief build 快照（build_check 输出，供 main 断言语：argBuf/argCount/fmt/module/level）
+ *  @note format_check 同款约束：log_msg_build 形参为 va_list（x86_64 数组类型），
+ *        必须经 varargs 包装入口调用，不能直接传参 */
+static OmLogMsg g_built_msg;
+
+/** @brief build → format_args 链路检查：打包成功则格式化捕获（等价性屏障）
+ *  @param fmt 格式串
+ *  @return 打包结果（false = 超限丢弃，不取参；g_buf 不在断言范围内） */
+static bool build_check(const char *fmt, ...)
+{
+    OmLogMsg m;
+    va_list ap;
+    va_start(ap, fmt);
+    bool ok = log_msg_build(&m, &fake_mod, OM_LOG_LEVEL_INFO, fmt, ap);
+    va_end(ap);
+    if (ok) {
+        g_built_msg = m;
+        format_check_args(m.fmt, m.argBuf, m.argCount);
+    }
+    return ok;
 }
 
 int main(void)
@@ -157,8 +185,37 @@ int main(void)
         EXPECT(strcmp(buf_args, buf_va) == 0);
     }
 
-    if (g_log_test_failed)
-    {
+    /* log_msg_build：抓取与 argCount（build → format_args 链路 == va 版语义，等价性屏障） */
+    EXPECT(build_check("%d %s %x", 42, "w", 0xAB) == true);
+    EXPECT(strcmp(g_built_msg.fmt, "%d %s %x") == 0);
+    EXPECT(g_built_msg.module == &fake_mod && g_built_msg.level == OM_LOG_LEVEL_INFO);
+    EXPECT(g_built_msg.argCount == 3);
+    EXPECT(g_built_msg.argBuf[0] == 42 && g_built_msg.argBuf[2] == 0xAB);
+    EXPECT(strcmp(g_buf, "42 w ab") == 0);
+    /* %u/%lx/%p：无 l 无符号零扩展、l 宽类型、指针直存 */
+    EXPECT(build_check("%u %lx %p", 4294967295U, 0x1A2B3C4DUL, (void *)0x1234) == true);
+    EXPECT(g_built_msg.argCount == 3);
+    EXPECT(g_built_msg.argBuf[0] == (uintptr_t)4294967295U);
+    EXPECT(g_built_msg.argBuf[1] == (uintptr_t)0x1A2B3C4DUL);
+    EXPECT(g_built_msg.argBuf[2] == (uintptr_t)(void *)0x1234);
+    EXPECT(strcmp(g_buf, "4294967295 1a2b3c4d 1234") == 0);
+    /* 超限：OM_LOG_MAX_ARGS+1 参 → false 丢弃（不取参） */
+    EXPECT(build_check("%d %d %d %d %d %d %d %d %d", 1, 2, 3, 4, 5, 6, 7, 8, 9) == false);
+    /* %c 提升 + %ld 宽类型；%% 不取参 */
+    EXPECT(build_check("%c %ld", 'Z', -7L) == true);
+    EXPECT(g_built_msg.argCount == 2);
+    EXPECT(g_built_msg.argBuf[0] == (uintptr_t)'Z' && g_built_msg.argBuf[1] == (uintptr_t)-7L);
+    EXPECT(strcmp(g_buf, "Z -7") == 0);
+    EXPECT(build_check("%d%%", 7) == true);
+    EXPECT(g_built_msg.argCount == 1);
+    EXPECT(g_built_msg.argBuf[0] == 7);
+    EXPECT(strcmp(g_buf, "7%") == 0);
+    /* 尾部不完整规格（"%" 结尾）：log_spec_next 返回 '\0' 不前进，余下字面输出 */
+    EXPECT(build_check("%d %", 7) == true);
+    EXPECT(g_built_msg.argCount == 1);
+    EXPECT(strcmp(g_buf, "7 %") == 0);
+
+    if (g_log_test_failed) {
         printf("om_log_formatter_test: FAIL\n");
         return 1;
     }
