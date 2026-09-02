@@ -139,6 +139,11 @@ bool log_backend_any_accepts(OmLogLevel level);
  *  @param len 段字节数 */
 void log_backend_push_all(OmLogLevel level, const char *seg, size_t len);
 
+/** @brief panic 投递：无过滤遍历全部已注册后端，panic 钩子优先（NULL→push 尽力）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
+void log_backend_panic_push_all(const char *seg, size_t len);
+
 #ifdef __cplusplus
 }
 #endif
