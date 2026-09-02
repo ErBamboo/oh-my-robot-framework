@@ -15,6 +15,7 @@
 #define __OM_ASSERT_H__
 
 #include "core/om_def.h"
+#include "core/om_config.h" /* OM_USE_ASSERT（断言开关——include 链不含 om_config.h，缺此则断言永不激活） */
 #include "core/om_fatal.h"
 
 #if defined(OM_USE_ASSERT)
