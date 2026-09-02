@@ -3,15 +3,30 @@
  * @brief fatal 现场输出组合示范：handler 覆盖（om_log_panic 记录现场）→ 恢复策略（不返回）；
  *        OM_INIT_APPLICATION 触发断言（fatal 演示）。
  * @details 记录不属于 fatal 设施（实现位于 services/log 的 om_log_panic——故障直出）；
- *          组合点 = handler 覆盖（上层）；fatal 设施零改动。接线见 verify_fatal_panic 目标。
+ *          组合点 = handler 覆盖（上层）+ 串口后端接线（log_port_init，DRIVER 级）；
+ *          fatal 设施零改动。断言触发 → 现场经 panic 通道直出串口。
  */
 
 #include "core/om_assert.h"
 #include "core/om_fatal.h"
 #include "core/om_init.h"
+#include "drivers/peripheral/serial/log_serial_backend.h"
 #include "services/log/log.h"
 
+#include "bsp_serial.h" /* BSP_LOG_SERIAL_NAME：板级日志口选择 */
+
+static LogSerialBackend g_log_serial_backend;
+
 OM_LOG_MODULE(fatal_panic, OM_LOG_LEVEL_INFO);
+
+/** @brief 接线（DRIVER 级，调度器前）：device_find 板级日志口 → 注册后端（含 panic 钩子）
+ *  @return OM_OK 成功；失败传播（open/注册错误码） */
+static OmRet log_port_init(void)
+{
+    return om_log_serial_backend_register(&g_log_serial_backend,
+                                          device_find((char *)BSP_LOG_SERIAL_NAME), "serial", OM_LOG_LEVEL_INFO);
+}
+OM_INIT_DRIVER(log_port_init);
 
 /** @brief handler 覆盖：记录现场（log 服务故障直出）→ 不返回（程序死亡）
  *  @param reason 触发源类别
