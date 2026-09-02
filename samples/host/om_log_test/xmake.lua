@@ -11,6 +11,8 @@
     退出码 0=通过；非 0=失败（EXPECT 断言不通过）。
     formatter 目标：纯 C 流式格式化器（无 OS 依赖）；
     filter 目标：om_log_log 全链（过滤/临界区/扇出，port 桩 no-op 化临界区）。
+    filter 目标另含 osal 桩（本地 osal/osal_time.h shadow + om_log_osal_stub.c——
+    core.c 时间戳取 osal_time_now_monotonic，host 桩恒 0）。
 ]]
 
 set_project("om_log_test")
@@ -26,16 +28,20 @@ target("om_log_formatter_test")
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
     add_includedirs(log_src)
-    add_files("om_log_test_common.c", "om_log_formatter_test.c", path.join(log_src, "formatter.c"))
+    add_files("om_log_test_common.c", "om_log_formatter_test.c",
+              path.join(log_src, "formatter.c"), path.join(log_src, "msg.c"))
 target_end()
 
 target("om_log_filter_test")
     set_kind("binary")
     set_languages("c11")
+    add_includedirs(os.scriptdir()) -- 本地 osal/osal_time.h 桩 shadow（先于框架头解析）
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
     add_includedirs(log_src)
     add_files("om_log_test_common.c", "om_log_filter_test.c", "om_log_port_stub.c",
+              "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走同步兜底（v1 语义）
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
-              path.join(log_src, "backend.c"))
+              path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
+              path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
 target_end()

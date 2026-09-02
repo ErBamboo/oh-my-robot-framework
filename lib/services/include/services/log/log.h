@@ -16,6 +16,7 @@
 #define __OM_LOG_H__
 
 #include "core/om_def.h"
+#include "core/om_config.h" /* OM_LOG_MAX_ARGS（编译期参数上限宏——调用宏检查用） */
 
 #include <stddef.h>
 
@@ -60,20 +61,61 @@ typedef struct OmLogBackend {
  */
 #define OM_LOG_MODULE(name, level) OM_USED static const OmLogModule _om_log_module = {(#name), (level)}
 
-/** @brief 调用宏（引用本 TU 的 _om_log_module；fmt 为 printf 风格子集） */
-#define OM_LOG_DEBUG(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_DEBUG, __VA_ARGS__)
-#define OM_LOG_INFO(...)  om_log_log(&_om_log_module, OM_LOG_LEVEL_INFO, __VA_ARGS__)
-#define OM_LOG_WARN(...)  om_log_log(&_om_log_module, OM_LOG_LEVEL_WARN, __VA_ARGS__)
-#define OM_LOG_ERROR(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_ERROR, __VA_ARGS__)
-#define OM_LOG_FATAL(...) om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, __VA_ARGS__)
+/* 编译期参数数计数（实参计数宏技巧——与格式串内容无关，数 __VA_ARGS__ 个数；
+ * 支持 1..16 个参数（表上限 = OM_LOG_MAX_ARGS 配置上限——om_config.h #error 守卫配套），
+ * 0 参数（空 __VA_ARGS__）经 helper 折叠为 0。仅需配置 OM_LOG_MAX_ARGS（≤16 自动同步） */
+#define OM_LOG_VA_COUNT_HELPER(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, N, ...) N
+#define OM_LOG_VA_COUNT(...)                                                                                  OM_LOG_VA_COUNT_HELPER(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+
+/* 编译期参数上限检查：负数组 = 编译错误（仓库 bsp 负数组先例）；超限不再静默丢弃
+ * （配合 OM_LOG_MAX_ARGS 调大 / 拆分，见服务 README） */
+#define OM_LOG_ARG_LIMIT_OK(...)     \
+    typedef char om_log_arg_limit_ok \
+        [(OM_LOG_VA_COUNT(__VA_ARGS__) <= OM_LOG_MAX_ARGS) ? 1 : -1]
+
+/** @brief 调用宏（引用本 TU 的 _om_log_module；fmt 为 printf 风格子集）
+ *  @note 编译期双重防线（调用者零感知）：① format(printf) 属性——编译器逐调用点校验
+ *        格式串与实参类型/个数匹配；② __VA_ARGS__ 计数负数组——超 OM_LOG_MAX_ARGS
+ *        直接编译报错（而非运行期静默丢弃）。展开含 do-while 块（负数组 typedef 作用域隔离） */
+#define OM_LOG_DEBUG(fmt, ...)                                               \
+    do {                                                                     \
+        OM_LOG_ARG_LIMIT_OK(__VA_ARGS__);                                    \
+        (void)sizeof(om_log_arg_limit_ok);                                   \
+        om_log_log(&_om_log_module, OM_LOG_LEVEL_DEBUG, fmt, ##__VA_ARGS__); \
+    } while (0)
+#define OM_LOG_INFO(fmt, ...)                                               \
+    do {                                                                    \
+        OM_LOG_ARG_LIMIT_OK(__VA_ARGS__);                                   \
+        (void)sizeof(om_log_arg_limit_ok);                                  \
+        om_log_log(&_om_log_module, OM_LOG_LEVEL_INFO, fmt, ##__VA_ARGS__); \
+    } while (0)
+#define OM_LOG_WARN(fmt, ...)                                               \
+    do {                                                                    \
+        OM_LOG_ARG_LIMIT_OK(__VA_ARGS__);                                   \
+        (void)sizeof(om_log_arg_limit_ok);                                  \
+        om_log_log(&_om_log_module, OM_LOG_LEVEL_WARN, fmt, ##__VA_ARGS__); \
+    } while (0)
+#define OM_LOG_ERROR(fmt, ...)                                               \
+    do {                                                                     \
+        OM_LOG_ARG_LIMIT_OK(__VA_ARGS__);                                    \
+        (void)sizeof(om_log_arg_limit_ok);                                   \
+        om_log_log(&_om_log_module, OM_LOG_LEVEL_ERROR, fmt, ##__VA_ARGS__); \
+    } while (0)
+#define OM_LOG_FATAL(fmt, ...)                                               \
+    do {                                                                     \
+        OM_LOG_ARG_LIMIT_OK(__VA_ARGS__);                                    \
+        (void)sizeof(om_log_arg_limit_ok);                                   \
+        om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, fmt, ##__VA_ARGS__); \
+    } while (0)
 
 /** @brief 日志入口：过滤（编译期+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
  *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
  *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
  *  @param fmt printf 风格子集格式串（NULL 时静默返回）
  *  @note 无失败路径（打日志不打扰调用方）；未就绪（无后端接受）走过滤流水线返回；
- *        线程/中断上下文均可调 */
-void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
+ *        线程/中断上下文均可调；format(printf, 3, 4) 供编译器逐调用点校验 */
+void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
+    OM_ATTRIBUTE((format(__printf__, 3, 4)));
 
 /** @brief 注册输出后端（携带初始级别；运行时用 om_log_backend_set_level 动态调整）
  *  @param backend 后端实例（name 与 push 不得为 NULL）
@@ -92,6 +134,19 @@ OmRet om_log_backend_unregister(OmLogBackend *backend);
  *  @param level 目标级别（>= OM_LOG_LEVEL_MAX 为越界）
  *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
+
+/** @brief 日志统计（查询 API——丢弃可观测）
+ *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）；
+ *        异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数） */
+typedef struct
+{
+    uint32_t dropped;
+} OmLogStats;
+
+/** @brief 读取日志统计（累计丢弃数——超限 + 异步队列满）
+ *  @param stats 输出（NULL → OM_ERR_INVALID_ARG）
+ *  @return OM_OK 成功；OM_ERR_INVALID_ARG 参数非法 */
+OmRet om_log_stats(OmLogStats *stats);
 
 #ifdef __cplusplus
 }

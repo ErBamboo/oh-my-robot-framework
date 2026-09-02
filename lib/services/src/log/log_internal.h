@@ -9,6 +9,7 @@
 #define __LOG_INTERNAL_H__
 
 #include "core/om_def.h"
+#include "core/om_config.h"   /* OM_LOG_MAX_ARGS（OmLogMsg 参数包宽度，log_internal.h 专属） */
 #include "services/log/log.h" /* OmLogLevel（级别类型，公共头已含 core/om_def.h） */
 
 #include <stdarg.h>
@@ -61,6 +62,71 @@ void log_buf_flush(LogBufWriter *w);
  *  @param ap 可变参数
  *  @note 未知/不完整转换符降级为整段规格字面输出；LONG_MIN 取负未处理（文档约束） */
 void log_format(LogBufWriter *w, const char *fmt, va_list ap);
+
+/** @brief 参数包（异步投递的消息载体 —— fmt+args 延后到日志线程格式化）
+ *  @note argBuf 为 uintptr_t 宽参数数组（8 个 = 64B）：整型/指针直接存；
+ *        %s 只存指针——字符串生命周期由调用方保证 */
+typedef struct
+{
+    const char *fmt;
+    OmLogLevel level;
+    const OmLogModule *module;
+    uintptr_t argBuf[OM_LOG_MAX_ARGS];
+    uint32_t argCount;
+} OmLogMsg;
+
+/** @brief 参数数组版格式化（与 log_format(va_list) 并存——日志线程/同步模式均可） */
+void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, size_t n);
+
+/** @brief 规格解析（格式化语法唯一事实源）：从 '%' 起解析标志（-/0/宽度/l），输出完整规格
+ *  @param fmtp inout：指向 '%'；成功时前进到转换符之后；不完整（解析至 '\0'）时**不前进**
+ *  @param is_long 输出：长度修饰 l（类型宽判定）
+ *  @param width 输出：最小宽度（0 = 无）
+ *  @param pad 输出：填充字符（' ' 或 '0'）
+ *  @param left 输出：左对齐（'-' 标志）
+ *  @return 转换符字符；'\0' = 尾部不完整规格（余下全为字面） */
+char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *left);
+
+/** @brief 单调 ms → HH:MM:SS.mmm（十进制，"：" 分隔时分、"." 分隔毫秒）
+ *  @param buf 输出缓冲（>=13B，含 NUL）
+ *  @param ms 单调毫秒（osal_time_now_monotonic）
+ *  @return 写入字节数（不含 NUL，恒 12） */
+size_t log_time_format(char *buf, uint32_t ms);
+
+/** @brief 打包：按 fmt 解析参数数 → va_list 逐参抓取进 argBuf（超限丢弃）
+ *  @return true = 打包成功（<= OM_LOG_MAX_ARGS 参）；false = 超限丢弃（已计数） */
+bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);
+
+/** @brief 读取丢计数（参数包超限——msg.c 维护；om_log_stats 汇总用）
+ *  @return 累计超限丢弃数（自启动以来） */
+uint32_t log_dropped_overflow(void);
+
+/** @brief emit（日志线程）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param args 参数数组（参数包）
+ *  @param n 参数个数
+ *  @note 就绪路径 = 日志线程调此函数（v1 结构预留兑现）；兜底路径 = 调用侧（va_list 版） */
+void log_emit_args(const OmLogModule *module, OmLogLevel level, const char *fmt, const uintptr_t *args, size_t n);
+
+#if OM_LOG_ASYNC
+/** @brief 异步路径初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；最小配置无此声明） */
+OmRet log_async_init(void);
+
+/** @brief 异步路径就绪？队列已建（调度器后、线程创建前窗口内为 false——调用方走同步兜底）
+ *  @return true = 就绪（log_async_send 可用） */
+bool log_async_can_enqueue(void);
+
+/** @brief 异步路径入队（build 成功后调用；队列满 → 丢弃+计数）
+ *  @return true = 已入队 */
+bool log_async_send(const OmLogMsg *msg);
+
+/** @brief 读取丢计数（异步队列满——log_async.c 维护；最小配置/兜底恒 0）
+ *  @note 仅在 OM_LOG_ASYNC 下编译/调用（stats.c 以同样 #ifdef 包裹调用点）
+ *  @return 累计队列满丢弃数（自启动以来） */
+uint32_t log_dropped_queue(void);
+#endif
 
 /** @brief 是否有后端接受该级别（过滤流水线第②步，临界区内调用）
  *  @param level 消息级别
