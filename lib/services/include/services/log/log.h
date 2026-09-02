@@ -1,6 +1,6 @@
 /**
  * @file log.h
- * @brief log 服务公共 API（services 层第一个真实服务，ADR-0015 (log_service)）
+ * @brief log 服务公共 API（services 层）
  * @details 同步模式 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
  *          设计文档：services/log/README.md；决策：docs/adr/0015-log_service.md。
  *          用法：
@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-/** @brief 日志级别：升序严重度（spdlog/log.c 同款方向）
+/** @brief 日志级别：升序严重度（数值越低越详细）
  *  @note OFF 置顶——设置为 OFF = 全关（msg >= OFF 永不成立）；MAX 为计数哨兵；
  *        枚举只增不改（后补 TRACE 安全） */
 typedef enum {
@@ -44,13 +44,14 @@ typedef struct OmLogModule {
 } OmLogModule;
 
 /** @brief 输出后端：分段友好（一条日志多段回调）+ 快速提交（绝不阻塞轮询）
- *  @note push/flush 携带 backend 指针——实现者经 container_of 取实例状态（支持多实例，
- *        Zephyr/Linux/RT-Thread 同构）；后端结构体内嵌进实例结构体，位置任意
+ *  @note push/flush 携带 backend 指针——实现者经 container_of 取实例状态（支持多实例）；
+ *        后端结构体内嵌进实例结构体，位置任意
  *        （container_of 经 offsetof 定位，无需首成员） */
 typedef struct OmLogBackend {
-    const char *name;                                                            /* 查找/调试用 */
-    void (*push)(struct OmLogBackend *backend, const char *segment, size_t len); /* 流式段推送（线程/中断上下文均可能） */
-    void (*flush)(struct OmLogBackend *backend);                                 /* 可选：强制刷出，可为 NULL（v1 无调用点） */
+    const char *name;                                                             /* 查找/调试用 */
+    void (*push)(struct OmLogBackend *backend, const char *segment, size_t len);  /* 流式段推送（线程/中断上下文均可能） */
+    void (*flush)(struct OmLogBackend *backend);                                  /* 可选：强制刷出，可为 NULL（v1 无调用点） */
+    void (*panic)(struct OmLogBackend *backend, const char *segment, size_t len); /* 可选：故障上下文提交（队列/线程/锁不可信时的最可靠通道——串口=轮询写/DMA 死仍有效；NULL=panic 时退回 push 尽力而为） */
 } OmLogBackend;
 
 /**
@@ -115,6 +116,16 @@ typedef struct OmLogBackend {
  *  @note 无失败路径（打日志不打扰调用方）；未就绪（无后端接受）走过滤流水线返回；
  *        线程/中断上下文均可调；format(printf, 3, 4) 供编译器逐调用点校验 */
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
+    OM_ATTRIBUTE((format(__printf__, 3, 4)));
+
+/** @brief 故障直出：fatal/崩溃上下文（系统即将停止/残破）中同步输出——不依赖队列/线程/锁
+ *  @param module 模块实例（名称标注）
+ *  @param level 消息级别（标注保留；**过滤提满**——崩溃现场全出，见语义）
+ *  @param fmt printf 风格格式串
+ *  @note 语义：自身禁中断（嵌套安全）→ 调用侧同步格式化 → 后端提交 = panic 钩子优先（NULL→push 尽力）；
+ *        无 per-backend 过滤（崩溃时证据保全优先）；级别标注保留（如打 ERROR 则头部 [ERR]）；
+ *        调用者须在故障上下文（handler/断言失败路径）调用；正常路径请用 OM_LOG_* */
+void om_log_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
     OM_ATTRIBUTE((format(__printf__, 3, 4)));
 
 /** @brief 注册输出后端（携带初始级别；运行时用 om_log_backend_set_level 动态调整）

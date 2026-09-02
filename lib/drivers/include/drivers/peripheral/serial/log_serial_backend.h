@@ -1,7 +1,7 @@
 /**
  * @file log_serial_backend.h
  * @brief 串口日志后端工厂（drivers 层）
- * @details 依赖 services/log/log.h——ADR-0016 (drivers_services_one_way_dependency)
+ * @details 依赖 services/log/log.h（drivers 可单向依赖 services 开放接口）
  *          开放的首个 drivers→services 跨层依赖（按服务逐个开放，当前仅 log）。
  *          实例由调用者静态分配（Workqueue 先例），container_of 模式取实例
  *          （backend 内嵌位置任意，多实例支持）。
@@ -38,7 +38,9 @@ typedef struct {
  *  @note 快速提交契约：push = device_write 非阻塞提交（NBLCK 打开语义；txFifo 满截断
  *        静默，溢出经设备 err_cb 暴露——失败感知分层，后端自持诊断）；线程上下文调用
  *        （内部 device_open 禁 ISR）；**日志口专用**——同一设备不应同时以其他模式
- *        （如业务阻塞收发）使用，需要复用请先 om_log_serial_backend_unregister */
+ *        （如业务阻塞收发）使用，需要复用请先 om_log_serial_backend_unregister
+ *  @note panic 提交 = 轮询直写（putByte 逐字节，故障上下文 DMA/中断死仍有效）；
+ *        push = 非阻塞快提交（正常路径）——双通道互补 */
 OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev, const char *name, OmLogLevel level);
 
 /** @brief 注销串口日志后端并释放设备：注销 log 注册 + device_close

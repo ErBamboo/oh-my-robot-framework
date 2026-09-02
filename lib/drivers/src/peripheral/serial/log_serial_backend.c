@@ -57,6 +57,29 @@ static void log_serial_push(OmLogBackend *backend, const char *seg, size_t len)
     }
 }
 
+/** @brief panic 提交：轮询逐字节写（绕过 txFifo/DMA——故障上下文中断/DMA 可能已死；
+ *  复用串口轮询写 putByte（HAL_UART_Transmit 轮询，单字节阻塞）——故障时仍有效；
+ *  与 push（非阻塞快提交）互补：push 供正常路径，panic 供最可靠通道 */
+static void log_serial_panic(OmLogBackend *backend, const char *seg, size_t len)
+{
+    LogSerialBackend *inst = (LogSerialBackend *)backend; /* 首成员强转取实例（_Static_assert 已有） */
+    HalSerial *serial;
+    size_t i;
+    if (inst == NULL || inst->dev == NULL)
+    {
+        return;
+    }
+    serial = (HalSerial *)inst->dev;
+    if (serial->interface == NULL)
+    {
+        return; /* open 失败的设备不可能走到此处，仍防御（故障上下文无错误路径可依赖） */
+    }
+    for (i = 0; i < len; i++)
+    {
+        (void)serial->interface->putByte(serial, (uint8_t)seg[i]);
+    }
+}
+
 OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev, const char *name, OmLogLevel level)
 {
     OmRet ret;
@@ -72,7 +95,8 @@ OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev,
     inst->dev = serial_dev;
     inst->backend.name = name;
     inst->backend.push = log_serial_push;
-    inst->backend.flush = NULL; /* v1 无调用点；串口设备无 flush 语义 */
+    inst->backend.flush = NULL;             /* v1 无调用点；串口设备无 flush 语义 */
+    inst->backend.panic = log_serial_panic; /* 故障提交通道：轮询直写（DMA/中断死仍有效） */
     return om_log_backend_register(&inst->backend, level);
 }
 

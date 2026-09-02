@@ -78,14 +78,19 @@ typedef struct
 /** @brief 参数数组版格式化（与 log_format(va_list) 并存——日志线程/同步模式均可） */
 void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, size_t n);
 
-/** @brief 规格解析（格式化语法唯一事实源）：从 '%' 起解析标志（-/0/宽度/l），输出完整规格
- *  @param fmtp inout：指向 '%'；成功时前进到转换符之后；不完整（解析至 '\0'）时**不前进**
- *  @param is_long 输出：长度修饰 l（类型宽判定）
- *  @param width 输出：最小宽度（0 = 无）
- *  @param pad 输出：填充字符（' ' 或 '0'）
- *  @param left 输出：左对齐（'-' 标志）
- *  @return 转换符字符；'\0' = 尾部不完整规格（余下全为字面） */
-char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *left);
+typedef struct
+{
+    char conv;   /* 转换符；'\0' = 尾部不完整规格（余下全为字面） */
+    int is_long; /* 长度修饰 l（类型宽判定） */
+    int width;   /* 最小宽度（0 = 无） */
+    char pad;    /* 填充字符（' ' 或 '0'） */
+    int left;    /* 左对齐（'-' 标志） */
+} LogSpec;
+
+/** @brief 规格解析（格式化语法唯一事实源）：从 '%' 起解析标志（-/0/宽度/l）（输出聚合——最小参数形态）
+ *  @param fmtp inout：指向 '%'；成功时前进到转换符之后；不完整（解析至 '\0'）时前进到 '\0'
+ *  @return 聚合规格（conv='\0' = 尾部不完整，余下全为字面） */
+LogSpec log_spec_next(const char **fmtp);
 
 /** @brief 单调 ms → HH:MM:SS.mmm（十进制，"：" 分隔时分、"." 分隔毫秒）
  *  @param buf 输出缓冲（>=13B，含 NUL）
@@ -101,14 +106,10 @@ bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, c
  *  @return 累计超限丢弃数（自启动以来） */
 uint32_t log_dropped_overflow(void);
 
-/** @brief emit（日志线程）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
- *  @param module 模块实例
- *  @param level 消息级别
- *  @param fmt 格式串
- *  @param args 参数数组（参数包）
- *  @param n 参数个数
- *  @note 就绪路径 = 日志线程调此函数（v1 结构预留兑现）；兜底路径 = 调用侧（va_list 版） */
-void log_emit_args(const OmLogModule *module, OmLogLevel level, const char *fmt, const uintptr_t *args, size_t n);
+/** @brief emit（日志线程/就绪路径）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
+ *  @param msg 消息包（module/level/fmt/args/n 全内含——最小参数形态）
+ *  @note 就绪路径 = 日志线程调此函数；兜底路径 = 调用侧（va_list 版 log_emit 或 log_emit_panic） */
+void log_emit_args(const OmLogMsg *msg);
 
 #if OM_LOG_ASYNC
 /** @brief 异步路径初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；最小配置无此声明） */
@@ -138,6 +139,11 @@ bool log_backend_any_accepts(OmLogLevel level);
  *  @param seg 段数据
  *  @param len 段字节数 */
 void log_backend_push_all(OmLogLevel level, const char *seg, size_t len);
+
+/** @brief panic 投递：无过滤遍历全部已注册后端，panic 钩子优先（NULL→push 尽力）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
+void log_backend_panic_push_all(const char *seg, size_t len);
 
 #ifdef __cplusplus
 }

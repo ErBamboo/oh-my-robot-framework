@@ -64,5 +64,5 @@
 - **兼容**：`om_def.h` 删除 `OmLogLevel`（零类型引用，已验证）；`OM_CPU_LOG_LEVEL_*` 数值与成员语义不变（调用点纯改名，零行为变化）；`OM_LOG_LEVEL_*` 名称易主为 log 服务，任何 TU 同时包含 om_def.h 与 log.h 不再冲突
 - **演进**（阶梯）：
   - **v2 异步模式（核心参数包，2026-08-22 决策定稿）**——**编译期 `OM_LOG_MODE_SYNC`（默认）/ `OM_LOG_MODE_ASYNC`**：ASYNC 时调用侧只打包入队（参数包 `{fmt, level, module, argBuf[8×8B=64B]}`——Zephyr log_msg 同款；%s 只存指针，生命周期调用方保证，doxygen 文档约束），格式化/扇出在日志线程（emit 换执行者，v1 已函数化）；SYNC 路径 = v1 原样零变化——**不用的场景零成本**。**决策依据（2026-08-22 实测，DWT @179.35MHz）**：调用侧完整日志链（短档 25B）实测 **6402 cyc ≈ 35.7µs**——普通业务上下文无感；但 **HIGH 带控制环（1kHz）= 环预算 3.6% + 最坏中断延时 36µs，不可接受**（NUEDC/RoboMaster 高频环场景真实存在）——参数包调用侧 ≈ 1-2µs 是实时上下文打日志的唯一可接受形态。**"后端适配器只异步化输出、不改调用侧格式化"——已评估否决**（36µs 原样留调用方，救不了实时环；spdlog async_sink / Zephyr backend task 化属"输出异步"语义，与"消费异步"不同层）。**基础设施复用（零新造，逐项权衡见 Options）**：队列 = osal 消息队列（定长元素值拷贝 + 阻塞收 + ISR 发 + 满返 WOULD_BLOCK，四合一命中；与参数包定长区语义互相印证；满丢弃 + 丢计数 `om_log_stats()`）；日志线程 = osal 线程（LOW 优先级带）+ `OM_INIT_SERVICE`（异步模式引入——零 init 仅限同步模式）；时间戳 = `osal_time_now_monotonic`（线程/ISR 双安全；头部 `[HH:MM:SS.mmm]` 十进制，"":"/"."分隔）；后端/模块表 = 定长数组；**不新造 MPSC 门铃通道**（触发条件与迁移方式见 Options；队列为 log 内部实现，直接调用 osal_queue，不做适配层）
-  - **v3**：运行时级别调节 + shell 前端 + 非易失持久化后端 + fatal 记录点接入（panic 路径）+ deferred logging
+  - **v3**：运行时级别调节 + shell 前端 + 非易失持久化后端 + deferred logging（fatal 记录点已提前落地——panic 路径直出：组合点 = handler 覆盖，记录不属于 fatal 设施）
   - **v4**：远程日志链路 + 后端动态管理 + 异步 core host 测试（OS 桩）

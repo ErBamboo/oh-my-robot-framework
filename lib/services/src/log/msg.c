@@ -34,13 +34,12 @@ static uint32_t log_msg_count_args(const char *fmt)
             fmt++;
             continue;
         }
-        int is_long = 0;
-        char spec = log_spec_next(&fmt, NULL, NULL, NULL, NULL);
-        if (spec == '\0')
+        LogSpec spec = log_spec_next(&fmt);
+        if (spec.conv == '\0')
         {
             break; /* 尾部不完整规格：无参 */
         }
-        if (spec != '%')
+        if (spec.conv != '%')
         {
             count++;
         }
@@ -67,13 +66,13 @@ bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, c
             fmt++;
             continue;
         }
-        int is_long = 0;
-        char spec = log_spec_next(&fmt, &is_long, NULL, NULL, NULL);
-        if (spec == '\0')
+        LogSpec spec = log_spec_next(&fmt);
+        if (spec.conv == '\0')
         {
             break; /* 尾部不完整规格：余下字面（format_args 原样输出），无参可取 */
         }
-        switch (spec)
+        int is_long = spec.is_long;
+        switch (spec.conv)
         {
         case '%':
             break; /* 字面 '%'，不取参 */

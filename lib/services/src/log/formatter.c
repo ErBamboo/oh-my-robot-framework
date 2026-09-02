@@ -3,7 +3,7 @@
  * @brief log 流式格式化器（printf 风格子集，逐段回调输出）
  * @details 支持：标志 -/0、宽度、长度修饰 l；转换符 d i u x X p c s %。
  *          未知/不完整转换符降级为整段规格字面输出（"%5f" 原样打印）；任意长
- *          消息分段回调，栈占用 = 段缓冲 + 常量状态，不随消息长度增长（ADR-0015）。
+ *          消息分段回调，栈占用 = 段缓冲 + 常量状态，不随消息长度增长。
  *          LONG_MIN 的取负溢出未处理（嵌入式整型格式化惯例，文档约束）。
  *          另含时间戳换算 log_time_format（纯字符填数，无 OS 依赖——host 可测）。
  */
@@ -152,35 +152,33 @@ static void fmt_num(LogBufWriter *w, unsigned long v, int sign, int base, int up
     }
 }
 
-/** @brief 规格解析（格式化语法唯一事实源）——从 '%' 起解析：- / 0 / 宽度 / l
- *  输出完整规格（is_long/width/pad/left，NULL 可忽略）；返回转换符（'\0'=尾部不完整，不前进） */
-char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *left)
+/** @brief 规格解析（格式化语法唯一事实源）——从 '%' 起解析：- / 0 / 宽度 / l（聚合输出）
+ *  @param fmtp inout：指向 '%'；成功时前进到转换符之后；不完整时前进到 '\0'
+ *  @return 聚合规格（conv='\0' = 尾部不完整，余下全为字面） */
+LogSpec log_spec_next(const char **fmtp)
 {
+    LogSpec spec = {'\0', 0, 0, ' ', 0};
     const char *p = *fmtp;
-    int l_flag = 0;
-    int w = 0;
-    int lf = 0;
-    char pd = ' ';
     p++; /* 越过 '%' */
     for (;;)
     {
         char c = *p;
         if (c == '-')
         {
-            lf = 1;
-            pd = ' ';
+            spec.left = 1;
+            spec.pad = ' ';
         }
-        else if (c == '0' && w == 0 && !lf)
+        else if (c == '0' && spec.width == 0 && !spec.left)
         {
-            pd = '0';
+            spec.pad = '0';
         }
         else if (c >= '0' && c <= '9')
         {
-            w = w * 10 + (c - '0');
+            spec.width = spec.width * 10 + (c - '0');
         }
         else if (c == 'l')
         {
-            l_flag = 1;
+            spec.is_long = 1;
         }
         else
         {
@@ -188,21 +186,9 @@ char log_spec_next(const char **fmtp, int *is_long, int *width, char *pad, int *
         }
         p++;
     }
-    if (*p == '\0')
-    {
-        *fmtp = p; /* 不完整：前进到 '\0'——调用方按"余下全字面"处理（长度覆盖已扫字符） */
-        return '\0';
-    }
-    if (is_long != NULL)
-        *is_long = l_flag;
-    if (width != NULL)
-        *width = w;
-    if (pad != NULL)
-        *pad = pd;
-    if (left != NULL)
-        *left = lf;
-    *fmtp = p + 1;
-    return *p;
+    spec.conv = *p;
+    *fmtp = (spec.conv == '\0') ? p : p + 1; /* 不完整：前进到 '\0'；成功：转换符之后 */
+    return spec;
 }
 
 void log_format(LogBufWriter *w, const char *fmt, va_list ap)
@@ -223,14 +209,19 @@ void log_format(LogBufWriter *w, const char *fmt, va_list ap)
         int is_long = 0;
         {
             const char *spec_p = spec_start; /* log_spec_next 约定输入指向 '%' */
-            c = log_spec_next(&spec_p, &is_long, &width, &pad, &left);
-            if (c == '\0')
+            LogSpec spec = log_spec_next(&spec_p);
+            if (spec.conv == '\0')
             {
                 /* 尾部不完整规格：整体字面输出（spec_p 已前进到 '\0'——覆盖已扫字符） */
                 log_buf_write(w, spec_start, (size_t)(spec_p - spec_start));
                 break;
             }
             fmt = spec_p; /* 转换符之后（log_spec_next 成功时已前进） */
+            c = spec.conv;
+            is_long = spec.is_long;
+            width = spec.width;
+            pad = spec.pad;
+            left = spec.left;
         }
         switch (c)
         {
@@ -347,14 +338,19 @@ void log_format_args(LogBufWriter *w, const char *fmt, const uintptr_t *args, si
         int is_long = 0;
         {
             const char *spec_p = spec_start; /* log_spec_next 约定输入指向 '%' */
-            c = log_spec_next(&spec_p, &is_long, &width, &pad, &left);
-            if (c == '\0')
+            LogSpec spec = log_spec_next(&spec_p);
+            if (spec.conv == '\0')
             {
                 /* 尾部不完整规格：整体字面输出（spec_p 已前进到 '\0'——覆盖已扫字符） */
                 log_buf_write(w, spec_start, (size_t)(spec_p - spec_start));
                 break;
             }
             fmt = spec_p; /* 转换符之后（log_spec_next 成功时已前进） */
+            c = spec.conv;
+            is_long = spec.is_long;
+            width = spec.width;
+            pad = spec.pad;
+            left = spec.left;
         }
         switch (c)
         {
