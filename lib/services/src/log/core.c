@@ -12,7 +12,7 @@
 
 #include "core/om_config.h"
 
-#ifdef OM_USE_LOG
+#if OM_USE_LOG
 
 #include "core/om_def.h"
 #include "core/om_interrupt.h"

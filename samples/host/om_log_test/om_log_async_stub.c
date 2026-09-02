@@ -10,6 +10,8 @@
 
 #include "log_internal.h"
 
+#if OM_LOG_ASYNC
+
 #include <stdbool.h>
 
 bool log_async_can_enqueue(void)
@@ -27,3 +29,5 @@ uint32_t log_dropped_queue(void)
 {
     return 0U;
 }
+
+#endif /* OM_LOG_ASYNC */

@@ -1,7 +1,7 @@
 /**
  * @file log_async.c
  * @brief log 异步路径：参数包入队（调用侧 ~1-2µs）→ 日志线程格式化+扇出
- * @details OM_LOG_ASYNC 专属（同文件 #if OM_LOG_ASYNC 包裹；最小配置 #undef
+ * @details OM_LOG_ASYNC 专属（同文件 #if OM_USE_LOG && OM_LOG_ASYNC 包裹；最小配置 #undef
  *          OM_LOG_ASYNC 时本文件编译为空——调用侧走向上的同步兜底）。
  *          就绪判定 log_async_can_enqueue（队列已建）：调度器前/SERVICE init 前为
  *          false——调用方（core.c om_log_log）走同步兜底，无需 deferred。
@@ -13,7 +13,7 @@
 
 #include "core/om_config.h"
 
-#if OM_LOG_ASYNC
+#if OM_USE_LOG && OM_LOG_ASYNC
 
 #include "core/om_def.h"
 #include "core/om_init.h"
