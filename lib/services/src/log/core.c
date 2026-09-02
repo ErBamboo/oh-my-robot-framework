@@ -127,17 +127,17 @@ static void log_emit_panic(const OmLogModule *module, OmLogLevel level, const ch
  *  @param n 参数个数
  *  @note 就绪路径 = 日志线程（log_async_emit）调此函数（v1 结构预留兑现）；
  *        兜底路径 = 调用侧（log_emit，va_list 版——同构执行位置不同） */
-void log_emit_args(const OmLogModule *module, OmLogLevel level, const char *fmt, const uintptr_t *args, size_t n)
+void log_emit_args(const OmLogMsg *msg)
 {
-    if (!log_backend_any_accepts(level))
+    if (!log_backend_any_accepts(msg->level))
     {
         return; /* ② 无后端接受 → 零格式化开销 */
     }
     LogBufWriter w;
     char seg[OM_LOG_SEGMENT_SIZE];
-    log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)level, seg, sizeof(seg));
-    emit_header(&w, module, level);
-    log_format_args(&w, fmt, args, n);
+    log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)msg->level, seg, sizeof(seg));
+    emit_header(&w, msg->module, msg->level);
+    log_format_args(&w, msg->fmt, msg->argBuf, msg->argCount);
     log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
     log_buf_flush(&w);
 }
