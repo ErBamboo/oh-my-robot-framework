@@ -111,7 +111,7 @@ uint32_t log_dropped_overflow(void);
  *  @return >=0 = moduleId；-2 = 表满；-3 = 参数非法 */
 int log_module_check_in(const OmLogModule *module);
 
-/** @brief emit（日志线程/就绪路径）：后端接受判定 → 头部 + 流式格式化 + 尾部 
+/** @brief emit（日志线程/就绪路径）：后端接受判定 → 头部 + 流式格式化 + 尾部
  + 扇出
  *  @param msg 消息包（module/level/fmt/args/n 全内含——最小参数形态）
  *  @note 就绪路径 = 日志线程调此函数；兜底路径 = 调用侧（va_list 版 log_emit 或 log_emit_panic） */
