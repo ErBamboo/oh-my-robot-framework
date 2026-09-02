@@ -1,7 +1,7 @@
 /**
  * @file log_serial_backend.h
  * @brief 串口日志后端工厂（drivers 层）
- * @details 依赖 services/log/log.h——ADR-0016 (drivers_services_one_way_dependency)
+ * @details 依赖 services/log/log.h（drivers 可单向依赖 services 开放接口）
  *          开放的首个 drivers→services 跨层依赖（按服务逐个开放，当前仅 log）。
  *          实例由调用者静态分配（Workqueue 先例），container_of 模式取实例
  *          （backend 内嵌位置任意，多实例支持）。

@@ -71,7 +71,7 @@ uint32_t log_dropped_queue(void)
 }
 
 /** @brief 异步 emit：与同步 log_emit 同构——头部（含时间戳 T5 后）+ format_args + 扇出 + \n
- *  @param msg 参数包（fmt/level/module/args——%s 指针生命周期调用方保证，Zephyr 同款文档约束） */
+ *  @param msg 参数包（fmt/level/module/args——%s 指针生命周期调用方保证，文档约束） */
 static void log_async_emit(const OmLogMsg *msg)
 {
     /* 复用 core.c 导出的 emit 链路（log_emit_args 声明见 log_internal.h） */
@@ -110,7 +110,7 @@ OmRet log_async_init(void)
     }
     return OM_OK;
 }
-OM_INIT_SERVICE(log_async_init); /* SERVICE 级：调度器后，可阻塞/建线程（ADR-0015 异步引入 init）；
+OM_INIT_SERVICE(log_async_init); /* SERVICE 级：调度器后，可阻塞/建线程；
                                   * 之前日志走同步兜底（未就绪判定） */
 
 #endif /* OM_LOG_ASYNC */

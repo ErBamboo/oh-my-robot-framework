@@ -16,7 +16,7 @@
 
 #include "core/om_def.h"
 #include "core/om_interrupt.h"
-#include "osal/osal_time.h" /* 时间戳来源 osal_time_now_monotonic（ADR-0015；host 测试经本地桩头） */
+#include "osal/osal_time.h" /* 时间戳来源 osal_time_now_monotonic（host 测试经本地桩头） */
 
 #include "log_internal.h"
 
@@ -50,7 +50,7 @@ static void emit_fanout(void *ctx, const char *seg, size_t len)
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
  *  @param level 消息级别
- *  @note 时间戳 = osal_time_now_monotonic（32 位单调 ms，线程/ISR 双安全，ADR-0015）；
+ *  @note 时间戳 = osal_time_now_monotonic（32 位单调 ms，线程/ISR 双安全）；
  *        格式换算 log_time_format（纯函数，逐字符填数——不经过 log_format，避免依赖格式化器）
  *  @note log_level_name[level] 下标安全：入口 OFF 检查保证 level < OM_LOG_LEVEL_OFF，
  *        表尺寸 = OM_LOG_LEVEL_OFF（编译期断言保证枚举与表同步） */

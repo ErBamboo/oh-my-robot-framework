@@ -1,6 +1,6 @@
 /**
  * @file log.h
- * @brief log 服务公共 API（services 层第一个真实服务，ADR-0015 (log_service)）
+ * @brief log 服务公共 API（services 层）
  * @details 同步模式 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
  *          设计文档：services/log/README.md；决策：docs/adr/0015-log_service.md。
  *          用法：
@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-/** @brief 日志级别：升序严重度（spdlog/log.c 同款方向）
+/** @brief 日志级别：升序严重度（数值越低越详细）
  *  @note OFF 置顶——设置为 OFF = 全关（msg >= OFF 永不成立）；MAX 为计数哨兵；
  *        枚举只增不改（后补 TRACE 安全） */
 typedef enum {
@@ -44,8 +44,8 @@ typedef struct OmLogModule {
 } OmLogModule;
 
 /** @brief 输出后端：分段友好（一条日志多段回调）+ 快速提交（绝不阻塞轮询）
- *  @note push/flush 携带 backend 指针——实现者经 container_of 取实例状态（支持多实例，
- *        Zephyr/Linux/RT-Thread 同构）；后端结构体内嵌进实例结构体，位置任意
+ *  @note push/flush 携带 backend 指针——实现者经 container_of 取实例状态（支持多实例）；
+ *        后端结构体内嵌进实例结构体，位置任意
  *        （container_of 经 offsetof 定位，无需首成员） */
 typedef struct OmLogBackend {
     const char *name;                                                             /* 查找/调试用 */
