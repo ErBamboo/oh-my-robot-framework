@@ -1,7 +1,7 @@
 /**
  * @file core.c
  * @brief log 核心：om_log_log 入口 + om_log_panic 直出 + 过滤流水线 + emit（头部/格式化/扇出）+ 临界区
- * @details 过滤：① 编译期模块级别（常量折叠）→ ② 有无后端接受（零格式化）→
+ * @details 过滤：① 模块级别（初始=宏参数；运行时可调节）→ ② 有无后端接受（零格式化）→
  *          ③ 临界区（kernel 层临界区原语，中断上下文嵌套安全）→ ④ emit →
  *          ⑤ 退临界区。打日志无失败路径；未就绪（无后端/级别不达）静默返回。
  *          结构预留：emit 独立（日志线程调同一 emit_args 链）；头部生成独立
@@ -153,9 +153,13 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
     {
         return;
     }
-    if (level < module->compileLevel)
+    if (module->moduleId < 0)
     {
-        return; /* ① 编译期裁剪（compileLevel 为编译期常量 → 折叠零成本） */
+        (void)log_module_check_in(module); /* 惰性登记（一次性——表满置 -2 抑制重复） */
+    }
+    if (level < module->level)
+    {
+        return; /* ① 模块级别（初始=宏参数；运行时调节后按新值过滤——单字段） */
     }
     va_start(ap, fmt);
 #if OM_LOG_ASYNC

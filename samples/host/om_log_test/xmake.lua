@@ -43,5 +43,5 @@ target("om_log_filter_test")
               "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走同步兜底（v1 语义）
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
               path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
-              path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
+              path.join(log_src, "module.c"), path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
 target_end()

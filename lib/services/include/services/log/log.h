@@ -37,10 +37,13 @@ typedef enum {
     OM_LOG_LEVEL_MAX,
 } OmLogLevel;
 
-/** @brief 模块实例（OM_LOG_MODULE 生成，静态常量；仅编译期级别，运行时过滤表见 v3） */
+/** @brief 模块实例（OM_LOG_MODULE 生成；level=模块级别——初始=宏参数，运行时经
+ *        om_log_module_set_level 调节（设计裁决：compile/runtime 合一——同一职责复用同一字段）；
+ *        moduleId=-1=未登记（首次日志惰性入库——set_level 可查）；实例可写（登记/调节） */
 typedef struct OmLogModule {
     const char *name;
-    OmLogLevel compileLevel;
+    OmLogLevel level;
+    int moduleId;
 } OmLogModule;
 
 /** @brief 输出后端：分段友好（一条日志多段回调）+ 快速提交（绝不阻塞轮询）
@@ -57,10 +60,10 @@ typedef struct OmLogBackend {
 /**
  * @brief 模块注册：每个 TU 顶部一次，生成静态 _om_log_module
  * @param name 模块名（诊断/查找用）
- * @param level 编译期级别（其下整条编出去，常量折叠零成本）
- * @note 同一 TU 重复调用 = 重复定义；未注册就使用调用宏 = 编译错误（特性）
- */
-#define OM_LOG_MODULE(name, level) OM_USED static const OmLogModule _om_log_module = {(#name), (level)}
+ * @param level 模块级别（初始=宏参数；运行时经 om_log_module_set_level 调节——同一字段）
+ * @note 同一 TU 重复调用 = 重复定义；未注册就使用调用宏 = 编译错误（特性）；
+ *       实例可写（moduleId 登记与 level 调节）——勿 const 化 */
+#define OM_LOG_MODULE(name, level) OM_USED static OmLogModule _om_log_module = {(#name), (level), -1}
 
 /* 编译期参数数计数（实参计数宏技巧——与格式串内容无关，数 __VA_ARGS__ 个数；
  * 支持 1..16 个参数（表上限 = OM_LOG_MAX_ARGS 配置上限——om_config.h #error 守卫配套），
@@ -109,7 +112,7 @@ typedef struct OmLogBackend {
         om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, fmt, ##__VA_ARGS__); \
     } while (0)
 
-/** @brief 日志入口：过滤（编译期+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
+/** @brief 日志入口：过滤（模块级别+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
  *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
  *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
  *  @param fmt printf 风格子集格式串（NULL 时静默返回）
