@@ -86,6 +86,26 @@ void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *c
 }
 ```
 
+**记录现场（组合范例）**：记录不属于 fatal 设施——致命现场的输出是日志服务的"故障直出"能力（om_log_panic：自身禁中断、绕过队列/线程/锁、过滤提满全出、后端最可靠通道；见 services/log/README.md），组合点 = handler 覆盖。默认 handler（空实现）无输出——需要"开箱现场记录"时按下方模板覆盖。
+
+```c
+#include "core/om_fatal.h"
+#include "services/log/log.h"
+
+OM_LOG_MODULE(main_app, OM_LOG_LEVEL_INFO);
+
+void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx)
+{
+    om_log_panic(&_om_log_module, OM_LOG_LEVEL_FATAL,
+                 "fatal reason=%d cause=%d at %s:%d pc=0x%lx detail=%s",
+                 (int)reason, (int)cause,
+                 ctx->file ? ctx->file : "?", ctx->line,
+                 (unsigned long)ctx->pc,
+                 ctx->detail ? ctx->detail : "?");
+    for (;;) {}
+}
+```
+
 恢复机制组合（详见 ADR-0014 后续演进节）：软复位原语（未来 port 层）、超时自动重启（Linux `panic_timeout` 模式）、WDT 兜底（halt 循环 + 已使能看门狗 = 硬件级复位，免费能力）、bootloader 回退（需 reboot reason 持久化，未来）。
 
 **边界纪律**：降级模式（limp-home 类）**不属于 fatal 设施**——业务层不可恢复以外的问题用 OmRet 返回值处理；fatal 只处理"必须停机/必须重启"。
