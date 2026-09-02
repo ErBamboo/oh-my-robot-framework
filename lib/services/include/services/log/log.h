@@ -65,7 +65,7 @@ typedef struct OmLogBackend {
  * 支持 1..16 个参数（表上限 = OM_LOG_MAX_ARGS 配置上限——om_config.h #error 守卫配套），
  * 0 参数（空 __VA_ARGS__）经 helper 折叠为 0。仅需配置 OM_LOG_MAX_ARGS（≤16 自动同步） */
 #define OM_LOG_VA_COUNT_HELPER(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, N, ...) N
-#define OM_LOG_VA_COUNT(...)                                                                                  OM_LOG_VA_COUNT_HELPER(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define OM_LOG_VA_COUNT(...)  OM_LOG_VA_COUNT_HELPER(__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 
 /* 编译期参数上限检查：负数组 = 编译错误（仓库 bsp 负数组先例）；超限不再静默丢弃
  * （配合 OM_LOG_MAX_ARGS 调大 / 拆分，见服务 README） */
