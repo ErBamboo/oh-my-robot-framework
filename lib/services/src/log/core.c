@@ -1,6 +1,6 @@
 /**
  * @file core.c
- * @brief log 核心：om_log_log 入口 + 过滤流水线 + emit（头部/格式化/扇出）+ 临界区
+ * @brief log 核心：om_log_log 入口 + om_log_panic 直出 + 过滤流水线 + emit（头部/格式化/扇出）+ 临界区
  * @details 过滤：① 编译期模块级别（常量折叠）→ ② 有无后端接受（零格式化）→
  *          ③ 临界区（kernel 层临界区原语，中断上下文嵌套安全）→ ④ emit →
  *          ⑤ 退临界区。打日志无失败路径；未就绪（无后端/级别不达）静默返回。
@@ -46,6 +46,16 @@ static void emit_fanout(void *ctx, const char *seg, size_t len)
     log_backend_push_all(level, seg, len);
 }
 
+/** @brief panic 扇出回调：无过滤提满投递（故障上下文——证据保全）
+ *  @param ctx 未使用（与 emit_fanout 同形）
+ *  @param seg 段数据
+ *  @param len 段字节数 */
+static void emit_fanout_panic(void *ctx, const char *seg, size_t len)
+{
+    (void)ctx;
+    log_backend_panic_push_all(seg, len);
+}
+
 /** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（v2 时间戳字段在此统一加——同步/异步共用）
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
@@ -89,6 +99,23 @@ static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fm
     emit_header(&w, module, level);
     log_format(&w, fmt, ap);
     log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
+    log_buf_flush(&w);
+}
+
+/** @brief panic emit：与 log_emit 唯一差异 = 无 any_accepts 过滤 + panic 投递（提满全出）
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param ap 可变参数
+ *  @note 同构互见（log_emit 注释）；emit_header 复用——时间戳 + 级别标注自动保留 */
+static void log_emit_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
+{
+    LogBufWriter w;
+    char seg[OM_LOG_SEGMENT_SIZE];
+    log_buf_writer_init(&w, emit_fanout_panic, NULL, seg, sizeof(seg));
+    emit_header(&w, module, level);
+    log_format(&w, fmt, ap);
+    log_buf_write(&w, "\n", 1); /* 统一结束符（框架侧一处——与正常路径一致） */
     log_buf_flush(&w);
 }
 
@@ -150,6 +177,27 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
         log_emit(module, level, fmt, ap); /* va_list 版（SYNC 路径原样保留，无条件编译） */
         om_hw_restore_interrupt(key);     /* ⑤ */
     }
+    va_end(ap);
+}
+
+/** @brief 故障直出（契约见 services/log/log.h）
+ *  @param module 模块实例
+ *  @param level 消息级别（标注保留；提满——无过滤）
+ *  @param fmt 格式串
+ *  @note 自身禁中断（嵌套安全——fatal handler 调用时中断可能仍开；嵌套安全原语）→
+ *        调用侧同步格式化 + panic 投递（钩子优先/push 兜底）→ 恢复中断 */
+void om_log_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
+{
+    va_list ap;
+    port_critical_key_t key;
+    if (module == NULL || module->name == NULL || fmt == NULL || level >= OM_LOG_LEVEL_OFF)
+    {
+        return; /* 无失败路径：非法参数静默 */
+    }
+    va_start(ap, fmt);
+    key = om_hw_disable_interrupt(); /* panic 自身禁中断（嵌套安全——与正常路径临界区同款原语） */
+    log_emit_panic(module, level, fmt, ap);
+    om_hw_restore_interrupt(key);
     va_end(ap);
 }
 

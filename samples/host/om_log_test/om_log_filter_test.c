@@ -3,6 +3,7 @@
  * @brief log 管线测试：om_log_log 全链（编译期门控/后端扇出/per-backend 过滤/
  *        OFF/注册注销错误码/段切分拼接/头部格式）+ om_log_stats 丢计数（T6）
  *        + panic 投递（无 per-backend 过滤/panic 钩子优先/NULL→push 尽力）
+ *        + om_log_panic 直出（提满全出/级别标注保留/桩时间戳恒定）
  */
 
 #include "services/log/log.h"
@@ -200,6 +201,29 @@ int main(void)
         /* 恢复级别（后续用例依赖） */
         EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_ERROR) == OM_OK);
         EXPECT(om_log_backend_set_level("capA", OM_LOG_LEVEL_DEBUG) == OM_OK);
+    }
+
+    /* om_log_panic 直出：无后端接受级别也全出（提满）；级别标注保留；头部时间戳恒定（桩） */
+    {
+        /* capA/capB 均 OFF——正常路径全静默（上方"all off"已证），panic 提满全出 */
+        EXPECT(om_log_backend_set_level("capA", OM_LOG_LEVEL_OFF) == OM_OK);
+        EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_OFF) == OM_OK);
+        g_cap_a.len = 0;
+        g_cap_b.len = 0;
+        g_cap_a.panic_called = 0;
+        g_cap_b.seg_count = 0;
+        om_log_panic(&_om_log_module, OM_LOG_LEVEL_ERROR, "panic %d", 7);
+        g_cap_a.buf[g_cap_a.len] = '\0'; /* 复位 len 后必须补 NUL（截断比较） */
+        g_cap_b.buf[g_cap_b.len] = '\0';
+        EXPECT(g_cap_a.panic_called > 0);                  /* capA：panic 钩子接件（钩子优先——证据保全路径，每段一次回调） */
+        EXPECT(g_cap_a.panic_called == g_cap_b.seg_count); /* 钩子/推送同构——每段各一次 */
+        EXPECT(g_cap_b.len > 0);                           /* capB：NULL 钩子 → push 收全文（OFF 也全出——提满） */
+        EXPECT(strcmp(g_cap_b.buf, "[ERR][00:00:00.000][testmod] panic 7\n") == 0);
+        /* 级别标注保留 + 桩时间戳恒定（全程逐字节比对） */
+        EXPECT(g_cap_a.len == 0); /* capA：钩子优先——panic 后 push 未调用 */
+        /* 恢复级别（后续用例依赖） */
+        EXPECT(om_log_backend_set_level("capA", OM_LOG_LEVEL_DEBUG) == OM_OK);
+        EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_ERROR) == OM_OK);
     }
 
     /* 注销：OK → 重复 NOT_FOUND → NULL INVALID_ARG */
