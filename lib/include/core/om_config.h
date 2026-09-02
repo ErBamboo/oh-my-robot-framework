@@ -12,6 +12,10 @@
 #define OM_LOG_MAX_BACKENDS 4 /* 后端注册表上限（定长数组） */
 #endif
 
+#ifndef OM_LOG_MAX_MODULES
+#define OM_LOG_MAX_MODULES 16 /* 模块注册表上限（惰性登记；按名调节 om_log_module_set_level 用） */
+#endif
+
 #ifndef OM_LOG_SEGMENT_SIZE
 #define OM_LOG_SEGMENT_SIZE 32 /* formatter 段缓冲（字节，栈占用 = 段 + 常量状态） */
 #endif
