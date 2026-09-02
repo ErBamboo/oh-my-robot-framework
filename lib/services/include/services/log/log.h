@@ -149,6 +149,15 @@ OmRet om_log_backend_unregister(OmLogBackend *backend);
  *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 
+/** @brief 运行时调节模块级别（按名——模块首次打日志后登记；未登记 NOT_FOUND）
+ *  @param module_name 模块名（OM_LOG_MODULE 参数）
+ *  @param level 目标级别（>= OM_LOG_LEVEL_MAX = INVALID_ARG）
+ *  @return OM_OK；OM_ERR_NOT_FOUND；OM_ERR_INVALID_ARG */
+OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
+
+/** @brief 查询模块级别 */
+OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
+
 /** @brief 日志统计（查询 API——丢弃可观测）
  *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）；
  *        异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数） */
