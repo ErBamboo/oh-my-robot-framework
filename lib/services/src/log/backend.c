@@ -53,6 +53,31 @@ void log_backend_push_all(OmLogLevel level, const char *seg, size_t len)
     }
 }
 
+/** @brief panic 投递：无 per-backend 级别过滤（提满全出——崩溃证据保全）；
+ *  panic 钩子优先（最可靠通道）；NULL 钩子 → 退回 push（尽力而为）
+ *  @param seg 段数据
+ *  @param len 段字节数
+ *  @note 与 log_backend_push_all 的差异 = 无过滤判定 + 提交通道选择（panic 优先/push 兜底）；
+ *        调用者须在禁中断/故障上下文（om_log_panic 内已禁中断）——无表锁（故障上下文） */
+void log_backend_panic_push_all(const char *seg, size_t len)
+{
+    size_t i;
+    for (i = 0; i < OM_LOG_MAX_BACKENDS; i++)
+    {
+        if (g_backends[i].used)
+        {
+            if (g_backends[i].backend->panic != NULL)
+            {
+                g_backends[i].backend->panic(g_backends[i].backend, seg, len);
+            }
+            else
+            {
+                g_backends[i].backend->push(g_backends[i].backend, seg, len);
+            }
+        }
+    }
+}
+
 OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level)
 {
     size_t i;

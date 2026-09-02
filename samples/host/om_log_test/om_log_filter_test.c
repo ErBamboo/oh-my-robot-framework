@@ -2,6 +2,7 @@
  * @file om_log_filter_test.c
  * @brief log 管线测试：om_log_log 全链（编译期门控/后端扇出/per-backend 过滤/
  *        OFF/注册注销错误码/段切分拼接/头部格式）+ om_log_stats 丢计数（T6）
+ *        + panic 投递（无 per-backend 过滤/panic 钩子优先/NULL→push 尽力）
  */
 
 #include "services/log/log.h"
@@ -20,6 +21,7 @@ typedef struct
     char buf[1024];
     size_t len;
     unsigned seg_count;
+    unsigned panic_called;
 } CaptureBackend;
 
 static CaptureBackend g_cap_a;
@@ -62,9 +64,22 @@ static void capture_flush(OmLogBackend *backend)
     (void)backend;
 }
 
-/* 后端实例：文件级静态（unregister 按指针，main 需访问） */
-static OmLogBackend g_backend_a = {"capA", capture_push_a, capture_flush};
-static OmLogBackend g_backend_b = {"capB", capture_push_b, capture_flush};
+/** @brief capA panic 提交（记录调用标记——验证"panic 钩子优先"）
+ *  @param backend 后端实例（本钩子未用）
+ *  @param seg 段数据（本钩子未用）
+ *  @param len 段字节数（本钩子未用） */
+static void capture_panic_a(OmLogBackend *backend, const char *seg, size_t len)
+{
+    (void)backend;
+    (void)seg;
+    (void)len;
+    g_cap_a.panic_called++;
+}
+
+/* 后端实例：文件级静态（unregister 按指针，main 需访问）；
+ * capB 不加 panic（NULL）——验证 panic 投递时 NULL 钩子退回 push 尽力而为 */
+static OmLogBackend g_backend_a = {"capA", capture_push_a, capture_flush, capture_panic_a};
+static OmLogBackend g_backend_b = {"capB", capture_push_b, capture_flush, NULL};
 
 /** @brief 注册 capA/capB 并验证管理 API 错误码
  *  @note capA 注册级别 DEBUG（全收）；capB 注册级别 ERROR（收紧）；本函数即
@@ -170,6 +185,21 @@ int main(void)
         OmLogStats st;
         EXPECT(om_log_stats(&st) == OM_OK);
         EXPECT(st.dropped >= 1);
+    }
+
+    /* panic 投递：无 per-backend 过滤（提满全出）+ panic 钩子优先（NULL→push 尽力） */
+    {
+        EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_OFF) == OM_OK);
+        g_cap_a.panic_called = 0;
+        size_t len_a = g_cap_a.len;
+        size_t len_b = g_cap_b.len;
+        log_backend_panic_push_all("pseg", 4);
+        EXPECT(g_cap_a.panic_called == 1); /* capA：panic 钩子被优先调用（单次调用一次回调） */
+        EXPECT(g_cap_a.len == len_a);      /* capA：push 未调用（钩子优先） */
+        EXPECT(g_cap_b.len > len_b);       /* capB：NULL 钩子 → push 尽力 */
+        /* 恢复级别（后续用例依赖） */
+        EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_ERROR) == OM_OK);
+        EXPECT(om_log_backend_set_level("capA", OM_LOG_LEVEL_DEBUG) == OM_OK);
     }
 
     /* 注销：OK → 重复 NOT_FOUND → NULL INVALID_ARG */
