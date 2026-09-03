@@ -2,7 +2,7 @@
 
 ## 定位
 
-services 层日志服务：为全体消费者提供统一的日志记录通道。模块注册制（每模块编译期级别）、流式格式化、后端抽象（广播 + per-backend 级别）、统一异步投递（就绪路径恒低调用侧成本）、故障直出（fatal/崩溃场景的可靠输出路径）。fatal 设施为下游消费方（handler 组合，见"示例·故障组合"）。
+services 层日志服务：为全体消费者提供统一的日志记录通道。模块注册制（每模块级别——编译期初始=宏参数 + 运行时按模块调节）、流式格式化、后端抽象（广播 + per-backend 级别）、统一异步投递（就绪路径恒低调用侧成本）、故障直出（fatal/崩溃场景的可靠输出路径）。fatal 设施为下游消费方（handler 组合，见"示例·故障组合"）。
 
 ## 机制
 
@@ -14,7 +14,7 @@ services 层日志服务：为全体消费者提供统一的日志记录通道�
 
 ### 过滤与分发
 
-- 三级：编译期模块级（常量折叠）→ 运行时后端级（`msg.level >= backend->level`）→ 队列级（满丢弃+计数）
+- 三级：模块级（初始=宏参数；运行时 `om_log_module_set_level` 按名调节——惰性登记后生效）→ 后端级（`msg.level >= backend->level`）→ 队列级（满丢弃+计数）
 - 广播：一条消息格式化一次，逐段推送给所有通过过滤的后端（无每后端独立格式化、无消息复制）
 - FIFO 边界：logger 保证"单生产者 FIFO + 消息原子 + 全后端广播一致"——事务完成点 = push 返回；push 之后的时序/排队/送达归后端自持
 
@@ -71,6 +71,10 @@ OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level);
 OmRet om_log_backend_unregister(OmLogBackend *backend);
 OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
 
+/* 模块级运行时调节 */
+OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
+OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
+
 /* 故障直出（fatal/崩溃上下文）——无锁/提满全出/panic 钩子优先 */
 void om_log_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, ...);
 
@@ -88,6 +92,7 @@ OmRet om_log_stats(OmLogStats *stats);
 | `OM_LOG_MAX_ARGS` | 8 | 参数包上限（1..16，超出 `#error`） |
 | `OM_LOG_QUEUE_LEN` | 8 | 异步队列深度（满丢弃+计数） |
 | `OM_LOG_MAX_BACKENDS` | 4 | 后端表上限 |
+| `OM_LOG_MAX_MODULES` | 16 | 模块注册表上限（惰性登记；按名调节） |
 | `OM_LOG_SEGMENT_SIZE` | 32 | 段缓冲（字节；栈占用锚） |
 
 全宏在 `om_config.h`，均可经 `om_appcfg.h` 覆写。
@@ -108,6 +113,8 @@ void supercap_update(Supercap *cap)
     OM_LOG_ERROR("电压跌落");
 }
 ```
+
+/** 调试现场调节：om_log_module_set_level("supercap", OM_LOG_LEVEL_WARN); */
 
 **接后端**（组合层 3 行接线）：
 

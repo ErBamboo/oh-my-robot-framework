@@ -1,11 +1,11 @@
 /**
  * @file core.c
  * @brief log 核心：om_log_log 入口 + om_log_panic 直出 + 过滤流水线 + emit（头部/格式化/扇出）+ 临界区
- * @details 过滤：① 编译期模块级别（常量折叠）→ ② 有无后端接受（零格式化）→
+ * @details 过滤：① 模块级别（初始=宏参数；运行时可调节）→ ② 有无后端接受（零格式化）→
  *          ③ 临界区（kernel 层临界区原语，中断上下文嵌套安全）→ ④ emit →
  *          ⑤ 退临界区。打日志无失败路径；未就绪（无后端/级别不达）静默返回。
- *          结构预留：emit 独立（日志线程调同一 emit_args 链）；头部生成独立
- *          （时间戳字段扩展）；丢弃点独立（v3 deferred 挂接）。
+ *          结构：emit 独立（与兜底/就绪路径共用）；头部生成独立（时间戳统一）；
+ *          丢弃点独立（deferred 挂接位）。
  *          投递形态（统一异步）：OM_LOG_ASYNC 定义时——就绪（队列已建）走打包入队
  *          （log_async_send，见 log_async.c）；未就绪/裁剪走本文件同步兜底（log_emit）。
  */
@@ -56,7 +56,7 @@ static void emit_fanout_panic(void *ctx, const char *seg, size_t len)
     log_backend_panic_push_all(seg, len);
 }
 
-/** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（v2 时间戳字段在此统一加——同步/异步共用）
+/** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（时间戳统一——同步/异步共用）
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
  *  @param level 消息级别
@@ -84,7 +84,7 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
  *  @param level 消息级别
  *  @param fmt 格式串
  *  @param ap 可变参数
- *  @note 兜底路径（未就绪/最小配置）唯一执行者，无条件编译（va_list 版，v1 语义原样）；
+ *  @note 兜底路径（未就绪/最小配置）唯一执行者，无条件编译（va_list 版——与就绪路径同构）；
  *        就绪路径执行者 = 日志线程（log_async_emit → log_emit_args，同构换入口）；
  *        栈占用 = 段缓冲（OM_LOG_SEGMENT_SIZE）+ 写器状态，不随消息长度增长 */
 static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
@@ -125,7 +125,7 @@ static void log_emit_panic(const OmLogModule *module, OmLogLevel level, const ch
  *  @param fmt 格式串
  *  @param args 参数数组（参数包）
  *  @param n 参数个数
- *  @note 就绪路径 = 日志线程（log_async_emit）调此函数（v1 结构预留兑现）；
+ *  @note 就绪路径 = 日志线程调此函数；
  *        兜底路径 = 调用侧（log_emit，va_list 版——同构执行位置不同） */
 void log_emit_args(const OmLogMsg *msg)
 {
@@ -153,9 +153,13 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
     {
         return;
     }
-    if (level < module->compileLevel)
+    if (module->moduleId < 0)
     {
-        return; /* ① 编译期裁剪（compileLevel 为编译期常量 → 折叠零成本） */
+        (void)log_module_check_in(module); /* 惰性登记（一次性——表满置 -2 抑制重复） */
+    }
+    if (level < module->level)
+    {
+        return; /* ① 模块级别（初始=宏参数；运行时调节后按新值过滤——单字段） */
     }
     va_start(ap, fmt);
 #if OM_LOG_ASYNC

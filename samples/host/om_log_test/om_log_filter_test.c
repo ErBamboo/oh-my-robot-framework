@@ -226,6 +226,25 @@ int main(void)
         EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_ERROR) == OM_OK);
     }
 
+    /* 模块级调节：set/get 行为 + 判定链生效（testmod 已由首日志惰性登记；
+     * 仅操作 _om_log_module（宏生成 static 可写）——不触碰 g_fake_module 隐患 fixture） */
+    {
+        OmLogLevel lv;
+        EXPECT(om_log_module_get_level("testmod", &lv) == OM_OK && lv == OM_LOG_LEVEL_INFO);
+        EXPECT(om_log_module_get_level("no_such_mod", &lv) == OM_ERR_NOT_FOUND);
+        EXPECT(om_log_module_set_level("testmod", OM_LOG_LEVEL_WARN) == OM_OK);
+        size_t len_before = g_cap_a.len;
+        OM_LOG_INFO("filtered by runtime level"); /* INFO < WARN → 判定链拦截 */
+        EXPECT(g_cap_a.len == len_before);
+        OM_LOG_ERROR("still visible"); /* ERROR >= WARN → 出 */
+        EXPECT(g_cap_a.len > len_before);
+        /* 恢复 + 边界 */
+        EXPECT(om_log_module_set_level("testmod", OM_LOG_LEVEL_INFO) == OM_OK);
+        EXPECT(om_log_module_set_level("no_such_mod", OM_LOG_LEVEL_ERROR) == OM_ERR_NOT_FOUND);
+        EXPECT(om_log_module_set_level("testmod", OM_LOG_LEVEL_MAX) == OM_ERR_INVALID_ARG);
+        EXPECT(om_log_module_get_level(NULL, &lv) == OM_ERR_INVALID_ARG);
+    }
+
     /* 注销：OK → 重复 NOT_FOUND → NULL INVALID_ARG */
     EXPECT(om_log_backend_unregister(&g_backend_a) == OM_OK);
     EXPECT(om_log_backend_unregister(&g_backend_a) == OM_ERR_NOT_FOUND);
