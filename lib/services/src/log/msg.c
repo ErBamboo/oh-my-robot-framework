@@ -4,7 +4,7 @@
  * @details log_msg_build：预扫描参数数（只数不取，快速上限判定）→ 超限丢弃（g_dropped_overflow
  *          计数，T6 接入查询 API）→ 单遍解析规格逐参抓取进 argBuf。
  *          规格解析唯一事实源是 log_spec_next（count 循环/抓取循环共用，防解析漂移）；
- *          取值类型谱与 formatter.c log_format_args 逐型对应（T2 定义，等价性 host 测试兜底）。
+ *          取值类型谱与 formatter.c log_format_args 逐型对应（等价性 host 测试保障）。
  */
 
 #include "core/om_config.h"

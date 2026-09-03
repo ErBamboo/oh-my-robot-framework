@@ -2,7 +2,7 @@
  * @file log.h
  * @brief log 服务公共 API（services 层）
  * @details 同步模式 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
- *          设计文档：services/log/README.md；决策：docs/adr/0015-log_service.md。
+ *          设计文档：services/log/README.md。
  *          用法：
  *            OM_LOG_MODULE(supercap, OM_LOG_LEVEL_INFO);   // 每个 .c 顶部一次
  *            OM_LOG_INFO("电压 %d.%02d V", mv / 1000, mv % 1000);
@@ -38,7 +38,7 @@ typedef enum {
 } OmLogLevel;
 
 /** @brief 模块实例（OM_LOG_MODULE 生成；level=模块级别——初始=宏参数，运行时经
- *        om_log_module_set_level 调节（设计裁决：compile/runtime 合一——同一职责复用同一字段）；
+ *        om_log_module_set_level 按名调节）；
  *        moduleId=-1=未登记（首次日志惰性入库——set_level 可查）；实例可写（登记/调节） */
 typedef struct OmLogModule {
     const char *name;
@@ -53,7 +53,7 @@ typedef struct OmLogModule {
 typedef struct OmLogBackend {
     const char *name;                                                             /* 查找/调试用 */
     void (*push)(struct OmLogBackend *backend, const char *segment, size_t len);  /* 流式段推送（线程/中断上下文均可能） */
-    void (*flush)(struct OmLogBackend *backend);                                  /* 可选：强制刷出，可为 NULL（v1 无调用点） */
+    void (*flush)(struct OmLogBackend *backend);                                  /* 可选：强制刷出，可为 NULL */
     void (*panic)(struct OmLogBackend *backend, const char *segment, size_t len); /* 可选：故障上下文提交（队列/线程/锁不可信时的最可靠通道——串口=轮询写/DMA 死仍有效；NULL=panic 时退回 push 尽力而为） */
 } OmLogBackend;
 
