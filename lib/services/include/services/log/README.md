@@ -41,7 +41,10 @@ lib/services/src/log/core.c                  ← 过滤编排/emit/兜底/panic 
 lib/services/src/log/backend.c               ← 后端表（注册/注销/级别/广播/panic 投递）
 lib/services/src/log/log_async.c             ← 队列 + 日志线程（OM_LOG_ASYNC）
 lib/services/src/log/stats.c                 ← om_log_stats 汇总
+lib/services/src/log/backends/               ← 后端实现（零驱动依赖的随服务家族存放——RTT 在此）
+lib/services/src/log/backends/rtt_backend.c  ← RTT 后端（调试通道高带宽；零驱动依赖）
 lib/drivers/src/peripheral/serial/           ← 串口后端（drivers→services 单向依赖，随驱动家族存放）
+third_party/segger-rtt/                      ← RTT 库本体（外部库——BSD 许可；经 selfreg 注入 binary）
 samples/host/om_log_test/                    ← 宿主测试（注入源 + osal 桩）
 ```
 
@@ -128,6 +131,18 @@ static OmRet serial_log_init(void)
     return om_log_backend_register(&g_serial_backend, OM_LOG_LEVEL_INFO);
 }
 OM_INIT_DRIVER(serial_log_init);  /* 早于任何打日志的业务代码 */
+```
+
+（RTT 后端同款——注册即用，通道 0 固定；观测经调试接口 J-Link RTT Viewer / RTTClient）：
+
+```c
+static OmRttBackend g_rtt_backend;
+
+static OmRet rtt_log_init(void)
+{
+    return om_rtt_backend_register(&g_rtt_backend, "rtt", OM_LOG_LEVEL_INFO);
+}
+OM_INIT_DRIVER(rtt_log_init);   /* 同一时机；多后端即广播（按后端级别过滤） */
 ```
 
 **故障组合**（fatal handler 覆盖——记录现场 + 恢复）：
