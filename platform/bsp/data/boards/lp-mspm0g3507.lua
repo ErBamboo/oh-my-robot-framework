@@ -6,7 +6,7 @@ local board = {
     name = "lp-mspm0g3507",
     chip = "mspm0g3507",
     vendor = "ti",
-    defines = {},
+    defines = {"OM_BOARD_LP_MSPM0G3507"}, -- 板身份宏（编译级；boardcfg 板守卫/多板条件逻辑的事实源，见 ADR-0017）
     includedirs = {
         "boards/lp-mspm0g3507/include",
         "boards/lp-mspm0g3507/source",
