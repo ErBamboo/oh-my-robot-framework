@@ -7,11 +7,14 @@
       xmake build -P samples/host/om_log_test
       xmake run -P samples/host/om_log_test om_log_formatter_test
       xmake run -P samples/host/om_log_test om_log_filter_test
+      xmake run -P samples/host/om_log_test om_log_deferred_test
 
     退出码 0=通过；非 0=失败（EXPECT 断言不通过）。
     formatter 目标：纯 C 流式格式化器（无 OS 依赖）；
-    filter 目标：om_log_log 全链（过滤/临界区/扇出，port 桩 no-op 化临界区）。
-    filter 目标另含 osal 桩（本地 osal/osal_time.h shadow + om_log_osal_stub.c——
+    filter 目标：om_log_log 全链（过滤/临界区/扇出，port 桩 no-op 化临界区；
+    显式 OM_LOG_DEFERRED=0——未就绪路径固定走同步兜底，防异步/缓冲引入断言漂移）；
+    deferred 目标：早期缓冲 + 丢弃后验告警（默认 OM_LOG_DEFERRED=1，BUF=128 构造溢出）。
+    filter/deferred 目标另含 osal 桩（本地 osal/osal_time.h shadow + om_log_osal_stub.c——
     core.c 时间戳取 osal_time_now_monotonic，host 桩恒 0）。
 ]]
 
@@ -39,9 +42,26 @@ target("om_log_filter_test")
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
     add_includedirs(log_src)
+    add_defines("OM_LOG_DEFERRED=0") -- 早期缓冲关：未就绪路径固定走同步兜底（本目标回归面）
     add_files("om_log_test_common.c", "om_log_filter_test.c", "om_log_port_stub.c",
               "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走同步兜底（v1 语义）
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
               path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
               path.join(log_src, "module.c"), path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
+target_end()
+
+target("om_log_deferred_test")
+    set_kind("binary")
+    set_languages("c11")
+    add_includedirs(os.scriptdir()) -- 本地 osal/osal_time.h 桩 shadow（先于框架头解析）
+    add_includedirs(path.join(fw, "lib/include"))
+    add_includedirs(path.join(fw, "lib/services/include"))
+    add_includedirs(log_src)
+    add_defines("OM_LOG_DEFERRED_BUF_SIZE=128") -- 早期缓冲小容量：短记录 37B×3=111B+1 条=溢出（精确构造）
+    add_files("om_log_test_common.c", "om_log_deferred_test.c", "om_log_port_stub.c",
+              "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走早期缓冲
+              path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
+              path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
+              path.join(log_src, "module.c"), path.join(log_src, "stats.c"),
+              path.join(log_src, "deferred.c")) -- 早期缓冲 + 丢弃后验告警
 target_end()
