@@ -12,6 +12,11 @@
  *  - 每片段只面对一块板（构建按 board= 自动选择；守卫防错配）
  */
 
+/* 声明式守卫：片段头必须自守卫——bsp 聚合头（bsp.h）与直接包含（bsp_serial.h）并存时
+ * 同一 TU 可能重复包含本文件（同值宏重复定义虽无碍，非幂等内容/分歧值会冲突） */
+#ifndef OM_BOARDCONF_H__
+#define OM_BOARDCONF_H__
+
 /* 板身份守卫：换板忘改 → 首行 #error（构建期暴露，不静默错配）。按目标板改宏名。 */
 #if !defined(OM_BOARD_RM_A)
 #error "boardcfg 面向 rm-a-board——当前构建板不匹配（换板请更新 cfg/boards/<board>/boardcfg.h）"
@@ -30,3 +35,4 @@
 
 /* DMA profile（0=USART3 全 DMA+UART7 中断；1=USART3 TX-DMA+UART7 全 DMA——默认） */
 // #define RM_A_SERIAL37_PROFILE 0U
+#endif /* OM_BOARDCONF_H__ */

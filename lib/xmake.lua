@@ -153,3 +153,19 @@ target("tar_awsystems")
     add_includedirs("systems/include", {public = true})
     add_files("systems/src/**.c")
 target_end()
+
+-- 配置变更感知：全部库目标挂接配置状态标记（见 build/rules/project_cfg.lua apply_cfg_state_dep）
+-- 根治"旗标/配置变更不重编、静态库成员陈旧"（2026-09-05 实测备忘）
+local _cfg_rule_targets = {
+    "tar_awalgo", "tar_awapi_async", "tar_awapi_driver", "tar_awapi_ipc", "tar_awapi_osal",
+    "tar_awapi_sync", "tar_awasync", "tar_awcore", "tar_awdatastruct", "tar_awdrivers",
+    "tar_awkernel", "tar_awosal_probe", "tar_awsystems",
+}
+-- 独立挂载（rule 文件的全局函数不跨文件可见——直接本地实现）
+local _cfg_state_file = path.join(os.projectdir(), ".xmake", "om_cfg_state")
+for _, _name in ipairs(_cfg_rule_targets) do
+    local _t = target(_name)
+    if _t then
+        _t:add("depfiles", _cfg_state_file)
+    end
+end

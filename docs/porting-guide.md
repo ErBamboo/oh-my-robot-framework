@@ -152,6 +152,7 @@ osal_event.h:
 - **前置语义**：用户宏先于默认值生效——默认宏均为 `#ifndef` 守卫（仅当未定义时设置），appcfg 直接 `#define` 覆写即可，**无需 `#undef` 再重定义**（后置写法会与默认值宏重定义冲突）
 - 默认不启用（未定义 `OM_USE_APPCFG` 时不做任何额外 include）
 - 启用方式（二选一）：① 工程 `cfg/om_appcfg.h` 存在——`oh_my_robot.project_cfg` 规则自动注入 `-DOM_USE_APPCFG` 与 include path（推荐）；② 编译选项手工 `-DOM_USE_APPCFG` + 自保 include path（legacy）
+- **片段书写约定**：`om_appcfg.h` 与 `om_boardcfg.h` 均须自带声明式守卫（`#ifndef` 骨架见模板）——`om_boardcfg.h` 尤其必要：bsp 聚合头（`bsp.h`）与直接包含（`bsp_serial.h`）并存时，同一 TU 会对板头重复包含本文件（同值宏重复定义虽无碍，非幂等内容/分歧值会冲突）
 
 ## 移植检查清单
 

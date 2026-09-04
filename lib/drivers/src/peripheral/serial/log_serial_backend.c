@@ -6,6 +6,10 @@
  *          （失败感知分层，后端自持诊断，见 services/log/README.md）。
  */
 
+#include "core/om_config.h"
+
+#if OM_USE_LOG
+
 #include "drivers/peripheral/serial/log_serial_backend.h"
 
 #include "drivers/peripheral/serial/pal_serial_dev.h"
@@ -116,3 +120,5 @@ OmRet om_log_serial_backend_unregister(LogSerialBackend *inst)
     inst->dev = NULL;
     return OM_OK;
 }
+
+#endif /* OM_USE_LOG */
