@@ -43,6 +43,10 @@ rule("oh_my_robot.project_cfg")
         local cur = os.isfile(marker) and io.readfile(marker) or nil
         if cur ~= state then
             io.writefile(marker, state)
+            -- 内容缓存清理：xmake 编译缓存键=源码内容（不含旗标/包含路径）——配置/换板后
+            -- 旧对象仍会命中 → 状态变化时同点清缓存（与 depfile 标记同一触发源）
+            os.rmdir(path.join(project_dir, ".cache"))
+            os.rmdir(path.join(project_dir, "build", ".build_cache"))
         end
 
         if target:kind() ~= "binary" then
