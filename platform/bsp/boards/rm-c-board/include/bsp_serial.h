@@ -6,6 +6,9 @@
 
 #ifndef __OM_BSP_SERIAL_H__
 #define __OM_BSP_SERIAL_H__
+#ifdef OM_USE_BOARDCFG
+#include "om_boardcfg.h" /* 工程板级覆写（boardcfg 契约见 ADR-0017）——须在默认值定义之前 */
+#endif
 
 #include "drivers/peripheral/serial/pal_serial_dev.h"
 
@@ -77,6 +80,26 @@
 
 /* 实例数：必须等于 bsp_serial_data.c 中 g_bsp_serial 条目数（数据文件内编译期校验） */
 #define BSP_SERIAL_COUNT (2U)
+
+/* 日志口（语义键契约，见 ADR-0017）：rm-c 日志口 = usart6（板数据表行；板私有值见各板） */
+#ifndef BSP_LOG_SERIAL_NAME
+#define BSP_LOG_SERIAL_NAME "usart6"
+#endif
+
+/* 日志口波特率（语义键——用户意图值；boardcfg/CLI 覆写本键即生效） */
+#ifndef BSP_LOG_BAUD
+#define BSP_LOG_BAUD 115200u
+#endif
+
+/* 日志口实例波特率（usart6 即日志口：实例宏 = 语义键——板内映射；适配器消费点读本宏） */
+#ifndef BSP_SERIAL6_BAUD
+#define BSP_SERIAL6_BAUD BSP_LOG_BAUD
+#endif
+
+/* 日志口 TX FIFO 容量（构建期可覆盖；消息 > FIFO 时尾部段丢失 → 半行） */
+#ifndef BSP_SERIAL6_TXBUFSZ
+#define BSP_SERIAL6_TXBUFSZ 1024
+#endif
 
 #include "serial/bsp_serial_f4.h"
 
