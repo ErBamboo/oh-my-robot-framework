@@ -1,7 +1,7 @@
 /**
  * om_boardcfg.h —— 工程板级配置覆写（板层；可选）
  *
- * 用法：复制到 <project>/cfg/boards/<board>/boardcfg.h（<board> 与预设板名一致，如 rm-a-board），
+ * 用法：复制到 <project>/cfg/boards/<board>/om_boardcfg.h（<board> 与预设板名一致，如 rm-a-board），
  *       构建自动发现（oh_my_robot.project_cfg 规则，注入 -DOM_USE_BOARDCFG）。
  *
  * 职责边界（ADR-0017 project_config_layering）：

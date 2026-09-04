@@ -1,6 +1,14 @@
 ﻿#ifndef __OM_CONFIG_H__
 #define __OM_CONFIG_H__
 
+/* 应用覆写入口（前置语义：用户宏先于默认值生效——默认值仅当未定义时设置
+ * （#ifndef 惯例），无需 #undef 重定义。om_appcfg.h 非必需）。
+ * 触发：构建注入 -DOM_USE_APPCFG（oh_my_robot.project_cfg 规则自动发现
+ * <project>/cfg/om_appcfg.h），或在包含本头前定义。 */
+#ifdef OM_USE_APPCFG
+#include "om_appcfg.h"
+#endif
+
 /* 功能裁剪 */
 #define OM_USE_ASSERT /* 框架断言（见 core/om_assert.h）；om_appcfg.h 中 #undef 可关闭 */
 
@@ -71,15 +79,6 @@
  */
 #ifndef OM_SYNC_ACCEL
 #define OM_SYNC_ACCEL 0
-#endif
-
-/*
- * 应用覆写入口：用户可在工程中放置 om_appcfg.h 以覆盖上述默认值。
- * 该文件不是必须的。启用方式：在包含 om_config.h 之前定义 OM_USE_APPCFG，
- * 或通过构建系统注入 -DOM_USE_APPCFG。
- */
-#ifdef OM_USE_APPCFG
-#include "om_appcfg.h"
 #endif
 
 #endif // __OM_CONFIG_H__

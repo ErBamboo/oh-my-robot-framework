@@ -2,7 +2,7 @@
 --- @brief 工程配置片段自动发现规则
 --- @details 检测工程 cfg/ 目录中的配置片段并注入编译上下文：
 ---   cfg/om_appcfg.h                        → 框架层覆写（注入 -DOM_USE_APPCFG）
----   cfg/boards/<board>/boardcfg.h          → 板层覆写（注入 -DOM_USE_BOARDCFG）
+---   cfg/boards/<board>/om_boardcfg.h          → 板层覆写（注入 -DOM_USE_BOARDCFG）
 ---           片段不存在 = 零成本（不注入任何内容）；<board> 取当前构建板
 ---           （context.board_name——与 preset board= 一致）。
 ---           命名/职责/优先级契约见 ADR-0017 (project_config_layering)。
@@ -26,11 +26,11 @@ rule("oh_my_robot.project_cfg")
             target:add("defines", "OM_USE_APPCFG")
             target:add("includedirs", path.join(project_dir, "cfg"))
         end
-        -- 板层片段：cfg/boards/<board>/boardcfg.h
+        -- 板层片段：cfg/boards/<board>/om_boardcfg.h
         local board_name = context.board_name
         if board_name then
             local board_cfg_dir = path.join(project_dir, "cfg", "boards", board_name)
-            local boardcfg = path.join(board_cfg_dir, "boardcfg.h")
+            local boardcfg = path.join(board_cfg_dir, "om_boardcfg.h")
             if os.isfile(boardcfg) then
                 target:add("defines", "OM_USE_BOARDCFG")
                 target:add("includedirs", board_cfg_dir)

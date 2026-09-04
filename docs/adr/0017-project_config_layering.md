@@ -15,7 +15,7 @@
 
 1. **四类配置载体**（职责与优先级）：
    - 命令行 `-D`（最高）——构建注入，临时调变
-   - 工程片段：`<project>/cfg/om_appcfg.h`（框架层域 `OM_*`）+ `<project>/cfg/boards/<board>/boardcfg.h`（板层域：Ⅰ类策略宏/语义键）
+   - 工程片段：`<project>/cfg/om_appcfg.h`（框架层域 `OM_*`）+ `<project>/cfg/boards/<board>/om_boardcfg.h`（板层域：Ⅰ类策略宏/语义键）
    - 板默认值：`platform/bsp/boards/<board>/include/bsp_*.h`（板头 guard 宏定义默认）
    - 框架默认值：`lib/include/core/om_config.h`
 2. **板身份宏**：板数据 lua `defines` 注入 `OM_BOARD_RM_A` / `OM_BOARD_RM_C` / `OM_BOARD_LP_MSPM0G3507`（编译级、三板统一、登记在 porting-guide）——机制基础件：boardcfg 板守卫、未来多板条件逻辑的唯一事实源。
