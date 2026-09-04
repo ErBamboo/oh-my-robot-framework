@@ -29,6 +29,8 @@ local SELFREG_DIRS = {
 --- 框架自带自注册源文件（相对框架根），逐一注入 binary。
 local SELFREG_FILES = {
     "lib/source/core/om_main.c",
+    -- 第三方库（BSD 许可——保留 LICENSE 于同目录）；services 后端引用
+    "third_party/segger-rtt/SEGGER_RTT.c",
 }
 
 rule("oh_my_robot.selfreg")
@@ -44,6 +46,7 @@ rule("oh_my_robot.selfreg")
             path.join(om_root, "lib/include"),
             path.join(om_root, "lib/systems/include"),
             path.join(om_root, "lib/services/include"),
+            path.join(om_root, "third_party/segger-rtt"), -- SEGGER_RTT 头（服务后端引用；第三方库目录）
         }
         for _, dir in ipairs(SELFREG_DIRS) do
             local files = os.files(path.join(om_root, dir, "**.c"))
