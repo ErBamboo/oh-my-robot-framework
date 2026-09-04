@@ -14,7 +14,10 @@ include 顺序:  om_port_compiler.h → om_port_hw.h → om_osal_portdef.h → o
 |---|---|---|---|---|
 | `om_osal_portdef.h` | OS 端口适配者 | **强制** | `platform/osal/<os>/` | `osal_config.h` 直接 `#include` |
 | `om_bsp_portdef.h` | BSP 作者 | **预留**（当前空） | `platform/bsp/boards/<board>/` | 待定 |
-| `om_appcfg.h` | 应用作者 | **可选** | 用户工程目录 | 定义 `OM_USE_APPCFG` 后，`om_config.h` 引入 |
+| `om_appcfg.h` | 应用作者 | **可选**（框架层域 `OM_*`） | `<project>/cfg/` | 自动发现（`oh_my_robot.project_cfg` 规则注入 `OM_USE_APPCFG`） |
+| `om_boardcfg.h` | 应用作者 | **可选**（板层域策略宏） | `<project>/cfg/boards/<board>/` | 自动发现（同规则注入 `OM_USE_BOARDCFG`） |
+
+**配置覆写优先级**（自高至低）：命令行 `-D` > 工程片段（appcfg/boardcfg）> 板默认（框架板头 guard 块）> 框架默认（`om_config.h`）。**四类载体与板事实/策略切分见 ADR-0017 (project_config_layering)。**
 
 ## 1. `om_osal_portdef.h` — OS 端口强制定义
 
@@ -90,11 +93,37 @@ osal_event.h:
 
 当前版本 BSP 级无强制参数。`om_port_hw.h` 已覆盖中断原语。本文件为未来扩展预留（如 Flash 起始地址、内存布局差异等）。
 
-## 3. `om_appcfg.h` — 应用配置覆写
+## 3. `om_appcfg.h` — 应用配置覆写（框架层域）
 
 ### 何时使用
 
-当 `om_config.h` 提供的默认功能裁剪（`OM_USE_*`）或优化开关（`OM_SYNC_ACCEL`）需要调整时，应用作者在自己的工程目录下创建此文件。
+当 `om_config.h` 提供的默认功能裁剪（`OM_USE_*`）或优化开关（`OM_SYNC_ACCEL`）需要调整时，应用作者在工程目录创建 `<project>/cfg/om_appcfg.h`（构建规则自动发现并注入 `OM_USE_APPCFG`——零命令参数）。
+
+### 板层覆写（`om_boardcfg.h`）
+
+板级策略宏（见"板事实 vs 策略"说明）在 `<project>/cfg/boards/<board>/om_boardcfg.h` 覆写——**模板见 `docs/config/om_boardcfg.h.example`**；职责边界与守卫语法即模板内注释。换板（preset `board=`）时构建自动选择对应片段目录。
+
+### 板身份宏（登记表）
+
+板数据 lua `defines` 注入，编译级全局；boardcfg 守卫与多板条件逻辑的事实源：
+
+| 板 | 宏 |
+|---|---|
+| rm-a-board | `OM_BOARD_RM_A` |
+| rm-c-board | `OM_BOARD_RM_C` |
+| lp-mspm0g3507 | `OM_BOARD_LP_MSPM0G3507` |
+
+### rm-a 覆写宏表（策略类——Ⅰ类）
+
+| 宏 | 默认 | 含义 | 备注 |
+|---|---|---|---|
+| `BSP_LOG_BAUD`（语义键） | `115200u` | 日志口波特率（意图键——boardcfg 覆写本键即生效） | 板内映射 usart6 |
+| `BSP_LOG_SERIAL_NAME` | `"usart6"` | 日志口实例名 | 板事实约束：须为已配置实例 |
+| `BSP_SERIAL6_BAUD` | `BSP_LOG_BAUD` | 6 号串口（=日志口）实例波特率 | 适配器消费点；CLI `-D` 仍可直覆 |
+| `BSP_SERIAL6_TXBUFSZ` | `1024` | 6 号串口 TX FIFO | ≥ 最大消息长度保完整 |
+| `RM_A_SERIAL37_PROFILE` | 1 | 串口 3/7 DMA 方案包 | 0/1 见板头注释 |
+
+板【事实】类（引脚/DMA stream/中断/实例表/`USE_SERIAL_3`/`BSP_SERIAL_COUNT`）不可经配置头覆写——修改 = 板定义变更（复制板单元 DIY 流程）。
 
 ### 示例
 
@@ -114,15 +143,16 @@ osal_event.h:
 ### 工作机制
 
 ```c
-// om_config.h 末尾:
+// om_config.h 头部（默认值定义之前）:
 #ifdef OM_USE_APPCFG
 #include "om_appcfg.h"
 #endif
 ```
 
-- 默认不启用（未定义 `OM_USE_APPCFG` 时 `om_config.h` 不做任何额外 include）
-- 启用方式：编译选项中添加 `-DOM_USE_APPCFG`，或将 `#define OM_USE_APPCFG` 放在 `#include "core/om_config.h"` 之前
-- `om_appcfg.h` 的 include path 需由用户自行保证
+- **前置语义**：用户宏先于默认值生效——默认宏均为 `#ifndef` 守卫（仅当未定义时设置），appcfg 直接 `#define` 覆写即可，**无需 `#undef` 再重定义**（后置写法会与默认值宏重定义冲突）
+- 默认不启用（未定义 `OM_USE_APPCFG` 时不做任何额外 include）
+- 启用方式（二选一）：① 工程 `cfg/om_appcfg.h` 存在——`oh_my_robot.project_cfg` 规则自动注入 `-DOM_USE_APPCFG` 与 include path（推荐）；② 编译选项手工 `-DOM_USE_APPCFG` + 自保 include path（legacy）
+- **片段书写约定**：`om_appcfg.h` 与 `om_boardcfg.h` 均须自带声明式守卫（`#ifndef` 骨架见模板）——`om_boardcfg.h` 尤其必要：bsp 聚合头（`bsp.h`）与直接包含（`bsp_serial.h`）并存时，同一 TU 会对板头重复包含本文件（同值宏重复定义虽无碍，非幂等内容/分歧值会冲突）
 
 ## 移植检查清单
 

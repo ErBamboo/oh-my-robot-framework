@@ -20,7 +20,7 @@ local board = {
     name = "rm-c-board",
     chip = "stm32f407xx",
     vendor = "stm32",
-    defines = {},
+    defines = {"OM_BOARD_RM_C"}, -- 板身份宏（编译级；boardcfg 板守卫/多板条件逻辑的事实源，见 ADR-0017）
     includedirs = {
         "boards/rm-c-board/include",
         "arch/cortex-m",  -- 内核架构级共享头（bsp_dwt.h）

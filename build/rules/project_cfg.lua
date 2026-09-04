@@ -1,0 +1,60 @@
+--- @file oh_my_robot/build/rules/project_cfg.lua
+--- @brief 工程配置片段自动发现规则 + 配置变更感知
+--- @details ①检测工程 cfg/ 目录中的配置片段并注入编译上下文：
+---   cfg/om_appcfg.h                        → 框架层覆写（注入 -DOM_USE_APPCFG）
+---   cfg/boards/<board>/om_boardcfg.h       → 板层覆写（注入 -DOM_USE_BOARDCFG）
+---           片段不存在 = 零成本（不注入任何内容）；<board> 取当前构建板
+---           （context.board_name——与 preset board= 一致）。
+--- ②配置变更感知：每个配置再生（xmake f）向 <project>/.xmake/om_cfg_state
+---   写入当前配置状态摘要，并作为所有目标的 depfile——配置/旗标变更后
+---   构建期自动重编（根治"旗标变更不重编/陈旧归档成员"——实测备忘）。
+---   命名/职责/优先级契约见 ADR-0017 (project_config_layering)。
+--- 用法：binary 目标在规则组中显式添加 "oh_my_robot.project_cfg"；
+---       框架库目标（lib/xmake.lua tar_*）在 lib/xmake.lua 末尾独立挂接同款 depfile。
+local om_root = path.join(os.scriptdir(), "..", "..")
+local modules_root = path.join(om_root, "build", "modules")
+
+--- 配置状态摘要文件（所有目标共用的配置标记 depfile；lib/xmake.lua 同名路径）
+local function cfg_state_file()
+    return path.join(os.projectdir(), ".xmake", "om_cfg_state")
+end
+
+rule("oh_my_robot.project_cfg")
+    --- 配置阶段检测并注入工程配置片段 + 写入配置状态标记
+    ---@param target target 目标对象
+    on_config(function(target)
+        local oh_my_robot = import("oh-my-robot", {rootdir = modules_root})
+        local context = oh_my_robot.get_context()
+        local project_dir = os.projectdir()
+        local appcfg = path.join(project_dir, "cfg", "om_appcfg.h")
+        local has_appcfg = os.isfile(appcfg)
+        local board_name = context.board_name
+        local boardcfg = board_name and path.join(project_dir, "cfg", "boards", board_name, "om_boardcfg.h") or nil
+        local has_boardcfg = boardcfg and os.isfile(boardcfg) or false
+
+        -- 配置状态摘要：内容 = 注入决定性状态（含片段文件原文——值变更即感知）；
+        -- 仅当内容变化时重写（mtime 变化→depfile 触发重编）
+        local function cfg_content(p)
+            return os.isfile(p) and io.readfile(p) or ""
+        end
+        local state = string.format("board=%s\n== appcfg ==\n%s\n== boardcfg ==\n%s",
+                                    tostring(board_name), cfg_content(appcfg), cfg_content(boardcfg))
+        local marker = cfg_state_file()
+        local cur = os.isfile(marker) and io.readfile(marker) or nil
+        if cur ~= state then
+            io.writefile(marker, state)
+        end
+
+        if target:kind() ~= "binary" then
+            return
+        end
+
+        if has_appcfg then
+            target:add("defines", "OM_USE_APPCFG")
+            target:add("includedirs", path.join(project_dir, "cfg"))
+        end
+        if has_boardcfg then
+            target:add("defines", "OM_USE_BOARDCFG")
+            target:add("includedirs", path.join(project_dir, "cfg", "boards", board_name))
+        end
+    end)
