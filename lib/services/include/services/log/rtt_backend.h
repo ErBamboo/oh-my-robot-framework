@@ -9,7 +9,10 @@
  *          就绪路径=日志线程；兜底路径=调用侧；panic 时线程已死——单写者恒成立）。
  *          v1 固定上向通道 0（Terminal）：SEGGER 库默认仅配置通道 0（_DoInit 只挂默认缓冲），
  *          通道 1..MAX-1 描述符零态（pBuffer NULL——写出将写坏内存，故禁止）；
- *          多通道留 v2（SEGGER_RTT_ConfigUpBuffer 自备缓冲接入）。
+ *          多通道留后续（SEGGER_RTT_ConfigUpBuffer 自备缓冲接入）。
+ *          注册方式两种：①宏配置（OM_LOG_RTT=1，om_config.h）零接线隐藏注册——
+ *          默认实例由本文件自注册（OM_INIT_DRIVER，早于业务日志）；②本 API 显式注册
+ *          （多实例/自定义名）——与默认后端同名时注册表查重返回 OM_ERR_ALREADY（二选一）。
  */
 
 #ifndef __OM_RTT_BACKEND_H__

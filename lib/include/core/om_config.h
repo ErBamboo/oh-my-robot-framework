@@ -39,6 +39,21 @@
 #define OM_LOG_QUEUE_LEN 8 /* 异步队列深度（消息槽数；满丢弃+计数，printk 语义） */
 #endif
 
+/* RTT 内置默认后端（services/log/rtt_backend.h）：1=零接线隐藏注册（本组配置生效），
+ * 0=仅显式 om_rtt_backend_register 注册（默认——现有行为不变）。 */
+#ifndef OM_LOG_RTT
+#define OM_LOG_RTT 0
+#endif
+
+#ifndef OM_LOG_RTT_NAME
+#define OM_LOG_RTT_NAME "rtt" /* 默认后端名（om_log_backend_set_level 按名调节用；仅 OM_LOG_RTT=1 时生效） */
+#endif
+
+#ifndef OM_LOG_RTT_LEVEL
+#define OM_LOG_RTT_LEVEL OM_LOG_LEVEL_INFO /* 默认后端初始级别（初始=宏参数；运行期 om_log_backend_set_level 调节）； \
+                                            * 编译期越界守卫：rtt_backend.c _Static_assert（enum 常量 #if 不可见） */
+#endif
+
 /* 抽象层裁剪 */
 #define OM_USE_HAL_SERIALS
 #define OM_USE_HAL_CAN

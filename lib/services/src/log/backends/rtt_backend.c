@@ -13,6 +13,7 @@
 #if OM_USE_LOG
 
 #include "core/om_def.h"
+#include "core/om_init.h" /* OM_INIT_DRIVER（默认后端隐藏注册） */
 
 #include "SEGGER_RTT.h"
 #include "services/log/log.h"
@@ -24,6 +25,11 @@
  * 重构结构体顺序会立即编译报错）——与串口后端同款 */
 _Static_assert(offsetof(OmRttBackend, backend) == 0,
                "OmRttBackend.backend 须为首成员（直接强转取实例的前提）");
+
+/* 默认后端级别越界守卫：OM_LOG_LEVEL_* 为 enum 常量（预处理期对 #if 不可见——恒判 0），
+ * 故用 _Static_assert 实现编译期防线（负数组编译错误同款）：越界值编译期报错。 */
+_Static_assert(OM_LOG_RTT_LEVEL < OM_LOG_LEVEL_MAX,
+               "OM_LOG_RTT_LEVEL 越界（须 < OM_LOG_LEVEL_MAX）");
 
 /** @brief 段推送：字节拷入 RTT 环形缓冲（log 临界区/日志线程内被调——
  *          SPSC 单生产者由 log 服务编排保证；满丢弃 = RTT 库 skip 模式返回不足）
@@ -70,5 +76,18 @@ OmRet om_rtt_backend_register(OmRttBackend *inst, const char *name, OmLogLevel l
     inst->backend.panic = rtt_panic; /* 内存通道——panic 同 push（天然可靠） */
     return om_log_backend_register(&inst->backend, level);
 }
+
+#if OM_LOG_RTT
+/* 内置默认后端：宏开关（OM_LOG_RTT=1 零接线）+ 隐藏注册（OM_INIT_DRIVER——调度器前非阻塞，
+ * 早于业务日志；存活经 selfreg 直注入同款机制）。API 版（om_rtt_backend_register）保留：
+ * 多实例/自定义名使用；与默认后端同名需二选一（注册表查重返回 OM_ERR_ALREADY）。 */
+static OmRttBackend g_rtt_default;
+
+static OmRet rtt_backend_autoreg(void)
+{
+    return om_rtt_backend_register(&g_rtt_default, OM_LOG_RTT_NAME, OM_LOG_RTT_LEVEL);
+}
+OM_INIT_DRIVER(rtt_backend_autoreg);
+#endif /* OM_LOG_RTT */
 
 #endif /* OM_USE_LOG */
