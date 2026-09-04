@@ -2,8 +2,9 @@
  * @file main.c
  * @brief RTT 日志后端零接线示范（宏配置驱动——组合层无注册代码）
  * @details 默认后端由 OM_LOG_RTT=1（om_config.h/om_appcfg.h）驱动隐藏注册（OM_INIT_DRIVER，
- *          早于业务日志——EARLIEST/BOARD 级日志静默丢弃，契约见 services/log/README.md）；
- *          OM_INIT_APPLICATION 建心跳线程持续输出（带序号，供接收侧完整性分析）。
+ *          早于业务日志——EARLIEST 级日志经早期缓冲（deferred）在异步就绪后回放，
+ *          契约见 services/log/README.md）；OM_INIT_APPLICATION 建心跳线程持续输出
+ *          （带序号，供接收侧完整性分析）。
  *          观测：J-Link RTT Viewer / RTTClient 经调试接口读目标 RAM——零引脚、零串口。
  *
  *          压测档位（编译期宏，配合接收端分析脚本——RTT 无波特率，"速率"=接口时钟）：
@@ -77,3 +78,14 @@ static OmRet log_demo(void)
     return OM_OK;
 }
 OM_INIT_APPLICATION(log_demo);
+
+/** @brief 早期缓冲（deferred）示范：EARLIEST 级——调度器前、后端未注册时打日志
+ *  @return OM_OK
+ *  @note 此级日志无后端接受：deferred 开 = 入环，异步就绪（SERVICE 级）后回放
+ *        （发起时间戳保留）；deferred 关 = 静默丢弃（对比行为——见服务 README 投递形态节） */
+static OmRet early_log_demo(void)
+{
+    OM_LOG_INFO("early demo: pre-scheduler log");
+    return OM_OK;
+}
+OM_INIT_EARLIEST(early_log_demo);
