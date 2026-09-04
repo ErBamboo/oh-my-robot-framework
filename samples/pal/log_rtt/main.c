@@ -1,33 +1,23 @@
 /**
  * @file main.c
- * @brief RTT 日志后端接线示范（组合层：services 后端工厂 + log 服务）
- * @details OM_INIT_DRIVER 注册后端（调度器前，早于 SERVICE 级业务日志——EARLIEST/BOARD
- *          级日志静默丢弃，契约见 services/log/README.md）；
+ * @brief RTT 日志后端零接线示范（宏配置驱动——组合层无注册代码）
+ * @details 默认后端由 OM_LOG_RTT=1（om_config.h/om_appcfg.h）驱动隐藏注册（OM_INIT_DRIVER，
+ *          早于业务日志——EARLIEST/BOARD 级日志静默丢弃，契约见 services/log/README.md）；
  *          OM_INIT_APPLICATION 建心跳线程持续输出（带序号，供接收侧完整性分析）。
  *          观测：J-Link RTT Viewer / RTTClient 经调试接口读目标 RAM——零引脚、零串口。
  *
  *          压测档位（编译期宏，配合接收端分析脚本——RTT 无波特率，"速率"=接口时钟）：
- *            LOG_STRESS_LEN        1=短~40B  2=中~200B  3=长~1KB（默认 1）
- *            RTT_STRESS_PERIOD_MS  消息间隔 ms（默认 500）
- *          构建例：xmake f --cxflags="-DLOG_STRESS_LEN=2 -DRTT_STRESS_PERIOD_MS=5"
+ *            OM_LOG_RTT=1           内置默认后端开关（本示范必须）
+ *            LOG_STRESS_LEN         1=短~40B  2=中~200B  3=长~1KB（默认 1）
+ *            RTT_STRESS_PERIOD_MS   消息间隔 ms（默认 500）
+ *          构建例：xmake f --cxflags="-DOM_LOG_RTT=1 -DLOG_STRESS_LEN=2 -DRTT_STRESS_PERIOD_MS=5"
  */
 
-#include "core/om_init.h" /* OM_INIT_DRIVER / OM_INIT_APPLICATION */
+#include "core/om_init.h" /* OM_INIT_APPLICATION */
 #include "osal/osal.h"
 #include "services/log/log.h"
-#include "services/log/rtt_backend.h"
-
-static OmRttBackend g_rtt_backend;
 
 OM_LOG_MODULE(log_rtt, OM_LOG_LEVEL_INFO);
-
-/** @brief 接线：注册 RTT 后端（DRIVER 级，调度器前；固定上向通道 0）
- *  @return OM_OK 成功；失败传播（注册错误码） */
-static OmRet log_port_init(void)
-{
-    return om_rtt_backend_register(&g_rtt_backend, "rtt", OM_LOG_LEVEL_INFO);
-}
-OM_INIT_DRIVER(log_port_init);
 
 /* 压测档位（编译期宏；默认短消息 + 500ms 心跳） */
 #ifndef LOG_STRESS_LEN

@@ -97,6 +97,9 @@ OmRet om_log_stats(OmLogStats *stats);
 | `OM_LOG_MAX_BACKENDS` | 4 | 后端表上限 |
 | `OM_LOG_MAX_MODULES` | 16 | 模块注册表上限（惰性登记；按名调节） |
 | `OM_LOG_SEGMENT_SIZE` | 32 | 段缓冲（字节；栈占用锚） |
+| `OM_LOG_RTT` | 0 | 内置默认 RTT 后端开关（1=零接线隐藏注册，0=仅显式 API 注册） |
+| `OM_LOG_RTT_NAME` | `"rtt"` | 默认 RTT 后端名（按名调节用） |
+| `OM_LOG_RTT_LEVEL` | `OM_LOG_LEVEL_INFO` | 默认 RTT 后端初始级别（越界编译期 `_Static_assert` 报错） |
 
 全宏在 `om_config.h`，均可经 `om_appcfg.h` 覆写。
 
@@ -133,17 +136,14 @@ static OmRet serial_log_init(void)
 OM_INIT_DRIVER(serial_log_init);  /* 早于任何打日志的业务代码 */
 ```
 
-（RTT 后端同款——注册即用，通道 0 固定；观测经调试接口 J-Link RTT Viewer / RTTClient）：
+（RTT 后端零接线版——宏配置即自动注册，组合层无代码；通道 0 固定；观测经调试接口 J-Link RTT Viewer / RTTClient）：
 
 ```c
-static OmRttBackend g_rtt_backend;
-
-static OmRet rtt_log_init(void)
-{
-    return om_rtt_backend_register(&g_rtt_backend, "rtt", OM_LOG_LEVEL_INFO);
-}
-OM_INIT_DRIVER(rtt_log_init);   /* 同一时机；多后端即广播（按后端级别过滤） */
+/* om_appcfg.h：OM_LOG_RTT=1（默认后端）；OM_LOG_RTT_NAME/OM_LOG_RTT_LEVEL 可调节 */
+/* 注册由后端自行完成（OM_INIT_DRIVER 隐藏注册，早于业务日志）；多后端广播语义不变 */
 ```
+
+显式 API 版（`om_rtt_backend_register`）保留：多实例/自定义名场景；与 `OM_LOG_RTT=1` 的默认后端同名时注册表查重返回 `OM_ERR_ALREADY`（二选一使用）。
 
 **故障组合**（fatal handler 覆盖——记录现场 + 恢复）：
 
