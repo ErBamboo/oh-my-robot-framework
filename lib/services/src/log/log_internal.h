@@ -175,12 +175,6 @@ bool log_drop_warn(LogDropWarnState *st, const OmLogModule *module, const char *
 /** @brief 框架内部告警模块实例（"log"——丢弃告警的消息头 module 标注；不进模块注册表） */
 const OmLogModule *log_service_module(void);
 
-#if OM_LOG_ASYNC
-/** @brief 异步模式初始化：建门铃（OsalSem 二值，空→非空 post）+ 日志线程
- *  @return OM_OK；OM_ERR_NO_MEM 门铃/线程创建失败 */
-OmRet log_async_init(void);
-#endif
-
 /** @brief 是否有后端接受该级别（过滤流水线第②步，临界区内调用）
  *  @param level 消息级别
  *  @return true = 至少一个已注册后端满足 level >= 其后端级别 */

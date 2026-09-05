@@ -6,7 +6,8 @@
  *          生产（log_ring_produce）：临界区串行（多生产者收敛单写者角色——成本 = 消息拷贝
  *          级）ringbuf_in；满 = 丢新 + 计数。
  *          消费触发（OM_LOG_ASYNC 选择）：1 = 日志线程（门铃 OsalSem 二值，环 空→非空 才
- *          post——pipe 模式；见 log_async.c）；0 = 现场触发——生产后判定 any_accepts(本消息)
+ *          post——pipe 模式；门铃/线程/等待循环本文件单一属主——原 log_async.c 已并入）；
+ *          0 = 现场触发——生产后判定 any_accepts(本消息)
  *          为真 → drain 全量（保生产序，含本消息与滞留段）→ 现场 emit；无后端 → 滞留环中
  *          （"deferred"回归形态）；服务就绪点（OM_INIT_SERVICE，仅 !ASYNC）→ 回放滞留段。
  *          消费（log_ring_drain）：循环 ringbuf_out → log_emit_args（单消费者 SPSC 读侧）；
@@ -19,15 +20,11 @@
 #if OM_USE_LOG
 
 #include "core/om_def.h"
+#include "core/om_init.h" /* OM_INIT_SERVICE——消费调度器/服务就绪点自注册 */
 #include "core/om_interrupt.h"
 #include "data_struct/ringbuffer.h"
 #include "log_internal.h"
-#if OM_LOG_ASYNC
-#include "osal/osal_sem.h" /* 门铃（二值信号量；post_auto 自动分流） */
-#else
-#include "core/om_init.h" /* OM_INIT_SERVICE——服务就绪点回放（仅同步模式注册） */
-#endif
-#include "osal/osal_time.h" /* 告警时刻（host 测试经本地桩头 shadow） */
+#include "osal/osal.h" /* 门铃（osal_sem）+ 线程 + 时间戳（host 经本地桩头 shadow osal_time） */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -47,7 +44,8 @@ static LogDropWarnState s_warn_ring = {0U, UINT32_MAX};
 static OmLogModule s_log_module = {"log", OM_LOG_LEVEL_DEBUG, -1};
 
 #if OM_LOG_ASYNC
-/** @brief 门铃（环 空→非空 才 post——二值；NULL = 未建（创建前/早期——尚无可唤醒的消费者）） */
+/** @brief 门铃（环 空→非空 才 post——二值；NULL = 未建（创建前/早期——尚无可唤醒的消费者））
+ *  @note 门铃/线程/等待循环同属本文件——消费调度器与环的单一属主；log_async.c 已并入 */
 static OsalSem *s_doorbell;
 #endif
 
@@ -92,7 +90,8 @@ void log_ring_produce(const OmLogMsg *msg)
 void log_ring_drain(void)
 {
     OmLogMsg msg;
-    ring_ensure();
+    /* 环初始化仅生产侧执行（首次生产必然先于任何消费；若系统零日志，未初始化环
+     * mask=0 → cap=1 → 空语义——消费侧安全空转） */
     while (ringbuf_out(&s_rb, &msg, 1))
     {
         log_emit_args(&msg); /* 消费时刻格式化+扇出（单消费者——SPSC 读侧原子） */
@@ -156,7 +155,39 @@ const OmLogModule *log_service_module(void)
     return &s_log_module;
 }
 
-#if !OM_LOG_ASYNC
+#if OM_LOG_ASYNC
+/** @brief 日志线程入口：先行 drain（启动期滞留——门铃未建时生产无信号可等）→ take 循环
+ *  @param arg 未使用 */
+static void log_async_thread(void *arg)
+{
+    (void)arg;
+    log_ring_drain(); /* 启动期滞留段（生产者早期在门铃未建时入环——无信号可等） */
+    for (;;)
+    {
+        (void)osal_sem_wait(s_doorbell, OSAL_WAIT_FOREVER);
+        log_ring_drain();
+    }
+}
+
+/** @brief 异步模式初始化：建门铃（二值 max=1 init=0）+ 日志线程（LOW 带；名 "log_thread"）
+ *  @return OM_OK 成功；OM_ERR_NO_MEM 门铃/线程创建失败 */
+static OmRet log_async_init(void)
+{
+    if (osal_sem_create(&s_doorbell, 1U, 0U) != OSAL_OK)
+    {
+        return OM_ERR_NO_MEM;
+    }
+    OsalThreadAttr attr = {"log_thread", 0U, OSAL_PRIO_LOW_BASE};
+    OsalThread *thread = NULL;
+    if (osal_thread_create(&thread, &attr, log_async_thread, NULL) != OSAL_OK)
+    {
+        return OM_ERR_NO_MEM;
+    }
+    return OM_OK;
+}
+OM_INIT_SERVICE(log_async_init); /* SERVICE 级：调度器后建门铃+线程（可阻塞）；
+                                  * 之前生产流入环滞留——线程首轮 drain 接住 */
+#else
 /** @brief 服务就绪点（OM_INIT_SERVICE）：回放滞留段——调度器后、后端已注册（DRIVER 级）
  *  @return OM_OK */
 static OmRet log_ring_init(void)
@@ -164,7 +195,7 @@ static OmRet log_ring_init(void)
     log_ring_flush();
     return OM_OK;
 }
-OM_INIT_SERVICE(log_ring_init); /* 仅同步模式注册（异步模式线程接管——见 log_async.c） */
+OM_INIT_SERVICE(log_ring_init); /* 同步模式：现场触发 + 服务就绪点回放 */
 #endif
 
 #endif /* OM_USE_LOG */
