@@ -1,7 +1,7 @@
 /**
  * @file log.h
  * @brief log 服务公共 API（services 层）
- * @details 同步模式 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
+ * @details 统一消息环 + 流式格式化 + 模块注册制 + 后端抽象广播（per-backend 级别）。
  *          设计文档：services/log/README.md。
  *          用法：
  *            OM_LOG_MODULE(supercap, OM_LOG_LEVEL_INFO);   // 每个 .c 顶部一次
@@ -10,13 +10,18 @@
  *          契约：调用宏引用本 TU 的 _om_log_module——未注册模块就调用 = 编译错误；
  *               每 TU 一次注册；中断上下文可调用（只打 ERROR/FATAL 短消息）；
  *               后端 push 必须快速提交（不得阻塞轮询）、不得假设一次 push = 一条日志。
+ *          裁剪契约（OM_USE_LOG=0 零副作用——业界 Zephyr CONFIG_LOG=n 同款）：
+ *              类型（OmLogLevel/OmLogModule/OmLogBackend/OmLogStats）无条件——外围
+ *              结构体/回调可继续引用；函数声明消失（调用 = 编译错误——信号清晰）；
+ *              调用宏 no-op（OM_LOG_* 展开空、OM_LOG_MODULE 不生成实例）。详见 README。
  */
 
 #ifndef __OM_LOG_H__
 #define __OM_LOG_H__
 
 #include "core/om_def.h"
-#include "core/om_config.h" /* OM_LOG_MAX_ARGS（编译期参数上限宏——调用宏检查用） */
+#include "core/om_config.h" /* OM_LOG_MAX_ARGS（编译期参数上限宏——调用宏检查用）；
+                             * OM_USE_LOG（服务级裁剪开关） */
 
 #include <stddef.h>
 
@@ -56,6 +61,87 @@ typedef struct OmLogBackend {
     void (*flush)(struct OmLogBackend *backend);                                  /* 可选：强制刷出，可为 NULL */
     void (*panic)(struct OmLogBackend *backend, const char *segment, size_t len); /* 可选：故障上下文提交（队列/线程/锁不可信时的最可靠通道——串口=轮询写/DMA 死仍有效；NULL=panic 时退回 push 尽力而为） */
 } OmLogBackend;
+
+/** @brief 日志统计（查询 API——丢弃可观测）
+ *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 消息环满丢弃（printk 语义）；
+ *        丢弃点另由 log 服务侧补发 WRN 自证（节流——见服务 README 丢弃点节） */
+typedef struct
+{
+    uint32_t dropped;
+} OmLogStats;
+
+#if OM_USE_LOG
+
+/** @brief 日志入口：模块级过滤 → 打包（生产时刻时间戳）→ 消息环生产
+ *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
+ *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
+ *  @param fmt printf 风格子集格式串（NULL 时静默返回）
+ *  @note 无失败路径（打日志不打扰调用方）；后端级过滤在消费时刻（per-backend）；
+ *        环满 = 丢弃 + 计数（后验告警）；无消费者/无后端时消息滞留环中（早期日志
+ *        = "deferred"回归形态——服务就绪后回放）；线程/中断上下文均可调；
+ *        format(printf, 3, 4) 供编译器逐调用点校验 */
+void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
+    OM_ATTRIBUTE((format(__printf__, 3, 4)));
+
+/** @brief 故障直出：fatal/崩溃上下文（系统即将停止/残破）中同步输出——不依赖队列/线程/锁
+ *  @param module 模块实例（名称标注）
+ *  @param level 消息级别（标注保留；**过滤提满**——崩溃现场全出，见语义）
+ *  @param fmt printf 风格格式串
+ *  @note 语义：自身禁中断（嵌套安全）→ 调用侧同步格式化 → 后端提交 = panic 钩子优先（NULL→push 尽力）；
+ *        无 per-backend 过滤（崩溃时证据保全优先）；级别标注保留（如打 ERROR 则头部 [ERR]）；
+ *        调用者须在故障上下文（handler/断言失败路径）调用；正常路径请用 OM_LOG_* */
+void om_log_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
+    OM_ATTRIBUTE((format(__printf__, 3, 4)));
+
+/** @brief 注册输出后端（携带初始级别；运行时用 om_log_backend_set_level 动态调整）
+ *  @param backend 后端实例（name 与 push 不得为 NULL）
+ *  @param level 初始级别（过滤语义同 set_level：只接收 level >= 目标级别的消息）
+ *  @return OM_OK 成功；OM_ERR_ALREADY 重复注册；OM_ERR_FULL 表满；
+ *          OM_ERR_INVALID_ARG 参数非法或级别越界（>= OM_LOG_LEVEL_MAX） */
+OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level);
+
+/** @brief 注销输出后端
+ *  @param backend 已注册的后端实例指针
+ *  @return OM_OK 成功；OM_ERR_NOT_FOUND 指针不在表内；OM_ERR_INVALID_ARG 参数非法 */
+OmRet om_log_backend_unregister(OmLogBackend *backend);
+
+/** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关
+ *  @param backend_name 后端名称（strcmp 按名查找）
+ *  @param level 目标级别（>= OM_LOG_LEVEL_MAX 为越界）
+ *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
+OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
+
+/** @brief 运行时调节模块级别（按名——模块首次打日志后登记；未登记 NOT_FOUND）
+ *  @param module_name 模块名（OM_LOG_MODULE 参数）
+ *  @param level 目标级别（>= OM_LOG_LEVEL_MAX = INVALID_ARG）
+ *  @return OM_OK；OM_ERR_NOT_FOUND；OM_ERR_INVALID_ARG */
+OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
+
+/** @brief 查询模块级别 */
+OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
+
+/** @brief 读取日志统计（累计丢弃数——超限 + 消息环满）
+ *  @param stats 输出（NULL → OM_ERR_INVALID_ARG）
+ *  @return OM_OK 成功；OM_ERR_INVALID_ARG 参数非法 */
+OmRet om_log_stats(OmLogStats *stats);
+
+#else /* !OM_USE_LOG：裁剪 = 接口消失（编译期信号）+ 调用宏 no-op（零副作用） */
+
+#define OM_LOG_MODULE(name, level) /* 日志裁剪：无模块实例 */
+
+#define OM_LOG_DEBUG(...)  ((void)0)
+#define OM_LOG_INFO(...)   ((void)0)
+#define OM_LOG_WARN(...)   ((void)0)
+#define OM_LOG_ERROR(...)  ((void)0)
+#define OM_LOG_FATAL(...)  ((void)0)
+
+#endif /* OM_USE_LOG */
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#if OM_USE_LOG
 
 /**
  * @brief 模块注册：每个 TU 顶部一次，生成静态 _om_log_module
@@ -112,69 +198,6 @@ typedef struct OmLogBackend {
         om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, fmt, ##__VA_ARGS__); \
     } while (0)
 
-/** @brief 日志入口：模块级过滤 → 打包（生产时刻时间戳）→ 消息环生产
- *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
- *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
- *  @param fmt printf 风格子集格式串（NULL 时静默返回）
- *  @note 无失败路径（打日志不打扰调用方）；后端级过滤在消费时刻（per-backend）；
- *        环满 = 丢弃 + 计数（后验告警）；无消费者/无后端时消息滞留环中（早期日志
- *        = "deferred"回归形态——服务就绪后回放）；线程/中断上下文均可调；
- *        format(printf, 3, 4) 供编译器逐调用点校验 */
-void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
-    OM_ATTRIBUTE((format(__printf__, 3, 4)));
-
-/** @brief 故障直出：fatal/崩溃上下文（系统即将停止/残破）中同步输出——不依赖队列/线程/锁
- *  @param module 模块实例（名称标注）
- *  @param level 消息级别（标注保留；**过滤提满**——崩溃现场全出，见语义）
- *  @param fmt printf 风格格式串
- *  @note 语义：自身禁中断（嵌套安全）→ 调用侧同步格式化 → 后端提交 = panic 钩子优先（NULL→push 尽力）；
- *        无 per-backend 过滤（崩溃时证据保全优先）；级别标注保留（如打 ERROR 则头部 [ERR]）；
- *        调用者须在故障上下文（handler/断言失败路径）调用；正常路径请用 OM_LOG_* */
-void om_log_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
-    OM_ATTRIBUTE((format(__printf__, 3, 4)));
-
-/** @brief 注册输出后端（携带初始级别；运行时用 om_log_backend_set_level 动态调整）
- *  @param backend 后端实例（name 与 push 不得为 NULL）
- *  @param level 初始级别（过滤语义同 set_level：只接收 level >= 目标级别的消息）
- *  @return OM_OK 成功；OM_ERR_ALREADY 重复注册；OM_ERR_FULL 表满；
- *          OM_ERR_INVALID_ARG 参数非法或级别越界（>= OM_LOG_LEVEL_MAX） */
-OmRet om_log_backend_register(OmLogBackend *backend, OmLogLevel level);
-
-/** @brief 注销输出后端
- *  @param backend 已注册的后端实例指针
- *  @return OM_OK 成功；OM_ERR_NOT_FOUND 指针不在表内；OM_ERR_INVALID_ARG 参数非法 */
-OmRet om_log_backend_unregister(OmLogBackend *backend);
-
-/** @brief 设置后端级别：只接收 level >= 目标级别的消息；OM_LOG_LEVEL_OFF = 全关
- *  @param backend_name 后端名称（strcmp 按名查找）
- *  @param level 目标级别（>= OM_LOG_LEVEL_MAX 为越界）
- *  @return OM_OK 成功；OM_ERR_NOT_FOUND 名称未找到；OM_ERR_INVALID_ARG 参数非法或级别越界 */
-OmRet om_log_backend_set_level(const char *backend_name, OmLogLevel level);
-
-/** @brief 运行时调节模块级别（按名——模块首次打日志后登记；未登记 NOT_FOUND）
- *  @param module_name 模块名（OM_LOG_MODULE 参数）
- *  @param level 目标级别（>= OM_LOG_LEVEL_MAX = INVALID_ARG）
- *  @return OM_OK；OM_ERR_NOT_FOUND；OM_ERR_INVALID_ARG */
-OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
-
-/** @brief 查询模块级别 */
-OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
-
-/** @brief 日志统计（查询 API——丢弃可观测）
- *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 消息环满丢弃（printk 语义）；
- *        丢弃点另由 log 服务侧补发 WRN 自证（节流——见服务 README 丢弃点节） */
-typedef struct
-{
-    uint32_t dropped;
-} OmLogStats;
-
-/** @brief 读取日志统计（累计丢弃数——超限 + 异步队列满）
- *  @param stats 输出（NULL → OM_ERR_INVALID_ARG）
- *  @return OM_OK 成功；OM_ERR_INVALID_ARG 参数非法 */
-OmRet om_log_stats(OmLogStats *stats);
-
-#ifdef __cplusplus
-}
-#endif
+#endif /* OM_USE_LOG */
 
 #endif /* __OM_LOG_H__ */

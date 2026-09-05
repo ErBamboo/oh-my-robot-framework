@@ -113,6 +113,13 @@ OmRet om_log_stats(OmLogStats *stats);
 
 全宏在 `om_config.h`，均可经 `om_appcfg.h` 覆写。
 
+### 裁剪契约（`OM_USE_LOG=0`——零副作用）
+
+- **类型无条件**：`OmLogLevel/OmLogModule/OmLogBackend/OmLogStats` 始终定义——外围结构体/回调可继续引用
+- **接口消失**：`om_log_*`/`om_rtt_backend_register`/`om_log_serial_backend_register` 声明随 `#if OM_USE_LOG` 消失——调用 = **编译期错误**（信号清晰，而非链接期幽灵接口）
+- **调用宏 no-op**：`OM_LOG_*` 展开 `((void)0)`（无参数检查/无 format 校验——与裁决一致）；`OM_LOG_MODULE` 不生成实例（引用 `_om_log_module` 的手写代码——如下游组合层——需自行 `#if OM_USE_LOG`，见 sample/fatal_panic 示范）
+- **实现零成本**：log 服务全部 `.c` 以 `#if OM_USE_LOG` 隔离——开关关闭时零 RAM/栈/ROM（类型零占用）；组合层（后端接线/记录调用）由使用方 `#if`（示例即教学模板）
+
 ## 示例
 
 **模块使用**：

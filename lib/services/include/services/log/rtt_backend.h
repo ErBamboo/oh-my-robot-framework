@@ -38,7 +38,9 @@ typedef struct {
  *  @note 线程上下文调用；push/panic = SEGGER_RTT_Write（字节拷入环形缓冲——满丢弃；
  *        单生产者由 log 服务保证——后端无锁）；panic 同 push（内存通道无硬件依赖，
  *        崩溃时仍可靠——与串口轮询钩子本质不同） */
+#if OM_USE_LOG /* 裁剪契约（log.h 同款）：接口消失（编译期信号）——类型保留 */
 OmRet om_rtt_backend_register(OmRttBackend *inst, const char *name, OmLogLevel level);
+#endif
 
 #ifdef __cplusplus
 }

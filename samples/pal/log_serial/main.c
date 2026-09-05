@@ -23,6 +23,7 @@ static LogSerialBackend g_log_serial_backend;
 
 OM_LOG_MODULE(log_serial, OM_LOG_LEVEL_INFO);
 
+#if OM_USE_LOG /* 组合层可裁剪（组合逻辑随开关消失） */
 /** @brief 接线：device_find 板级日志口 → 注册后端（DRIVER 级，调度器前）
  *  @return OM_OK 成功；失败传播（open/注册错误码） */
 static OmRet log_port_init(void)
@@ -31,6 +32,7 @@ static OmRet log_port_init(void)
                                           device_find((char *)BSP_LOG_SERIAL_NAME), "serial", OM_LOG_LEVEL_INFO);
 }
 OM_INIT_DRIVER(log_port_init);
+#endif /* OM_USE_LOG */
 
 /* 压力档位（编译期宏；默认短消息 + 500ms 心跳） */
 #ifndef LOG_STRESS_LEN

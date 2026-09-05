@@ -41,6 +41,7 @@ typedef struct {
  *        （如业务阻塞收发）使用，需要复用请先 om_log_serial_backend_unregister
  *  @note panic 提交 = 轮询直写（putByte 逐字节，故障上下文 DMA/中断死仍有效）；
  *        push = 非阻塞快提交（正常路径）——双通道互补 */
+#if OM_USE_LOG /* 裁剪契约（log.h 同款）：接口消失（编译期信号）——类型保留 */
 OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev, const char *name, OmLogLevel level);
 
 /** @brief 注销串口日志后端并释放设备：注销 log 注册 + device_close
@@ -49,6 +50,7 @@ OmRet om_log_serial_backend_register(LogSerialBackend *inst, Device *serial_dev,
  *          OM_ERR_NOT_FOUND（设备保持打开，不产生副作用）
  *  @note 复用路径：注销后设备可重新 open 用于其他需求；对称于 register（配对防漏 close） */
 OmRet om_log_serial_backend_unregister(LogSerialBackend *inst);
+#endif
 
 #ifdef __cplusplus
 }
