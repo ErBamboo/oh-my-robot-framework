@@ -129,11 +129,11 @@ OmRet om_log_stats(OmLogStats *stats);
 
 #define OM_LOG_MODULE(name, level) /* 日志裁剪：无模块实例 */
 
-#define OM_LOG_DEBUG(...)  ((void)0)
-#define OM_LOG_INFO(...)   ((void)0)
-#define OM_LOG_WARN(...)   ((void)0)
-#define OM_LOG_ERROR(...)  ((void)0)
-#define OM_LOG_FATAL(...)  ((void)0)
+#define OM_LOG_DEBUG(...)          ((void)0)
+#define OM_LOG_INFO(...)           ((void)0)
+#define OM_LOG_WARN(...)           ((void)0)
+#define OM_LOG_ERROR(...)          ((void)0)
+#define OM_LOG_FATAL(...)          ((void)0)
 
 #endif /* OM_USE_LOG */
 
