@@ -47,7 +47,8 @@ lib/services/src/log/formatter.c             ← 流式格式化 + 规格解析�
 lib/services/src/log/msg.c                   ← 参数包打包（计数/抓取/上限丢弃；生产时刻时间戳）
 lib/services/src/log/core.c                  ← 服务主体（过滤编排/打包/emit/panic 直出；持有 LogRing 实例与 "log" 告警模块）
 lib/services/src/log/backend.c               ← 后端表（注册/注销/级别/广播/panic 投递）
-lib/services/src/log/ring.c                  ← 消息环能力（LogRing 实例 API：生产/消费抽环/回放/异步消费调度器——能力与实例分离）
+lib/services/src/log/ring.c                  ← 消息环通道能力（LogRing 实例 API：生产/抽环/回放/门铃 post 组合）
+lib/services/src/log/log_async.c             ← 异步消费调度器（门铃创建+线程+等待循环——"谁/何时消费"）
 lib/services/src/log/stats.c                 ← om_log_stats 汇总
 lib/services/src/log/backends/               ← 后端实现（零驱动依赖的随服务家族存放——RTT 在此）
 lib/services/src/log/backends/rtt_backend.c  ← RTT 后端（调试通道高带宽；零驱动依赖）

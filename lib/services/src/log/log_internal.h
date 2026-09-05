@@ -181,10 +181,10 @@ void log_ring_flush(LogRing *ring);
 uint32_t log_dropped_ring(const LogRing *ring);
 
 #if OM_LOG_ASYNC
-/** @brief 异步消费调度器启动：建门铃（二值 max=1 init=0）+ 日志线程（LOW 带）
- *  @param ring 环实例（线程经 arg 引用）
+/** @brief 异步消费调度器启动（log_async.c）：建门铃（存入实例字段）+ 日志线程（LOW 带）
+ *  @param ring 环实例（线程经 arg 引用——无跨文件静态状态）
  *  @return OM_OK；OM_ERR_NO_MEM 门铃/线程创建失败 */
-OmRet log_ring_async_start(LogRing *ring);
+OmRet log_async_start(LogRing *ring);
 #endif
 
 /** @brief 服务侧消费触发（服务主体实例编排——OM_INIT_SERVICE 就绪点与 host 测试共用） */

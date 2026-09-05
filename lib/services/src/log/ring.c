@@ -1,14 +1,14 @@
 /**
  * @file ring.c
- * @brief log 统一消息环能力：LogRing 实例 API（生产入环/消费抽环/滞留回放/异步消费调度器）
- * @details 能力-实例分离（框架惯例——Pipe/mpsc 同构）：本文件仅提供能力，
- *          实例（LogRing）由服务主体（core.c）静态持有——零初始化（惰性 init），
- *          早期/最小配置可用（Ringbuf 纯原子无 OSAL）。
+ * @brief log 统一消息环通道能力：LogRing 实例 API（生产入环/消费抽环/滞留回放）
+ * @details 能力-实例分离（框架惯例——Pipe/mpsc 同构）：本文件仅提供通道能力（含门铃
+ *          post 组合——pipe 同构），实例（LogRing）由服务主体（core.c）静态持有——
+ *          零初始化（惰性 init），早期/最小配置可用（Ringbuf 纯原子无 OSAL）。
  *          生产（log_ring_produce）：临界区串行（多生产者收敛单写者——成本 = 消息拷贝
  *          级）ringbuf_in；满 = 丢新 + 计数。
- *          消费触发（OM_LOG_ASYNC 选择）：1 = 日志线程（log_ring_async_start——门铃
- *          OsalSem 二值，环 空→非空 才 post（pipe 模式）；线程首轮 drain 接住启动期
- *          滞留）；0 = 现场触发——生产后判定 any_accepts(本消息) 为真 → drain 全量
+ *          消费触发（OM_LOG_ASYNC 选择）：1 = 日志线程（**调度器在 log_async.c**——
+ *          门铃创建/线程本体/等待循环；本文件仅生产侧 空→非空 才 post（pipe 模式））；
+ *          0 = 现场触发——生产后判定 any_accepts(本消息) 为真 → drain 全量
  *          （保生产序，含本消息与滞留段）→ 现场 emit；无后端 → 滞留环中
  *          （"deferred"回归形态）。
  *          消费（log_ring_drain）：循环 ringbuf_out → log_emit_args（单消费者 SPSC 读侧）；
@@ -24,9 +24,7 @@
 #include "log_internal.h"
 #include "osal/osal_time.h" /* 时间戳（host 测试经本地桩头 shadow） */
 #if OM_LOG_ASYNC
-#include "osal/osal_priority.h" /* OSAL_PRIO_LOW_BASE */
-#include "osal/osal_sem.h"      /* 门铃（二值信号量；post_auto 自动分流） */
-#include "osal/osal_thread.h"   /* 日志线程 */
+#include "osal/osal_sem.h" /* 门铃（二值信号量；post_auto 自动分流——生产侧 post） */
 #endif
 
 #include <stdbool.h>
@@ -97,36 +95,6 @@ uint32_t log_dropped_ring(const LogRing *ring)
 {
     return ring->dropped;
 }
-
-#if OM_LOG_ASYNC
-/** @brief 日志线程入口：先行 drain（启动期滞留——门铃未建时生产无信号可等）→ take 循环
- *  @param arg LogRing*（消费调度器经线程参数引用实例——实例属主 core.c） */
-static void log_async_thread(void *arg)
-{
-    LogRing *ring = (LogRing *)arg;
-    log_ring_drain(ring); /* 启动期滞留段（生产者早期在门铃未建时入环——无信号可等） */
-    for (;;)
-    {
-        (void)osal_sem_wait(ring->doorbell, OSAL_WAIT_FOREVER);
-        log_ring_drain(ring);
-    }
-}
-
-OmRet log_ring_async_start(LogRing *ring)
-{
-    if (osal_sem_create(&ring->doorbell, 1U, 0U) != OSAL_OK)
-    {
-        return OM_ERR_NO_MEM;
-    }
-    OsalThreadAttr attr = {"log_thread", 0U, OSAL_PRIO_LOW_BASE};
-    OsalThread *thread = NULL;
-    if (osal_thread_create(&thread, &attr, log_async_thread, ring) != OSAL_OK)
-    {
-        return OM_ERR_NO_MEM;
-    }
-    return OM_OK;
-}
-#endif /* OM_LOG_ASYNC */
 
 /** @brief 丢弃后验告警（丢弃点共同）：节流 + 增量报告——消息经 log_emit_args 直接 emit
  *  （不走环——告警自身引发的环满不再递归；WRN 级，per-backend 过滤正常生效）

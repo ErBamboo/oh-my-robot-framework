@@ -191,12 +191,12 @@ uint32_t log_ring_service_dropped(void)
 #if OM_LOG_ASYNC
 /** @brief 异步消费调度器启动（OM_INIT_SERVICE——调度器后，可阻塞/建线程）：
  *  门铃+线程入实例；之前生产流入环滞留——线程首轮 drain 接住
- *  @return 透传 log_ring_async_start（OM_OK / OM_ERR_NO_MEM） */
-static OmRet log_async_start(void)
+ *  @return 透传 log_async_start（OM_OK / OM_ERR_NO_MEM） */
+static OmRet log_async_boot(void)
 {
-    return log_ring_async_start(&g_log_ring);
+    return log_async_start(&g_log_ring);
 }
-OM_INIT_SERVICE(log_async_start);
+OM_INIT_SERVICE(log_async_boot);
 #else
 /** @brief 服务就绪点（OM_INIT_SERVICE）：回放滞留段——调度器后、后端已注册（DRIVER 级）
  *  @return OM_OK */
