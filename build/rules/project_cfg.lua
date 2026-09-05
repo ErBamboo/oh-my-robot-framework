@@ -47,8 +47,16 @@ rule("oh_my_robot.project_cfg")
             io.writefile(marker, state)
             -- 内容缓存清理：xmake 编译缓存键=源码内容（不含旗标/包含路径）——配置/换板后
             -- 旧对象仍会命中 → 状态变化时同点清缓存（与 depfile 标记同一触发源）
-            os.rmdir(path.join(project_dir, ".cache"))
-            os.rmdir(path.join(project_dir, "build", ".build_cache"))
+            -- 存在性守卫：os.rmdir 对不存在目录报错（xmake 3.1 视作致命——CI 实证
+            -- exit 255 卡 build job）
+            local _cache_dir = path.join(project_dir, ".cache")
+            if os.isdir(_cache_dir) then
+                os.rmdir(_cache_dir)
+            end
+            local _build_cache_dir = path.join(project_dir, "build", ".build_cache")
+            if os.isdir(_build_cache_dir) then
+                os.rmdir(_build_cache_dir)
+            end
         end
 
         -- 注入面向全部目标（含框架库 tar_*）：配置分层（ADR-0017）= 所有编译单元

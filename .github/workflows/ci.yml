@@ -75,7 +75,7 @@ jobs:
           EOF
 
       - name: Configure
-        run: xmake f -c --board=rm-c-board --os=freertos --toolchain=gnu-rm -m debug
+        run: xmake f --board=rm-c-board --os=freertos --toolchain=gnu-rm -m debug
 
       - name: Build libraries
         run: xmake build
@@ -94,7 +94,7 @@ jobs:
           actions-cache-folder: '.xmake-cache'
 
       - name: Configure
-        run: xmake f -c -P samples/host/om_core_test -p linux -m debug
+        run: xmake f -P samples/host/om_core_test -p linux -m debug
 
       - name: Build
         run: xmake build -P samples/host/om_core_test
@@ -109,7 +109,7 @@ jobs:
         run: xmake run -P samples/host/om_core_test om_core_fatal_test
 
       - name: Configure log host tests
-        run: xmake f -c -P samples/host/om_log_test -p linux -m debug
+        run: xmake f -P samples/host/om_log_test -p linux -m debug
 
       - name: Build log host tests
         run: xmake build -P samples/host/om_log_test
