@@ -6,17 +6,19 @@ services 层日志服务：为全体消费者提供统一的日志记录通道�
 
 ## 机制
 
-### 投递（统一异步）
+### 投递（生产形态唯一：消息环）
 
-- **就绪（队列已建）**：调用侧打包参数包（约 1-2µs）→ 非阻塞入队 → 日志线程（LOW 带）recv → 格式化 + 扇出 → 后端
-- **未就绪（调度器前/SERVICE init 前，早期窗口）**：早期缓冲（deferred，默认开）——入固定环形（发起时间戳/发起顺序保留），异步就绪后按条回放（per-backend 过滤）；**后端未注册时的启动日志不再静默丢失，调用侧不被慢速后端当场阻塞**；关闭（`OM_LOG_DEFERRED=0`）= 同步兜底——调用侧格式化 + 直出（36µs 级）
-- **故障直出（`om_log_panic`）**：禁中断、绕过队列/线程/锁，调用侧同步格式化；**无 per-backend 过滤（提满全出——崩溃现场证据保全）**；级别标注保留；后端提交 = panic 钩子优先（最可靠通道，如串口轮询写——DMA/中断死仍有效）→ NULL 退回 push 尽力而为
+- **生产侧（恒一形态）**：调用侧打包参数包（生产时刻时间戳，约 1-2µs）→ 临界区入常驻消息环（`Ringbuf` 定长元素——SPSC 原子，静态零初始化；满 = 丢新 + 计数）——**无"就绪判定"/无"未就绪窗口"**：消费未就绪 = 环中滞留（早期日志 = "deferred"回归形态）
+- **消费触发（`OM_LOG_ASYNC` 二选一）**：
+  - `1` 异步：日志线程（LOW 带，SERVICE init 建门铃+线程）——门铃（二值信号量，环 空→非空 才 post）take → 抽环 → 格式化+扇出；线程启动首轮 drain 接住启动期滞留（= 回放）
+  - `0` 同步（零 OSAL）：生产后判定后端接受（any_accepts）→ 同上下文 drain 全量（保生产序）→ 现场直出；无后端 → 滞留；`OM_INIT_SERVICE`（服务就绪点）→ 回放滞留段（当下后端表过滤）
+- **故障直出（`om_log_panic`）**：禁中断、绕过环/线程/锁，调用侧同步格式化（当场时间戳）；**无 per-backend 过滤（提满全出——崩溃现场证据保全）**；级别标注保留；后端提交 = panic 钩子优先（最可靠通道，如串口轮询写——DMA/中断死仍有效）→ NULL 退回 push 尽力而为
 
 ### 丢弃点（后验告警）
 
-- 丢弃点（消息决定不再输出处）：**队列满**（异步入队失败）+ **早期缓冲满**（deferred 整条回滚）+ **参数包超限**（`OM_LOG_MAX_ARGS`）
-- 丢弃全程不打扰调用方（无失败路径）；**后验告警** = 丢弃不再只进计数——队列满/缓冲满由日志侧补发 WRN（`log drop: <site> dropped <N> (total <M>)`，N=增量、M=累计；节流 `OM_LOG_DROP_WARN_INTERVAL_MS` 防刷屏）；`om_log_stats()` 可查总量
-- 无后端接受/级别过滤不属于丢弃（正常过滤语义——流量不守恒是预期）
+- 丢弃点（消息决定不再输出处）：**消息环满**（丢新——保滞留段最早序）+ **参数包超限**（`OM_LOG_MAX_ARGS`）
+- 丢弃全程不打扰调用方（无失败路径）；**后验告警** = 丢弃不再只进计数——环满由消费侧补发 WRN（`log drop: ring-full dropped <N> (total <M>)`，N=增量、M=累计；节流 `OM_LOG_DROP_WARN_INTERVAL_MS` 防刷屏；消息时间戳 = 补发时刻）；`om_log_stats()` 可查总量
+- 无后端接受/级别过滤不属于丢弃（正常过滤语义——流量不守恒是预期）；环滞留段不占"丢弃"语义（消费者就绪前暂存）
 
 ### 过滤与分发
 
@@ -42,11 +44,11 @@ services 层日志服务：为全体消费者提供统一的日志记录通道�
 lib/services/include/services/log/log.h     ← 公共 API 事实源
 lib/services/src/log/log_internal.h          ← 组件间私有接口
 lib/services/src/log/formatter.c             ← 流式格式化 + 规格解析（log_spec_next 唯一事实源）+ 时间换算
-lib/services/src/log/msg.c                   ← 参数包打包（计数/抓取/上限丢弃）
-lib/services/src/log/core.c                  ← 过滤编排/emit/兜底/panic 直出
+lib/services/src/log/msg.c                   ← 参数包打包（计数/抓取/上限丢弃；生产时刻时间戳）
+lib/services/src/log/core.c                  ← 服务主体（过滤编排/打包/emit/panic 直出；持有 LogRing 实例与 "log" 告警模块）
 lib/services/src/log/backend.c               ← 后端表（注册/注销/级别/广播/panic 投递）
-lib/services/src/log/deferred.c              ← 早期缓冲（回放）+ 丢弃后验告警（OM_LOG_ASYNC+DEFERRED）
-lib/services/src/log/log_async.c             ← 队列 + 日志线程（OM_LOG_ASYNC；队列满丢弃+告警）
+lib/services/src/log/ring.c                  ← 消息环通道能力（LogRing 实例 API：生产/抽环/回放/门铃 post 组合）
+lib/services/src/log/log_async.c             ← 异步消费调度器（门铃创建+线程+等待循环——"谁/何时消费"）
 lib/services/src/log/stats.c                 ← om_log_stats 汇总
 lib/services/src/log/backends/               ← 后端实现（零驱动依赖的随服务家族存放——RTT 在此）
 lib/services/src/log/backends/rtt_backend.c  ← RTT 后端（调试通道高带宽；零驱动依赖）
@@ -55,8 +57,8 @@ third_party/segger-rtt/                      ← RTT 库本体（外部库——
 samples/host/om_log_test/                    ← 宿主测试（注入源 + osal 桩）
 ```
 
-- 依赖：services → kernel（接口/原语）；drivers → services（开放清单：log.h——单向）；platform 只依赖 kernel/third_party 与 drivers 抽象头（PAL）
-- 自注册：log 服务经 `OM_INIT_SERVICE` 建队列+线程（异步模式）；backend 注册经组合层 `OM_INIT_DRIVER` 等分散加载
+- 依赖：services → kernel（接口/原语）+ data_struct（Ringbuf——纯原子无 OSAL）；drivers → services（开放清单：log.h——单向）；platform 只依赖 kernel/third_party 与 drivers 抽象头（PAL）
+- 自注册：服务主体（core.c）经 `OM_INIT_SERVICE`——异步模式启动消费调度器（门铃+线程入实例）、同步模式回放滞留段；backend 注册经组合层 `OM_INIT_DRIVER` 等分散加载
 
 ## 接口
 
@@ -98,11 +100,9 @@ OmRet om_log_stats(OmLogStats *stats);
 | 宏 | 默认 | 说明 |
 |---|---|---|
 | `OM_USE_LOG` | 1 | 服务级裁剪（值语义：`=0` 或 appcfg `#undef`） |
-| `OM_LOG_ASYNC` | 1 | 异步能力（队列+线程）；关闭 = 同步兜底形态（v1 语义）；`=0` 或 appcfg `#undef` |
+| `OM_LOG_ASYNC` | 1 | 消费触发选择：1=日志线程（门铃+线程）；0=现场触发（零 OSAL）；`=0` 或 appcfg `#undef` |
 | `OM_LOG_MAX_ARGS` | 8 | 参数包上限（1..16，超出 `#error`） |
-| `OM_LOG_QUEUE_LEN` | 8 | 异步队列深度（满丢弃+后验告警） |
-| `OM_LOG_DEFERRED` | 1 | 早期缓冲开关（仅异步模式生效；0=未就绪走同步兜底） |
-| `OM_LOG_DEFERRED_BUF_SIZE` | 1024 | 早期缓冲字节数（整条记录存储；满=丢新+计数，下限 16 编译期报错） |
+| `OM_LOG_RING_LEN` | 16 | 消息环槽数（定长 `OmLogMsg`；2 的幂、下限 4 编译期 `#error`；满=丢新+计数+告警） |
 | `OM_LOG_DROP_WARN_INTERVAL_MS` | 1000 | 丢弃后验告警最小间隔（毫秒） |
 | `OM_LOG_MAX_BACKENDS` | 4 | 后端表上限 |
 | `OM_LOG_MAX_MODULES` | 16 | 模块注册表上限（惰性登记；按名调节） |
@@ -112,6 +112,13 @@ OmRet om_log_stats(OmLogStats *stats);
 | `OM_LOG_RTT_LEVEL` | `OM_LOG_LEVEL_INFO` | 默认 RTT 后端初始级别（越界编译期 `_Static_assert` 报错） |
 
 全宏在 `om_config.h`，均可经 `om_appcfg.h` 覆写。
+
+### 裁剪契约（`OM_USE_LOG=0`——零副作用）
+
+- **类型无条件**：`OmLogLevel/OmLogModule/OmLogBackend/OmLogStats` 始终定义——外围结构体/回调可继续引用
+- **接口消失**：`om_log_*`/`om_rtt_backend_register`/`om_log_serial_backend_register` 声明随 `#if OM_USE_LOG` 消失——调用 = **编译期错误**（信号清晰，而非链接期幽灵接口）
+- **调用宏 no-op**：`OM_LOG_*` 展开 `((void)0)`（无参数检查/无 format 校验——与裁决一致）；`OM_LOG_MODULE` 不生成实例（引用 `_om_log_module` 的手写代码——如下游组合层——需自行 `#if OM_USE_LOG`，见 sample/fatal_panic 示范）
+- **实现零成本**：log 服务全部 `.c` 以 `#if OM_USE_LOG` 隔离——开关关闭时零 RAM/栈/ROM（类型零占用）；组合层（后端接线/记录调用）由使用方 `#if`（示例即教学模板）
 
 ## 示例
 

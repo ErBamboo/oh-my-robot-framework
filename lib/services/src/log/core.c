@@ -1,15 +1,13 @@
 /**
  * @file core.c
- * @brief log 核心：om_log_log 入口 + om_log_panic 直出 + 过滤流水线 + emit（头部/格式化/扇出）+ 临界区
- * @details 过滤：① 模块级别（初始=宏参数；运行时可调节）→ ② 有无后端接受（零格式化）→
- *          ③ 临界区（kernel 层临界区原语，中断上下文嵌套安全）→ ④ emit →
- *          ⑤ 退临界区。打日志无失败路径；未就绪（无后端/级别不达）静默返回。
- *          结构：emit 独立（与兜底/就绪路径共用）；头部生成独立（时间戳统一）；
- *          丢弃点独立（deferred 挂接位）。
- *          投递形态（统一异步）：OM_LOG_ASYNC 定义时——就绪（队列已建）走打包入队
- *          （log_async_send，见 log_async.c）；未就绪且 OM_LOG_DEFERRED 开 = 早期缓冲
- *          （log_deferred_emit 入环，见 deferred.c）；其余（deferred 关/窗口已过/裁剪）
- *          走同步兜底（log_emit）。
+ * @brief log 核心：om_log_log 入口（模块级过滤 → 打包 → 生产入环）+ om_log_panic 直出 + emit
+ * @details 过滤：① 模块级别（初始=宏参数；运行时可调节——入口处，生产前）→
+ *          （后端级过滤在消费时刻 per-backend 判定——log_emit_args/emit 链）→
+ *          打包（生产时刻时间戳）→ log_ring_produce（见 ring.c：临界区入环——满丢+计数；
+ *          消费触发 OM_LOG_ASYNC 决定：日志线程抽环 / 现场判定+drain）。
+ *          打日志无失败路径；形态唯一（消息环）——"deferred"即消费未就绪时的环滞留态。
+ *          结构：emit 独立（log_emit_build/log_emit_args——内容组合唯一事实源）；
+ *          头部生成独立（时间戳统一——来自参数包 ts 或 panic 当场）。
  */
 
 #include "core/om_config.h"
@@ -17,6 +15,7 @@
 #if OM_USE_LOG
 
 #include "core/om_def.h"
+#include "core/om_init.h" /* OM_INIT_SERVICE——消费调度器/服务就绪点（组成层编排） */
 #include "core/om_interrupt.h"
 #include "osal/osal_time.h" /* 时间戳来源 osal_time_now_monotonic（host 测试经本地桩头） */
 
@@ -24,6 +23,19 @@
 
 #include <stdarg.h>
 #include <string.h>
+
+/** @brief 消息环实例（服务主体持有——能力-实例分离：状态在此，能力见 ring.c；
+ *  静态零初始化——惰性 init 保证早期/最小配置可用） */
+static LogRing g_log_ring;
+
+/** @brief 框架内部告警模块实例（"log"——丢弃告警的消息头 module 标注；不占用模块注册表） */
+static OmLogModule s_log_module = {"log", OM_LOG_LEVEL_DEBUG, -1};
+
+/** @brief 访问日志服务内部告警模块（log_internal 契约——log_drop_warn 用之） */
+const OmLogModule *log_service_module(void)
+{
+    return &s_log_module;
+}
 
 /* 级别名表（3 字符）：尺寸绑定 OM_LOG_LEVEL_OFF——级别枚举扩展必须同步本表，
  * 否则下方编译期断言拦截（运行时无需再校验：emit 入口已保证 level < OFF） */
@@ -58,18 +70,18 @@ static void emit_fanout_panic(void *ctx, const char *seg, size_t len)
     log_backend_panic_push_all(seg, len);
 }
 
-/** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（时间戳统一——同步/异步共用）
+/** @brief 头部生成：输出 "[LVL][HH:MM:SS.mmm][module] "（时间戳统一——参数包 ts 全链一致）
  *  @param w 写器
  *  @param module 模块实例（name 已由入口校验非 NULL）
  *  @param level 消息级别
- *  @note 时间戳 = osal_time_now_monotonic（32 位单调 ms，线程/ISR 双安全）；
- *        格式换算 log_time_format（纯函数，逐字符填数——不经过 log_format，避免依赖格式化器）
+ *  @param ts_ms 时间戳单调 ms（生产时刻——消息环路径随包传递；panic 当场取）
+ *  @note 格式换算 log_time_format（纯函数，逐字符填数——不经过 log_format，避免依赖格式化器）
  *  @note log_level_name[level] 下标安全：入口 OFF 检查保证 level < OM_LOG_LEVEL_OFF，
  *        表尺寸 = OM_LOG_LEVEL_OFF（编译期断言保证枚举与表同步） */
-static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel level)
+static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel level, uint32_t ts_ms)
 {
     char ts[13];
-    size_t n = log_time_format(ts, osal_time_now_monotonic()); /* 恒 12 */
+    size_t n = log_time_format(ts, ts_ms); /* 恒 12 */
     log_buf_putc(w, '[');
     log_buf_write(w, log_level_name[level], 3);
     log_buf_putc(w, ']');
@@ -84,60 +96,40 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
 /** @brief 日志构建核心：头部 + 流式格式化 + 尾部 \n + flush（一条日志的内容组合唯一事实源）
  *  @param module 模块实例
  *  @param level 消息级别
+ *  @param ts 时间戳单调 ms
  *  @param fmt 格式串
  *  @param ap 可变参数
  *  @param out 段输出回调
  *  @param out_ctx 回调上下文
- *  @note 无条件编译（va_list 版）；执行者 = 兜底调用侧 / 日志线程（log_emit_args 同构）/
- *        早期缓冲入环（deferred）——差异仅在 out 指向（扇出 / 环形写入） */
-void log_emit_build(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap,
-                    LogOutFn out, void *out_ctx)
+ *  @note 无条件编译（va_list 版）；执行者 = panic 直出（消息环路径经 log_emit_args——参数包
+ *        版，ts 随包传递）；栈占用 = 段缓冲（OM_LOG_SEGMENT_SIZE）+ 写器状态 */
+void log_emit_build(const OmLogModule *module, OmLogLevel level, uint32_t ts, const char *fmt,
+                    va_list ap, LogOutFn out, void *out_ctx)
 {
     LogBufWriter w;
     char seg[OM_LOG_SEGMENT_SIZE];
     log_buf_writer_init(&w, out, out_ctx, seg, sizeof(seg));
-    emit_header(&w, module, level);
+    emit_header(&w, module, level, ts);
     log_format(&w, fmt, ap);
     log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
     log_buf_flush(&w);
 }
 
-/** @brief emit：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出（临界区内调用）
+/** @brief panic emit：无 any_accepts 过滤 + panic 投递（提满全出；时间戳 = 当场——panic 无打包）
  *  @param module 模块实例
  *  @param level 消息级别
  *  @param fmt 格式串
  *  @param ap 可变参数
- *  @note 兜底路径（未就绪/最小配置）唯一执行者，无条件编译（va_list 版——与就绪路径同构）；
- *        就绪路径执行者 = 日志线程（log_async_emit → log_emit_args，同构换入口）；
- *        栈占用 = 段缓冲（OM_LOG_SEGMENT_SIZE）+ 写器状态，不随消息长度增长 */
-static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
-{
-    if (!log_backend_any_accepts(level))
-    {
-        return; /* ② 无后端接受 → 零格式化开销 */
-    }
-    log_emit_build(module, level, fmt, ap, emit_fanout, (void *)(uintptr_t)level);
-}
-
-/** @brief panic emit：与 log_emit 唯一差异 = 无 any_accepts 过滤 + panic 投递（提满全出）
- *  @param module 模块实例
- *  @param level 消息级别
- *  @param fmt 格式串
- *  @param ap 可变参数
- *  @note 同构互见（log_emit 注释）；emit_header 复用——时间戳 + 级别标注自动保留 */
+ *  @note emit_header 复用——级别标注自动保留；时间戳取当前时刻（非生产——panic 场景一致） */
 static void log_emit_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
 {
-    log_emit_build(module, level, fmt, ap, emit_fanout_panic, NULL);
+    log_emit_build(module, level, osal_time_now_monotonic(), fmt, ap, emit_fanout_panic, NULL);
 }
 
-/** @brief emit（日志线程）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
- *  @param module 模块实例
- *  @param level 消息级别
- *  @param fmt 格式串
- *  @param args 参数数组（参数包）
- *  @param n 参数个数
- *  @note 就绪路径 = 日志线程调此函数；
- *        兜底路径 = 调用侧（log_emit，va_list 版——同构执行位置不同） */
+/** @brief emit（消费时刻）：后端接受判定 → 头部（ts=参数包生产时刻） + 流式格式化 + 尾部 \n + 扇出
+ *  @param msg 消息包（module/level/ts/fmt/args/n 全内含）
+ *  @note 消息环消费侧唯一执行者（日志线程 / 现场触发 / 服务就绪回放——执行位置不同，
+ *        内容与 ts 一致） */
 void log_emit_args(const OmLogMsg *msg)
 {
     if (!log_backend_any_accepts(msg->level))
@@ -147,7 +139,7 @@ void log_emit_args(const OmLogMsg *msg)
     LogBufWriter w;
     char seg[OM_LOG_SEGMENT_SIZE];
     log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)msg->level, seg, sizeof(seg));
-    emit_header(&w, msg->module, msg->level);
+    emit_header(&w, msg->module, msg->level, msg->ts);
     log_format_args(&w, msg->fmt, msg->argBuf, msg->argCount);
     log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
     log_buf_flush(&w);
@@ -173,39 +165,36 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
         return; /* ① 模块级别（初始=宏参数；运行时调节后按新值过滤——单字段） */
     }
     va_start(ap, fmt);
-#if OM_LOG_ASYNC
-    if (log_async_can_enqueue()) /* 队列已建=就绪（未就绪落入下方早期缓冲/同步兜底） */
     {
         OmLogMsg msg;
-        if (log_msg_build(&msg, module, level, fmt, ap))
+        if (log_msg_build(&msg, module, level, osal_time_now_monotonic(), fmt, ap))
         {
-            (void)log_async_send(&msg); /* 队列满内部计数丢弃 */
+            log_ring_produce(&g_log_ring, &msg); /* 生产入环：形态唯一（实例属主=服务主体；
+                                                  * 满丢+计数；无消费者=滞留=“deferred”回归形态） */
         }
-        va_end(ap);
-        return; /* 就绪：调用侧到此（~1-2µs，无临界区——打包本地 + 非阻塞入队） */
-    }
-#endif
-#if OM_LOG_ASYNC && OM_LOG_DEFERRED
-    if (log_deferred_active()) /* 早期窗口（调度器前/SERVICE init 前）：入环——丢失点后置 */
-    {
-        /* 临界区同构（早期窗口内仅 main/init 执行期；ISR 打日志仍守短消息纪律——
-         * 关键收益 = 后端就绪再扇出：不被慢速后端当场阻塞） */
-        port_critical_key_t key;
-        key = om_hw_disable_interrupt(); /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */
-        log_deferred_emit(module, level, fmt, ap);
-        om_hw_restore_interrupt(key); /* ⑤ */
-        va_end(ap);
-        return;
-    }
-#endif
-    /* 同步兜底：最小配置（OM_LOG_ASYNC 未定义）、deferred 关闭或早期窗口已过（含队列未建成） */
-    {
-        port_critical_key_t key;
-        key = om_hw_disable_interrupt();  /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */
-        log_emit(module, level, fmt, ap); /* va_list 版（SYNC 路径原样保留，无条件编译） */
-        om_hw_restore_interrupt(key);     /* ⑤ */
     }
     va_end(ap);
+}
+
+/** @brief 服务启动（OM_INIT_SERVICE 统一注册——模式差异仅在实现体）：
+ *  OM_LOG_ASYNC=1 启动异步消费调度器（门铃+线程入实例——之前生产流入环滞留，线程首轮
+ *  drain 接住）；=0 服务就绪点回放滞留段（调度器后、后端已注册——DRIVER 级）
+ *  @return OM_OK；OM_ERR_NO_MEM（仅异步模式——调度器启建失败） */
+OmRet log_service_start(void)
+{
+#if OM_LOG_ASYNC
+    return log_async_start(&g_log_ring);
+#else
+    log_ring_flush(&g_log_ring);
+    return OM_OK;
+#endif
+}
+OM_INIT_SERVICE(log_service_start);
+
+/** @brief 服务侧环满丢弃计数（服务主体实例——om_log_stats 汇总用） */
+uint32_t log_service_dropped(void)
+{
+    return log_dropped_ring(&g_log_ring);
 }
 
 /** @brief 故障直出（契约见 services/log/log.h）

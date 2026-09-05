@@ -16,7 +16,7 @@
 #include "log_internal.h"
 #include "services/log/log.h"
 
-/** @brief 读取日志统计：dropped = 超限丢弃 + 队列满丢弃 + 早期缓冲满丢弃（累计计数）
+/** @brief 读取日志统计：dropped = 参数包超限丢弃 + 消息环满丢弃（累计计数）
  *  @param stats 输出（NULL → OM_ERR_INVALID_ARG）
  *  @return OM_OK 成功；OM_ERR_INVALID_ARG 参数非法 */
 OmRet om_log_stats(OmLogStats *stats)
@@ -26,12 +26,7 @@ OmRet om_log_stats(OmLogStats *stats)
         return OM_ERR_INVALID_ARG;
     }
     stats->dropped = log_dropped_overflow();
-#if OM_LOG_ASYNC
-    stats->dropped += log_dropped_queue();
-#endif
-#if OM_LOG_ASYNC && OM_LOG_DEFERRED
-    stats->dropped += log_deferred_dropped();
-#endif
+    stats->dropped += log_service_dropped();
     return OM_OK;
 }
 

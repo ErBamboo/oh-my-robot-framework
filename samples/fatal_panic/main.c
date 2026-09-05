@@ -19,6 +19,7 @@ static LogSerialBackend g_log_serial_backend;
 
 OM_LOG_MODULE(fatal_panic, OM_LOG_LEVEL_INFO);
 
+#if OM_USE_LOG /* 组合层可裁剪（零日志配置下无记录——fatal 设施本身不受影响） */
 /** @brief 接线（DRIVER 级，调度器前）：device_find 板级日志口 → 注册后端（含 panic 钩子）
  *  @return OM_OK 成功；失败传播（open/注册错误码） */
 static OmRet log_port_init(void)
@@ -27,6 +28,7 @@ static OmRet log_port_init(void)
                                           device_find((char *)BSP_LOG_SERIAL_NAME), "serial", OM_LOG_LEVEL_INFO);
 }
 OM_INIT_DRIVER(log_port_init);
+#endif /* OM_USE_LOG */
 
 /** @brief handler 覆盖：记录现场（log 服务故障直出）→ 不返回（程序死亡）
  *  @param reason 触发源类别
@@ -34,6 +36,7 @@ OM_INIT_DRIVER(log_port_init);
  *  @param ctx 触发点上下文（file/line/pc/detail） */
 void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *ctx)
 {
+#if OM_USE_LOG /* 记录点 = 下游组合（裁剪下不记录——fatal 设施语义不变） */
     om_log_panic(&_om_log_module, OM_LOG_LEVEL_FATAL,
                  "fatal reason=%d cause=%d at %s:%d pc=0x%lx detail=%s",
                  (int)reason, (int)cause,
@@ -41,6 +44,7 @@ void om_fatal_handler(OmFatalReason reason, OmRet cause, const OmFatalContext *c
                  ctx->line,
                  (unsigned long)ctx->pc,
                  (ctx->detail == NULL) ? "?" : ctx->detail);
+#endif
     /* 恢复策略（亮灯/软复位/跳 bootloader）在此展开——示范从略，不得返回 */
     for (;;)
     {

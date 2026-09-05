@@ -6,6 +6,7 @@
 --- @brief rm-c-board 板级静态库
 --- @details 注入板级构建输入并依赖基础驱动与 API。
 target("tar_board")
+    add_rules("oh_my_robot.project_cfg")
     set_kind("static")
     add_rules("oh_my_robot.context")
     add_deps("tar_awapi_driver", {public = true})

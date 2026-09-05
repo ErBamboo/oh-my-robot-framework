@@ -9,8 +9,10 @@
 ---   写入当前配置状态摘要，并作为所有目标的 depfile——配置/旗标变更后
 ---   构建期自动重编（根治"旗标变更不重编/陈旧归档成员"——实测备忘）。
 ---   命名/职责/优先级契约见 ADR-0017 (project_config_layering)。
---- 用法：binary 目标在规则组中显式添加 "oh_my_robot.project_cfg"；
----       框架库目标（lib/xmake.lua tar_*）在 lib/xmake.lua 末尾独立挂接同款 depfile。
+--- 用法：各目标在规则组中显式添加 "oh_my_robot.project_cfg"（binary 与框架库目标
+---       lib/xmake.lua tar_* 均挂接——注入全编译单元一致，见 2026-09-05 审计：
+---       binary-only 注入致驱动库源（如 log_serial_backend.c 锋利边守卫）未达
+---       appcfg 宏——配置分层一致性缺口）；库目标另挂同款 depfile（同文件状态机）。
 local om_root = path.join(os.scriptdir(), "..", "..")
 local modules_root = path.join(om_root, "build", "modules")
 
@@ -45,14 +47,20 @@ rule("oh_my_robot.project_cfg")
             io.writefile(marker, state)
             -- 内容缓存清理：xmake 编译缓存键=源码内容（不含旗标/包含路径）——配置/换板后
             -- 旧对象仍会命中 → 状态变化时同点清缓存（与 depfile 标记同一触发源）
-            os.rmdir(path.join(project_dir, ".cache"))
-            os.rmdir(path.join(project_dir, "build", ".build_cache"))
+            -- 存在性守卫：os.rmdir 对不存在目录报错（xmake 3.1 视作致命——CI 实证
+            -- exit 255 卡 build job）
+            local _cache_dir = path.join(project_dir, ".cache")
+            if os.isdir(_cache_dir) then
+                os.rmdir(_cache_dir)
+            end
+            local _build_cache_dir = path.join(project_dir, "build", ".build_cache")
+            if os.isdir(_build_cache_dir) then
+                os.rmdir(_build_cache_dir)
+            end
         end
 
-        if target:kind() ~= "binary" then
-            return
-        end
-
+        -- 注入面向全部目标（含框架库 tar_*）：配置分层（ADR-0017）= 所有编译单元
+        -- 一致可见工程配置——binary-only 会让库源（drivers 等）配置不一致
         if has_appcfg then
             target:add("defines", "OM_USE_APPCFG")
             target:add("includedirs", path.join(project_dir, "cfg"))

@@ -47,7 +47,8 @@ static uint32_t log_msg_count_args(const char *fmt)
     return count;
 }
 
-bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
+bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, uint32_t ts,
+                   const char *fmt, va_list ap)
 {
     uint32_t n = log_msg_count_args(fmt);
     if (n > OM_LOG_MAX_ARGS)
@@ -58,6 +59,7 @@ bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, c
     msg->fmt = fmt;
     msg->level = level;
     msg->module = module;
+    msg->ts = ts; /* 生产时刻——消费时刻格式化输出（printk 同款） */
     msg->argCount = 0;
     while (*fmt != '\0')
     {

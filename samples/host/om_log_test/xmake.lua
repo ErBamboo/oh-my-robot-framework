@@ -7,15 +7,17 @@
       xmake build -P samples/host/om_log_test
       xmake run -P samples/host/om_log_test om_log_formatter_test
       xmake run -P samples/host/om_log_test om_log_filter_test
-      xmake run -P samples/host/om_log_test om_log_deferred_test
+      xmake run -P samples/host/om_log_test om_log_ring_test
 
     退出码 0=通过；非 0=失败（EXPECT 断言不通过）。
     formatter 目标：纯 C 流式格式化器（无 OS 依赖）；
-    filter 目标：om_log_log 全链（过滤/临界区/扇出，port 桩 no-op 化临界区；
-    显式 OM_LOG_DEFERRED=0——未就绪路径固定走同步兜底，防异步/缓冲引入断言漂移）；
-    deferred 目标：早期缓冲 + 丢弃后验告警（默认 OM_LOG_DEFERRED=1，BUF=128 构造溢出）。
-    filter/deferred 目标另含 osal 桩（本地 osal/osal_time.h shadow + om_log_osal_stub.c——
-    core.c 时间戳取 osal_time_now_monotonic，host 桩恒 0）。
+    filter 目标：om_log_log 全链（过滤/扇出/per-backend 级别/管理 API——OM_LOG_ASYNC=0
+    同步模式：现场触发 + 滞留回放，桩 no-op 化临界区）；
+    ring 目标：消息环语义（OM_LOG_ASYNC=0 + OM_LOG_RING_LEN=4——滞留/回放顺序/过滤/
+    满丢计数/告警节流）。
+    异步消费（门铃/日志线程）为 OSAL 依赖——无 host 桩，目标板验证（samples/pal/log_rtt）。
+    filter/ring 目标另含 osal 桩（本地 osal/osal_time.h shadow + om_log_osal_stub.c——
+    core.c/msg.c 时间戳取 osal_time_now_monotonic，host 桩恒 0）。
 ]]
 
 set_project("om_log_test")
@@ -30,6 +32,7 @@ target("om_log_formatter_test")
     set_languages("c11")
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
+    add_includedirs(path.join(fw, "lib/data_struct/include"))
     add_includedirs(log_src)
     add_files("om_log_test_common.c", "om_log_formatter_test.c",
               path.join(log_src, "formatter.c"), path.join(log_src, "msg.c"))
@@ -41,27 +44,32 @@ target("om_log_filter_test")
     add_includedirs(os.scriptdir()) -- 本地 osal/osal_time.h 桩 shadow（先于框架头解析）
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
+    add_includedirs(path.join(fw, "lib/data_struct/include"))
     add_includedirs(log_src)
-    add_defines("OM_LOG_DEFERRED=0") -- 早期缓冲关：未就绪路径固定走同步兜底（本目标回归面）
+    add_defines("OM_LOG_ASYNC=0") -- 同步模式：现场触发 + 滞留回放（零 OSAL——Ringbuf 纯原子）
     add_files("om_log_test_common.c", "om_log_filter_test.c", "om_log_port_stub.c",
-              "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走同步兜底（v1 语义）
+              "om_log_osal_stub.c",
+              path.join(fw, "lib/data_struct/src/ringbuffer.c"),
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
               path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
-              path.join(log_src, "module.c"), path.join(log_src, "stats.c")) -- T6：stats 查询依赖 msg（超限计数）+ stats 本考项
+              path.join(log_src, "module.c"), path.join(log_src, "stats.c"),
+              path.join(log_src, "ring.c")) -- 消息环（生产/消费/滞留回放）
 target_end()
 
-target("om_log_deferred_test")
+target("om_log_ring_test")
     set_kind("binary")
     set_languages("c11")
     add_includedirs(os.scriptdir()) -- 本地 osal/osal_time.h 桩 shadow（先于框架头解析）
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
+    add_includedirs(path.join(fw, "lib/data_struct/include"))
     add_includedirs(log_src)
-    add_defines("OM_LOG_DEFERRED_BUF_SIZE=128") -- 早期缓冲小容量：短记录 37B×3=111B+1 条=溢出（精确构造）
-    add_files("om_log_test_common.c", "om_log_deferred_test.c", "om_log_port_stub.c",
-              "om_log_osal_stub.c", "om_log_async_stub.c", -- 异步入队链接桩：恒"未就绪"→ 全链走早期缓冲
+    add_defines("OM_LOG_ASYNC=0", "OM_LOG_RING_LEN=4") -- 同步模式 + 小环（4 槽精确构造滞留/满丢）
+    add_files("om_log_test_common.c", "om_log_ring_test.c", "om_log_port_stub.c",
+              "om_log_osal_stub.c",
+              path.join(fw, "lib/data_struct/src/ringbuffer.c"),
               path.join(log_src, "formatter.c"), path.join(log_src, "core.c"),
               path.join(log_src, "backend.c"), path.join(log_src, "msg.c"),
               path.join(log_src, "module.c"), path.join(log_src, "stats.c"),
-              path.join(log_src, "deferred.c")) -- 早期缓冲 + 丢弃后验告警
+              path.join(log_src, "ring.c")) -- 环语义 + 丢弃后验告警
 target_end()

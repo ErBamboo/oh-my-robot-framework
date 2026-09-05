@@ -80,7 +80,8 @@ static bool build_check(const char *fmt, ...)
     OmLogMsg m;
     va_list ap;
     va_start(ap, fmt);
-    bool ok = log_msg_build(&m, &fake_mod, OM_LOG_LEVEL_INFO, fmt, ap);
+    bool ok = log_msg_build(&m, &fake_mod, OM_LOG_LEVEL_INFO, 0U, fmt, ap); /* ts 桩 0 */
+
     va_end(ap);
     if (ok)
     {

@@ -28,9 +28,9 @@
 #define OM_LOG_SEGMENT_SIZE 32 /* formatter 段缓冲（字节，栈占用 = 段 + 常量状态） */
 #endif
 
-/* log 服务异步能力（统一异步形态：就绪=打包入队+日志线程格式化；未就绪/裁剪=同步兜底）
- * 默认定义（能力常驻）；最小配置（无 RTOS/裸机）可 #undef——此时调用侧格式化（同步兜底，
- * 即 v1 语义）。详见服务 README 投递形态节。 */
+/* log 服务异步能力（消费触发选择器）：1=日志线程抽环（门铃+线程，SERVICE init 建）；
+ * 0=现场触发（生产入环 → 后端接受即同上下文抽环发射——零 OSAL，无线程无门铃，早期
+ * 自然滞留环中）。生产侧形态两侧完全相同（消息恒入环——见服务 README 投递形态节）。 */
 #ifndef OM_LOG_ASYNC
 #define OM_LOG_ASYNC 1 /* 值语义（OM_SYNC_ACCEL 同款）：=0 或 appcfg #undef（#if 未定义=0）即裁剪 */
 #endif
@@ -43,24 +43,20 @@
 #error "OM_LOG_MAX_ARGS 超出 va 计数表上限（1..16）——扩展 OM_LOG_VA_COUNT 表再调大"
 #endif
 
-#ifndef OM_LOG_QUEUE_LEN
-#define OM_LOG_QUEUE_LEN 8 /* 异步队列深度（消息槽数；满丢弃+计数，printk 语义） */
+/* log 消息环：生产侧唯一形态 = 消息恒入常驻环形（printk 形态——廉价/上下文安全/无消费者
+ * 耦合；无消费者/无后端时消息自然滞留 = 早期日志场景）。容量 = 消息槽数（OmLogMsg 定长），
+ * 须为 2 的幂；满 = 丢新 + 计数 + 后验告警（WRN 节流）。 */
+#ifndef OM_LOG_RING_LEN
+#define OM_LOG_RING_LEN 16 /* 消息槽数（≈1.2KB——8 槽队列 + 早期缓冲的合并预算） */
+#endif
+#if OM_LOG_RING_LEN < 4
+#error "OM_LOG_RING_LEN 过小（下限 4 槽）"
+#endif
+#if (OM_LOG_RING_LEN & (OM_LOG_RING_LEN - 1)) != 0
+#error "OM_LOG_RING_LEN 必须为 2 的幂（Ringbuf 掩码索引）"
 #endif
 
-/* log 早期缓冲（deferred——仅 OM_LOG_ASYNC=1 时生效）：未就绪窗口（调度器前/SERVICE init
- * 前）的日志入固定环形，异步就绪后按条回放（发起时间戳/发起顺序保留）——后端未注册时不再
- * 静默丢失、调用侧不被慢速后端阻塞。关闭 = 未就绪走同步直出（v2 既有行为）。 */
-#ifndef OM_LOG_DEFERRED
-#define OM_LOG_DEFERRED 1
-#endif
-#ifndef OM_LOG_DEFERRED_BUF_SIZE
-#define OM_LOG_DEFERRED_BUF_SIZE 1024 /* 早期缓冲字节数（整条记录存储；满 = 丢弃新条目 + 计数 + 后验告警） */
-#endif
-#if OM_LOG_DEFERRED_BUF_SIZE < 16
-#error "OM_LOG_DEFERRED_BUF_SIZE 过小（下限 16B——至少容一条最小记录）"
-#endif
-
-/* log 丢弃后验告警：队列满/早期缓冲满的丢弃不再只进计数，由日志侧按节流补发 WRN 自证 */
+/* log 丢弃后验告警：环满/参数超限的丢弃不再只进计数，由日志侧按节流补发 WRN 自证 */
 #ifndef OM_LOG_DROP_WARN_INTERVAL_MS
 #define OM_LOG_DROP_WARN_INTERVAL_MS 1000 /* 告警最小间隔（毫秒——防高频丢弃刷屏） */
 #endif
