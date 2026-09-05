@@ -159,8 +159,9 @@ OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
 OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
 
 /** @brief 日志统计（查询 API——丢弃可观测）
- *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）；
- *        异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数） */
+ *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）
+ *        + 早期缓冲满丢弃（deferred）；异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数）；
+ *        丢弃点另由 log 服务侧补发 WRN 自证（节流——见服务 README 丢弃点节） */
 typedef struct
 {
     uint32_t dropped;

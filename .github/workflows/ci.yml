@@ -107,3 +107,18 @@ jobs:
 
       - name: Run fatal tests
         run: xmake run -P samples/host/om_core_test om_core_fatal_test
+
+      - name: Configure log host tests
+        run: xmake f -c -P samples/host/om_log_test -p linux -m debug
+
+      - name: Build log host tests
+        run: xmake build -P samples/host/om_log_test
+
+      - name: Run formatter tests
+        run: xmake run -P samples/host/om_log_test om_log_formatter_test
+
+      - name: Run filter tests
+        run: xmake run -P samples/host/om_log_test om_log_filter_test
+
+      - name: Run deferred tests
+        run: xmake run -P samples/host/om_log_test om_log_deferred_test

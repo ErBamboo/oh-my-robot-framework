@@ -7,7 +7,9 @@
  *          结构：emit 独立（与兜底/就绪路径共用）；头部生成独立（时间戳统一）；
  *          丢弃点独立（deferred 挂接位）。
  *          投递形态（统一异步）：OM_LOG_ASYNC 定义时——就绪（队列已建）走打包入队
- *          （log_async_send，见 log_async.c）；未就绪/裁剪走本文件同步兜底（log_emit）。
+ *          （log_async_send，见 log_async.c）；未就绪且 OM_LOG_DEFERRED 开 = 早期缓冲
+ *          （log_deferred_emit 入环，见 deferred.c）；其余（deferred 关/窗口已过/裁剪）
+ *          走同步兜底（log_emit）。
  */
 
 #include "core/om_config.h"
@@ -79,6 +81,27 @@ static void emit_header(LogBufWriter *w, const OmLogModule *module, OmLogLevel l
     log_buf_write(w, "] ", 2);
 }
 
+/** @brief 日志构建核心：头部 + 流式格式化 + 尾部 \n + flush（一条日志的内容组合唯一事实源）
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param ap 可变参数
+ *  @param out 段输出回调
+ *  @param out_ctx 回调上下文
+ *  @note 无条件编译（va_list 版）；执行者 = 兜底调用侧 / 日志线程（log_emit_args 同构）/
+ *        早期缓冲入环（deferred）——差异仅在 out 指向（扇出 / 环形写入） */
+void log_emit_build(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap,
+                    LogOutFn out, void *out_ctx)
+{
+    LogBufWriter w;
+    char seg[OM_LOG_SEGMENT_SIZE];
+    log_buf_writer_init(&w, out, out_ctx, seg, sizeof(seg));
+    emit_header(&w, module, level);
+    log_format(&w, fmt, ap);
+    log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
+    log_buf_flush(&w);
+}
+
 /** @brief emit：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出（临界区内调用）
  *  @param module 模块实例
  *  @param level 消息级别
@@ -93,13 +116,7 @@ static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fm
     {
         return; /* ② 无后端接受 → 零格式化开销 */
     }
-    LogBufWriter w;
-    char seg[OM_LOG_SEGMENT_SIZE];
-    log_buf_writer_init(&w, emit_fanout, (void *)(uintptr_t)level, seg, sizeof(seg));
-    emit_header(&w, module, level);
-    log_format(&w, fmt, ap);
-    log_buf_write(&w, "\n", 1); /* 统一结束符：框架侧一处，广播一致（后端可映射，见 README） */
-    log_buf_flush(&w);
+    log_emit_build(module, level, fmt, ap, emit_fanout, (void *)(uintptr_t)level);
 }
 
 /** @brief panic emit：与 log_emit 唯一差异 = 无 any_accepts 过滤 + panic 投递（提满全出）
@@ -110,13 +127,7 @@ static void log_emit(const OmLogModule *module, OmLogLevel level, const char *fm
  *  @note 同构互见（log_emit 注释）；emit_header 复用——时间戳 + 级别标注自动保留 */
 static void log_emit_panic(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap)
 {
-    LogBufWriter w;
-    char seg[OM_LOG_SEGMENT_SIZE];
-    log_buf_writer_init(&w, emit_fanout_panic, NULL, seg, sizeof(seg));
-    emit_header(&w, module, level);
-    log_format(&w, fmt, ap);
-    log_buf_write(&w, "\n", 1); /* 统一结束符（框架侧一处——与正常路径一致） */
-    log_buf_flush(&w);
+    log_emit_build(module, level, fmt, ap, emit_fanout_panic, NULL);
 }
 
 /** @brief emit（日志线程）：后端接受判定 → 头部 + 流式格式化 + 尾部 \n + 扇出
@@ -163,7 +174,7 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
     }
     va_start(ap, fmt);
 #if OM_LOG_ASYNC
-    if (log_async_can_enqueue()) /* 队列已建=就绪（未就绪落入下方同步兜底——含调度器前） */
+    if (log_async_can_enqueue()) /* 队列已建=就绪（未就绪落入下方早期缓冲/同步兜底） */
     {
         OmLogMsg msg;
         if (log_msg_build(&msg, module, level, fmt, ap))
@@ -174,7 +185,20 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
         return; /* 就绪：调用侧到此（~1-2µs，无临界区——打包本地 + 非阻塞入队） */
     }
 #endif
-    /* 同步兜底：最小配置（OM_LOG_ASYNC 未定义）或未就绪（调度器前/SERVICE init 前） */
+#if OM_LOG_ASYNC && OM_LOG_DEFERRED
+    if (log_deferred_active()) /* 早期窗口（调度器前/SERVICE init 前）：入环——丢失点后置 */
+    {
+        /* 临界区同构（早期窗口内仅 main/init 执行期；ISR 打日志仍守短消息纪律——
+         * 关键收益 = 后端就绪再扇出：不被慢速后端当场阻塞） */
+        port_critical_key_t key;
+        key = om_hw_disable_interrupt(); /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */
+        log_deferred_emit(module, level, fmt, ap);
+        om_hw_restore_interrupt(key); /* ⑤ */
+        va_end(ap);
+        return;
+    }
+#endif
+    /* 同步兜底：最小配置（OM_LOG_ASYNC 未定义）、deferred 关闭或早期窗口已过（含队列未建成） */
     {
         port_critical_key_t key;
         key = om_hw_disable_interrupt();  /* ③ 临界区（线程/中断上下文均安全，嵌套安全） */

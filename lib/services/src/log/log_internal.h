@@ -117,6 +117,62 @@ int log_module_check_in(const OmLogModule *module);
  *  @note 就绪路径 = 日志线程调此函数；兜底路径 = 调用侧（va_list 版 log_emit 或 log_emit_panic） */
 void log_emit_args(const OmLogMsg *msg);
 
+/** @brief 日志构建核心：头部 + 流式格式化 + 尾部 \n + flush 到指定 out 回调
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param ap 可变参数
+ *  @param out 段输出回调（扇出 / 早期缓冲等——执行者唯一差异；一条日志的内容组合事实源）
+ *  @param out_ctx 回调上下文
+ *  @note 无条件编译（va_list 版）；执行者 = 同步兜底调用侧 / 日志线程 / 早期缓冲入环 */
+void log_emit_build(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap,
+                    LogOutFn out, void *out_ctx);
+
+#if OM_LOG_ASYNC && OM_LOG_DEFERRED
+/** @brief 早期缓冲（deferred）：未就绪窗口（调度器前/SERVICE init 前）日志入固定环形，
+ *         异步就绪后按条回放——发起时间戳/发起顺序保留，无后端接受时不再静默丢失
+ *  @return true = 早期窗口开启（om_log_log 未就绪分支应走 log_deferred_emit） */
+bool log_deferred_active(void);
+
+/** @brief 入环一条日志（整条记录 = [级别 1B][长度 2B][消息字节]；放不下=整条回滚+计数）
+ *  @param module 模块实例
+ *  @param level 消息级别
+ *  @param fmt 格式串
+ *  @param ap 可变参数
+ *  @note 仅 log_deferred_active()=true 时调用；调用方须在临界区内（与兜底路径同构——早期
+ *        窗口内仅 main/init 执行期，ISR 打日志仍守 ERROR/FATAL 短消息） */
+void log_deferred_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);
+
+/** @brief 回放 + 关闭早期窗口（log_async_init 末尾调用；幂等——已关闭则无操作）
+ *  @note 回放 = 按条 per-backend 过滤扇出（发起时间戳/顺序保留）；随后丢弃告警（WRN 节流） */
+void log_deferred_flush(void);
+
+/** @brief 读取早期缓冲满丢弃计数（整条回滚——om_log_stats 汇总用）
+ *  @return 累计早期缓冲丢弃数（自启动以来） */
+uint32_t log_deferred_dropped(void);
+
+/** @brief 丢弃后验告警状态（每丢弃点一实例；warned_upto=已上报累计，last_warn_ms=上次上报时刻） */
+typedef struct
+{
+    uint32_t warned_upto;
+    uint32_t last_warn_ms;
+} LogDropWarnState;
+
+/** @brief 丢弃后验告警：丢弃只计数 → 补发 WRN 自证（节流 + 增量报告）
+ *  @param st 状态（每丢弃点一个）
+ *  @param module 告警模块实例（log_service_module——"log"）
+ *  @param site 丢弃点描述（静态字符串：如 "queue-full"）
+ *  @param dropped 丢弃点累计丢弃数
+ *  @param now_ms 单调毫秒（调用方取 osal_time_now_monotonic）
+ *  @return true = 已补发 WRN（内部经 log_emit_args——直接 emit，不走队列，无递归）
+ *  @note 节流：距上次 >= OM_LOG_DROP_WARN_INTERVAL_MS；报告 = 增量 + 累计 */
+bool log_drop_warn(LogDropWarnState *st, const OmLogModule *module, const char *site,
+                   uint32_t dropped, uint32_t now_ms);
+
+/** @brief 框架内部告警模块实例（"log"——弃点告警的消息头 module 标注；不进模块注册表） */
+const OmLogModule *log_service_module(void);
+#endif /* OM_LOG_ASYNC && OM_LOG_DEFERRED */
+
 #if OM_LOG_ASYNC
 /** @brief 异步路径初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；最小配置无此声明） */
 OmRet log_async_init(void);

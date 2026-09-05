@@ -47,6 +47,24 @@
 #define OM_LOG_QUEUE_LEN 8 /* 异步队列深度（消息槽数；满丢弃+计数，printk 语义） */
 #endif
 
+/* log 早期缓冲（deferred——仅 OM_LOG_ASYNC=1 时生效）：未就绪窗口（调度器前/SERVICE init
+ * 前）的日志入固定环形，异步就绪后按条回放（发起时间戳/发起顺序保留）——后端未注册时不再
+ * 静默丢失、调用侧不被慢速后端阻塞。关闭 = 未就绪走同步直出（v2 既有行为）。 */
+#ifndef OM_LOG_DEFERRED
+#define OM_LOG_DEFERRED 1
+#endif
+#ifndef OM_LOG_DEFERRED_BUF_SIZE
+#define OM_LOG_DEFERRED_BUF_SIZE 1024 /* 早期缓冲字节数（整条记录存储；满 = 丢弃新条目 + 计数 + 后验告警） */
+#endif
+#if OM_LOG_DEFERRED_BUF_SIZE < 16
+#error "OM_LOG_DEFERRED_BUF_SIZE 过小（下限 16B——至少容一条最小记录）"
+#endif
+
+/* log 丢弃后验告警：队列满/早期缓冲满的丢弃不再只进计数，由日志侧按节流补发 WRN 自证 */
+#ifndef OM_LOG_DROP_WARN_INTERVAL_MS
+#define OM_LOG_DROP_WARN_INTERVAL_MS 1000 /* 告警最小间隔（毫秒——防高频丢弃刷屏） */
+#endif
+
 /* RTT 内置默认后端（services/log/rtt_backend.h）：1=零接线隐藏注册（本组配置生效），
  * 0=仅显式 om_rtt_backend_register 注册（默认——现有行为不变）。 */
 #ifndef OM_LOG_RTT
