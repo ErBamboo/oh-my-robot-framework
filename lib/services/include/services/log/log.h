@@ -112,12 +112,14 @@ typedef struct OmLogBackend {
         om_log_log(&_om_log_module, OM_LOG_LEVEL_FATAL, fmt, ##__VA_ARGS__); \
     } while (0)
 
-/** @brief 日志入口：过滤（模块级别+后端接受）→ 临界区 → emit（头部+格式化+广播）→ 退临界区
+/** @brief 日志入口：模块级过滤 → 打包（生产时刻时间戳）→ 消息环生产
  *  @param module 模块实例（OM_LOG_MODULE 生成；NULL 或 name 为 NULL 时静默返回）
  *  @param level 消息级别（>= OM_LOG_LEVEL_OFF 时静默返回）
  *  @param fmt printf 风格子集格式串（NULL 时静默返回）
- *  @note 无失败路径（打日志不打扰调用方）；未就绪（无后端接受）走过滤流水线返回；
- *        线程/中断上下文均可调；format(printf, 3, 4) 供编译器逐调用点校验 */
+ *  @note 无失败路径（打日志不打扰调用方）；后端级过滤在消费时刻（per-backend）；
+ *        环满 = 丢弃 + 计数（后验告警）；无消费者/无后端时消息滞留环中（早期日志
+ *        = "deferred"回归形态——服务就绪后回放）；线程/中断上下文均可调；
+ *        format(printf, 3, 4) 供编译器逐调用点校验 */
 void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ...)
     OM_ATTRIBUTE((format(__printf__, 3, 4)));
 
@@ -159,8 +161,7 @@ OmRet om_log_module_set_level(const char *module_name, OmLogLevel level);
 OmRet om_log_module_get_level(const char *module_name, OmLogLevel *level);
 
 /** @brief 日志统计（查询 API——丢弃可观测）
- *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 异步队列满丢弃（printk 语义）
- *        + 早期缓冲满丢弃（deferred）；异步队列项在同步模式恒 0（仅 ASYNC 编译存在该计数）；
+ *  @note dropped 累计 = 参数包超限丢弃（log_msg_build）+ 消息环满丢弃（printk 语义）；
  *        丢弃点另由 log 服务侧补发 WRN 自证（节流——见服务 README 丢弃点节） */
 typedef struct
 {

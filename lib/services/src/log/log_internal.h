@@ -63,14 +63,16 @@ void log_buf_flush(LogBufWriter *w);
  *  @note 未知/不完整转换符降级为整段规格字面输出；LONG_MIN 取负未处理（文档约束） */
 void log_format(LogBufWriter *w, const char *fmt, va_list ap);
 
-/** @brief 参数包（异步投递的消息载体 —— fmt+args 延后到日志线程格式化）
+/** @brief 参数包（消息环的唯一 payload —— fmt+args 延后到消费时刻格式化）
  *  @note argBuf 为 uintptr_t 宽参数数组（8 个 = 64B）：整型/指针直接存；
- *        %s 只存指针——字符串生命周期由调用方保证 */
+ *        %s 只存指针——字符串生命周期由调用方保证至消费时刻；
+ *        ts = 生产时刻单调 ms（消费时刻格式化输出——printk 同款时间戳语义） */
 typedef struct
 {
     const char *fmt;
     OmLogLevel level;
     const OmLogModule *module;
+    uint32_t ts;
     uintptr_t argBuf[OM_LOG_MAX_ARGS];
     uint32_t argCount;
 } OmLogMsg;
@@ -99,8 +101,10 @@ LogSpec log_spec_next(const char **fmtp);
 size_t log_time_format(char *buf, uint32_t ms);
 
 /** @brief 打包：按 fmt 解析参数数 → va_list 逐参抓取进 argBuf（超限丢弃）
+ *  @param ts 生产时刻单调 ms（调用方取 osal_time_now_monotonic——core.c）
  *  @return true = 打包成功（<= OM_LOG_MAX_ARGS 参）；false = 超限丢弃（已计数） */
-bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);
+bool log_msg_build(OmLogMsg *msg, const OmLogModule *module, OmLogLevel level, uint32_t ts,
+                   const char *fmt, va_list ap);
 
 /** @brief 读取丢计数（参数包超限——msg.c 维护；om_log_stats 汇总用）
  *  @return 累计超限丢弃数（自启动以来） */
@@ -120,36 +124,35 @@ void log_emit_args(const OmLogMsg *msg);
 /** @brief 日志构建核心：头部 + 流式格式化 + 尾部 \n + flush 到指定 out 回调
  *  @param module 模块实例
  *  @param level 消息级别
+ *  @param ts 时间戳单调 ms（生产时刻——panic 当场取）
  *  @param fmt 格式串
  *  @param ap 可变参数
- *  @param out 段输出回调（扇出 / 早期缓冲等——执行者唯一差异；一条日志的内容组合事实源）
+ *  @param out 段输出回调（扇出 / panic 投递——执行者唯一差异；一条日志的内容组合事实源）
  *  @param out_ctx 回调上下文
- *  @note 无条件编译（va_list 版）；执行者 = 同步兜底调用侧 / 日志线程 / 早期缓冲入环 */
-void log_emit_build(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap,
-                    LogOutFn out, void *out_ctx);
+ *  @note 无条件编译（va_list 版）；执行者 = panic 直出（消息环路径经 log_emit_args——
+ *        参数包版，ts 随包传递） */
+void log_emit_build(const OmLogModule *module, OmLogLevel level, uint32_t ts, const char *fmt,
+                    va_list ap, LogOutFn out, void *out_ctx);
 
-#if OM_LOG_ASYNC && OM_LOG_DEFERRED
-/** @brief 早期缓冲（deferred）：未就绪窗口（调度器前/SERVICE init 前）日志入固定环形，
- *         异步就绪后按条回放——发起时间戳/发起顺序保留，无后端接受时不再静默丢失
- *  @return true = 早期窗口开启（om_log_log 未就绪分支应走 log_deferred_emit） */
-bool log_deferred_active(void);
+/** @brief 生产入环：消息环唯一生产入口（msg 已打包；临界区内 ringbuf_in——多生产者收敛
+ *         单写者；满 = 丢新 + 计数）
+ *  @param msg 参数包（core.c 打包后传入）
+ *  @note OM_LOG_ASYNC：门铃（OsalSem 二值）空→非空才 post（pipe 模式——节省唤醒）；
+ *        =0：无 osal——后接现场判定（any_accepts → drain 全量保生产序） */
+void log_ring_produce(const OmLogMsg *msg);
 
-/** @brief 入环一条日志（整条记录 = [级别 1B][长度 2B][消息字节]；放不下=整条回滚+计数）
- *  @param module 模块实例
- *  @param level 消息级别
- *  @param fmt 格式串
- *  @param ap 可变参数
- *  @note 仅 log_deferred_active()=true 时调用；调用方须在临界区内（与兜底路径同构——早期
- *        窗口内仅 main/init 执行期，ISR 打日志仍守 ERROR/FATAL 短消息） */
-void log_deferred_emit(const OmLogModule *module, OmLogLevel level, const char *fmt, va_list ap);
+/** @brief 消费抽环：逐条 out → log_emit_args（格式化+扇出；单消费者——SPSC 读侧）；
+ *         尾部检查丢弃后验告警（节流）
+ *  @note 调用方：日志线程（async）/ 现场触发与服务就绪点（sync） */
+void log_ring_drain(void);
 
-/** @brief 回放 + 关闭早期窗口（log_async_init 末尾调用；幂等——已关闭则无操作）
- *  @note 回放 = 按条 per-backend 过滤扇出（发起时间戳/顺序保留）；随后丢弃告警（WRN 节流） */
-void log_deferred_flush(void);
+/** @brief 服务就绪点回放：同步模式（OM_INIT_SERVICE 调用）——drain 滞留段；异步模式
+ *         线程已接管（no-op） */
+void log_ring_flush(void);
 
-/** @brief 读取早期缓冲满丢弃计数（整条回滚——om_log_stats 汇总用）
- *  @return 累计早期缓冲丢弃数（自启动以来） */
-uint32_t log_deferred_dropped(void);
+/** @brief 读取消息环满丢弃计数（om_log_stats 汇总用）
+ *  @return 累计环满丢弃数（自启动以来） */
+uint32_t log_dropped_ring(void);
 
 /** @brief 丢弃后验告警状态（每丢弃点一实例；warned_upto=已上报累计，last_warn_ms=上次上报时刻） */
 typedef struct
@@ -161,34 +164,21 @@ typedef struct
 /** @brief 丢弃后验告警：丢弃只计数 → 补发 WRN 自证（节流 + 增量报告）
  *  @param st 状态（每丢弃点一个）
  *  @param module 告警模块实例（log_service_module——"log"）
- *  @param site 丢弃点描述（静态字符串：如 "queue-full"）
+ *  @param site 丢弃点描述（静态字符串：如 "ring-full"）
  *  @param dropped 丢弃点累计丢弃数
  *  @param now_ms 单调毫秒（调用方取 osal_time_now_monotonic）
- *  @return true = 已补发 WRN（内部经 log_emit_args——直接 emit，不走队列，无递归）
+ *  @return true = 已补发 WRN（内部经 log_emit_args——直接 emit，不走环，无递归）
  *  @note 节流：距上次 >= OM_LOG_DROP_WARN_INTERVAL_MS；报告 = 增量 + 累计 */
 bool log_drop_warn(LogDropWarnState *st, const OmLogModule *module, const char *site,
                    uint32_t dropped, uint32_t now_ms);
 
-/** @brief 框架内部告警模块实例（"log"——弃点告警的消息头 module 标注；不进模块注册表） */
+/** @brief 框架内部告警模块实例（"log"——丢弃告警的消息头 module 标注；不进模块注册表） */
 const OmLogModule *log_service_module(void);
-#endif /* OM_LOG_ASYNC && OM_LOG_DEFERRED */
 
 #if OM_LOG_ASYNC
-/** @brief 异步路径初始化：建队列 + 日志线程（经 OM_INIT_SERVICE 调用；最小配置无此声明） */
+/** @brief 异步模式初始化：建门铃（OsalSem 二值，空→非空 post）+ 日志线程
+ *  @return OM_OK；OM_ERR_NO_MEM 门铃/线程创建失败 */
 OmRet log_async_init(void);
-
-/** @brief 异步路径就绪？队列已建（调度器后、线程创建前窗口内为 false——调用方走同步兜底）
- *  @return true = 就绪（log_async_send 可用） */
-bool log_async_can_enqueue(void);
-
-/** @brief 异步路径入队（build 成功后调用；队列满 → 丢弃+计数）
- *  @return true = 已入队 */
-bool log_async_send(const OmLogMsg *msg);
-
-/** @brief 读取丢计数（异步队列满——log_async.c 维护；最小配置/兜底恒 0）
- *  @note 仅在 OM_LOG_ASYNC 下编译/调用（stats.c 以同样 #ifdef 包裹调用点）
- *  @return 累计队列满丢弃数（自启动以来） */
-uint32_t log_dropped_queue(void);
 #endif
 
 /** @brief 是否有后端接受该级别（过滤流水线第②步，临界区内调用）
