@@ -187,11 +187,12 @@ uint32_t log_dropped_ring(const LogRing *ring);
 OmRet log_async_start(LogRing *ring);
 #endif
 
-/** @brief 服务侧消费触发（服务主体实例编排——OM_INIT_SERVICE 就绪点与 host 测试共用） */
-void log_ring_service_flush(void);
+/** @brief 服务启动（服务主体实现——OM_INIT_SERVICE 统一注册；模式差异仅在实现体：
+ *  async=启动消费调度器（OM_ERR_NO_MEM 可见）/ sync=回放滞留段） */
+OmRet log_service_start(void);
 
 /** @brief 服务侧环满丢弃计数（服务主体实例——om_log_stats 汇总用） */
-uint32_t log_ring_service_dropped(void);
+uint32_t log_service_dropped(void);
 
 /** @brief 丢弃后验告警：丢弃只计数 → 补发 WRN 自证（节流 + 增量报告）
  *  @param st 状态（每丢弃点一个）

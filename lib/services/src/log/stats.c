@@ -26,7 +26,7 @@ OmRet om_log_stats(OmLogStats *stats)
         return OM_ERR_INVALID_ARG;
     }
     stats->dropped = log_dropped_overflow();
-    stats->dropped += log_ring_service_dropped();
+    stats->dropped += log_service_dropped();
     return OM_OK;
 }
 

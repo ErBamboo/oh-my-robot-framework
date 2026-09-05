@@ -176,37 +176,26 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
     va_end(ap);
 }
 
-/** @brief 服务侧消费触发（服务主体实例编排——OM_INIT_SERVICE 就绪点与 host 测试共用） */
-void log_ring_service_flush(void)
+/** @brief 服务启动（OM_INIT_SERVICE 统一注册——模式差异仅在实现体）：
+ *  OM_LOG_ASYNC=1 启动异步消费调度器（门铃+线程入实例——之前生产流入环滞留，线程首轮
+ *  drain 接住）；=0 服务就绪点回放滞留段（调度器后、后端已注册——DRIVER 级）
+ *  @return OM_OK；OM_ERR_NO_MEM（仅异步模式——调度器启建失败） */
+OmRet log_service_start(void)
 {
+#if OM_LOG_ASYNC
+    return log_async_start(&g_log_ring);
+#else
     log_ring_flush(&g_log_ring);
+    return OM_OK;
+#endif
 }
+OM_INIT_SERVICE(log_service_start);
 
 /** @brief 服务侧环满丢弃计数（服务主体实例——om_log_stats 汇总用） */
-uint32_t log_ring_service_dropped(void)
+uint32_t log_service_dropped(void)
 {
     return log_dropped_ring(&g_log_ring);
 }
-
-#if OM_LOG_ASYNC
-/** @brief 异步消费调度器启动（OM_INIT_SERVICE——调度器后，可阻塞/建线程）：
- *  门铃+线程入实例；之前生产流入环滞留——线程首轮 drain 接住
- *  @return 透传 log_async_start（OM_OK / OM_ERR_NO_MEM） */
-static OmRet log_async_boot(void)
-{
-    return log_async_start(&g_log_ring);
-}
-OM_INIT_SERVICE(log_async_boot);
-#else
-/** @brief 服务就绪点（OM_INIT_SERVICE）：回放滞留段——调度器后、后端已注册（DRIVER 级）
- *  @return OM_OK */
-static OmRet log_ring_ready(void)
-{
-    log_ring_service_flush();
-    return OM_OK;
-}
-OM_INIT_SERVICE(log_ring_ready);
-#endif
 
 /** @brief 故障直出（契约见 services/log/log.h）
  *  @param module 模块实例

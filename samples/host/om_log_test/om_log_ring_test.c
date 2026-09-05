@@ -12,7 +12,7 @@
 
 #include "om_log_test_common.h"
 
-#include "log_internal.h" /* log_ring_service_flush / log_drop_warn / log_service_module */
+#include "log_internal.h" /* log_service_start / log_drop_warn / log_service_module */
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -98,7 +98,7 @@ int main(void)
 
     /* ② 服务就绪点回放（服务侧触发——实例属主 core.c）：生产序保留 + per-backend 过滤
      * + ③ 丢弃告警（WRN 不进 capB） */
-    log_ring_service_flush();
+    log_service_start();
     {
         char expect_a[512];
         g_cap_a.buf[g_cap_a.len] = '\0';
