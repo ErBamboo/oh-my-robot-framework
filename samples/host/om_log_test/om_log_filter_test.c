@@ -172,8 +172,9 @@ int main(void)
     size_t len_b_off = g_cap_b.len;
     OM_LOG_ERROR("all off");
     EXPECT(g_cap_b.len == len_b_off);
-    /* 服务就绪点回放（模拟）：滞留消息 emit——级别仍全 OFF → 无输出（回放时刻裁判） */
-    log_ring_flush();
+    /* 服务就绪点回放（服务侧触发，模拟 OM_INIT_SERVICE）：滞留消息 emit——级别仍全 OFF
+     * → 无输出（回放时刻裁判） */
+    log_ring_service_flush();
     EXPECT(g_cap_b.len == len_b_off);
 
     /* om_log_stats：初始 0 → 超限丢弃后 dropped 递增（T6） */

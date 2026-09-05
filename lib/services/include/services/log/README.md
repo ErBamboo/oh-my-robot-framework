@@ -45,9 +45,9 @@ lib/services/include/services/log/log.h     ← 公共 API 事实源
 lib/services/src/log/log_internal.h          ← 组件间私有接口
 lib/services/src/log/formatter.c             ← 流式格式化 + 规格解析（log_spec_next 唯一事实源）+ 时间换算
 lib/services/src/log/msg.c                   ← 参数包打包（计数/抓取/上限丢弃；生产时刻时间戳）
-lib/services/src/log/core.c                  ← 过滤编排/打包/emit/panic 直出
+lib/services/src/log/core.c                  ← 服务主体（过滤编排/打包/emit/panic 直出；持有 LogRing 实例与 "log" 告警模块）
 lib/services/src/log/backend.c               ← 后端表（注册/注销/级别/广播/panic 投递）
-lib/services/src/log/ring.c                  ← 统一消息环 + 消费调度（现场触发/门铃+线程——单一属主）+ 丢弃后验告警
+lib/services/src/log/ring.c                  ← 消息环能力（LogRing 实例 API：生产/消费抽环/回放/异步消费调度器——能力与实例分离）
 lib/services/src/log/stats.c                 ← om_log_stats 汇总
 lib/services/src/log/backends/               ← 后端实现（零驱动依赖的随服务家族存放——RTT 在此）
 lib/services/src/log/backends/rtt_backend.c  ← RTT 后端（调试通道高带宽；零驱动依赖）
@@ -57,7 +57,7 @@ samples/host/om_log_test/                    ← 宿主测试（注入源 + osal
 ```
 
 - 依赖：services → kernel（接口/原语）+ data_struct（Ringbuf——纯原子无 OSAL）；drivers → services（开放清单：log.h——单向）；platform 只依赖 kernel/third_party 与 drivers 抽象头（PAL）
-- 自注册：消息环（ring.c）经 `OM_INIT_SERVICE`——异步模式建门铃+线程、同步模式回放滞留段；backend 注册经组合层 `OM_INIT_DRIVER` 等分散加载
+- 自注册：服务主体（core.c）经 `OM_INIT_SERVICE`——异步模式启动消费调度器（门铃+线程入实例）、同步模式回放滞留段；backend 注册经组合层 `OM_INIT_DRIVER` 等分散加载
 
 ## 接口
 

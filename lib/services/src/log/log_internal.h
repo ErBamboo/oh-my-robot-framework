@@ -9,8 +9,12 @@
 #define __LOG_INTERNAL_H__
 
 #include "core/om_def.h"
-#include "core/om_config.h"   /* OM_LOG_MAX_ARGS（OmLogMsg 参数包宽度，log_internal.h 专属） */
-#include "services/log/log.h" /* OmLogLevel（级别类型，公共头已含 core/om_def.h） */
+#include "core/om_config.h"         /* OM_LOG_MAX_ARGS（OmLogMsg 参数包宽度，log_internal.h 专属） */
+#include "services/log/log.h"       /* OmLogLevel（级别类型，公共头已含 core/om_def.h） */
+#include "data_struct/ringbuffer.h" /* LogRing 内嵌 Ringbuf（data_struct——纯原子无 OSAL） */
+
+typedef struct OsalSemHandle_s OsalSem; /* 门铃句柄（未完成类型前置声明——host 无 OSAL 桩
+                                         * 亦兼容；ring.c/osal_sem.h 再包含完整定义） */
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -134,32 +138,60 @@ void log_emit_args(const OmLogMsg *msg);
 void log_emit_build(const OmLogModule *module, OmLogLevel level, uint32_t ts, const char *fmt,
                     va_list ap, LogOutFn out, void *out_ctx);
 
-/** @brief 生产入环：消息环唯一生产入口（msg 已打包；临界区内 ringbuf_in——多生产者收敛
- *         单写者；满 = 丢新 + 计数）
- *  @param msg 参数包（core.c 打包后传入）
- *  @note OM_LOG_ASYNC：门铃（OsalSem 二值）空→非空才 post（pipe 模式——节省唤醒）；
- *        =0：无 osal——后接现场判定（any_accepts → drain 全量保生产序） */
-void log_ring_produce(const OmLogMsg *msg);
-
-/** @brief 消费抽环：逐条 out → log_emit_args（格式化+扇出；单消费者——SPSC 读侧）；
- *         尾部检查丢弃后验告警（节流）
- *  @note 调用方：日志线程（async）/ 现场触发与服务就绪点（sync） */
-void log_ring_drain(void);
-
-/** @brief 服务就绪点回放：同步模式（OM_INIT_SERVICE 调用）——drain 滞留段；异步模式
- *         线程已接管（no-op） */
-void log_ring_flush(void);
-
-/** @brief 读取消息环满丢弃计数（om_log_stats 汇总用）
- *  @return 累计环满丢弃数（自启动以来） */
-uint32_t log_dropped_ring(void);
-
-/** @brief 丢弃后验告警状态（每丢弃点一实例；warned_upto=已上报累计，last_warn_ms=上次上报时刻） */
+/** @brief 丢弃后验告警状态（每丢弃点一实例；warned_upto=已上报累计，last_warn_ms=上次上报
+ *  时刻；ever=已上报过（零初始化兼容——首次放行不依赖哨兵值）） */
 typedef struct
 {
     uint32_t warned_upto;
     uint32_t last_warn_ms;
+    uint8_t ever;
 } LogDropWarnState;
+
+/** @brief 消息环实例（服务主体——core.c 持有；静态零初始化——惰性 init 保证早期可用）
+ *  @note 实例化与能力分离（框架惯例——Pipe/mpsc 同构）：ring.c 仅提供能力，
+ *        实例由使用者持有；丢弃/告警状态随实例；doorbell 仅 OM_LOG_ASYNC（消费调度器） */
+typedef struct
+{
+    Ringbuf rb;
+    uint8_t buf[OM_LOG_RING_LEN * sizeof(OmLogMsg)];
+    bool inited;
+    uint32_t dropped;
+    LogDropWarnState warn;
+#if OM_LOG_ASYNC
+    OsalSem *doorbell; /* 门铃（空→非空才 post——pipe 模式） */
+#endif
+} LogRing;
+
+/** @brief 生产入环（msg 已打包；临界区内 ringbuf_in——多生产者收敛单写者；满 = 丢新 + 计数）
+ *  @param ring 环实例（服务主体持有）
+ *  @param msg 参数包（core.c 打包后传入）
+ *  @note OM_LOG_ASYNC：门铃空→非空才 post（pipe 模式——节省唤醒）；
+ *        =0：后接现场判定（any_accepts → drain 全量保生产序） */
+void log_ring_produce(LogRing *ring, const OmLogMsg *msg);
+
+/** @brief 消费抽环：逐条 out → log_emit_args（格式化+扇出；单消费者——SPSC 读侧）；
+ *         尾部检查丢弃后验告警（节流） */
+void log_ring_drain(LogRing *ring);
+
+/** @brief 服务就绪点回放：同步模式（OM_INIT_SERVICE 调用）——drain 滞留段；异步模式
+ *         线程已接管（no-op） */
+void log_ring_flush(LogRing *ring);
+
+/** @brief 读取消息环满丢弃计数（om_log_stats 汇总用） */
+uint32_t log_dropped_ring(const LogRing *ring);
+
+#if OM_LOG_ASYNC
+/** @brief 异步消费调度器启动：建门铃（二值 max=1 init=0）+ 日志线程（LOW 带）
+ *  @param ring 环实例（线程经 arg 引用）
+ *  @return OM_OK；OM_ERR_NO_MEM 门铃/线程创建失败 */
+OmRet log_ring_async_start(LogRing *ring);
+#endif
+
+/** @brief 服务侧消费触发（服务主体实例编排——OM_INIT_SERVICE 就绪点与 host 测试共用） */
+void log_ring_service_flush(void);
+
+/** @brief 服务侧环满丢弃计数（服务主体实例——om_log_stats 汇总用） */
+uint32_t log_ring_service_dropped(void);
 
 /** @brief 丢弃后验告警：丢弃只计数 → 补发 WRN 自证（节流 + 增量报告）
  *  @param st 状态（每丢弃点一个）

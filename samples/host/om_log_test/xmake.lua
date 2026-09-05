@@ -32,6 +32,7 @@ target("om_log_formatter_test")
     set_languages("c11")
     add_includedirs(path.join(fw, "lib/include"))
     add_includedirs(path.join(fw, "lib/services/include"))
+    add_includedirs(path.join(fw, "lib/data_struct/include"))
     add_includedirs(log_src)
     add_files("om_log_test_common.c", "om_log_formatter_test.c",
               path.join(log_src, "formatter.c"), path.join(log_src, "msg.c"))

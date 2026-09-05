@@ -12,7 +12,7 @@
 
 #include "om_log_test_common.h"
 
-#include "log_internal.h" /* log_ring_flush / log_drop_warn / log_service_module */
+#include "log_internal.h" /* log_ring_service_flush / log_drop_warn / log_service_module */
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -96,8 +96,9 @@ int main(void)
     EXPECT(om_log_backend_register(&g_backend_a, OM_LOG_LEVEL_DEBUG) == OM_OK);
     EXPECT(om_log_backend_register(&g_backend_b, OM_LOG_LEVEL_ERROR) == OM_OK);
 
-    /* ② 服务就绪点回放：生产序保留 + per-backend 过滤 + ③ 丢弃告警（WRN 不进 capB） */
-    log_ring_flush();
+    /* ② 服务就绪点回放（服务侧触发——实例属主 core.c）：生产序保留 + per-backend 过滤
+     * + ③ 丢弃告警（WRN 不进 capB） */
+    log_ring_service_flush();
     {
         char expect_a[512];
         g_cap_a.buf[g_cap_a.len] = '\0';
@@ -120,9 +121,10 @@ int main(void)
     expect_tail(&g_cap_a, "[INF][00:00:00.000][ringtest] post 5\n");
 
     /* ⑥ 告警节流（显式时刻驱动——注入状态与时刻，纯状态机；
-     * 告警消息时间戳 = 补发时刻 now（printk 语义——生产即打点） */
+     * 告警消息时间戳 = 补发时刻 now（printk 语义——生产即打点）；
+     * 初始态 = 零初始化（与真实实例字段相同——ever=0 首次放行） */
     {
-        LogDropWarnState st = {0U, UINT32_MAX};
+        LogDropWarnState st = {0U, 0U, 0U};
         EXPECT(log_drop_warn(&st, log_service_module(), "ring-full", 1, 0));
         expect_tail(&g_cap_a,
                     "[WRN][00:00:00.000][log] log drop: ring-full dropped 1 (total 1)\n");

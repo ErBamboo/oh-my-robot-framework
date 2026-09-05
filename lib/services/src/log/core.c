@@ -15,6 +15,7 @@
 #if OM_USE_LOG
 
 #include "core/om_def.h"
+#include "core/om_init.h" /* OM_INIT_SERVICE——消费调度器/服务就绪点（组成层编排） */
 #include "core/om_interrupt.h"
 #include "osal/osal_time.h" /* 时间戳来源 osal_time_now_monotonic（host 测试经本地桩头） */
 
@@ -22,6 +23,19 @@
 
 #include <stdarg.h>
 #include <string.h>
+
+/** @brief 消息环实例（服务主体持有——能力-实例分离：状态在此，能力见 ring.c；
+ *  静态零初始化——惰性 init 保证早期/最小配置可用） */
+static LogRing g_log_ring;
+
+/** @brief 框架内部告警模块实例（"log"——丢弃告警的消息头 module 标注；不占用模块注册表） */
+static OmLogModule s_log_module = {"log", OM_LOG_LEVEL_DEBUG, -1};
+
+/** @brief 访问日志服务内部告警模块（log_internal 契约——log_drop_warn 用之） */
+const OmLogModule *log_service_module(void)
+{
+    return &s_log_module;
+}
 
 /* 级别名表（3 字符）：尺寸绑定 OM_LOG_LEVEL_OFF——级别枚举扩展必须同步本表，
  * 否则下方编译期断言拦截（运行时无需再校验：emit 入口已保证 level < OFF） */
@@ -155,12 +169,44 @@ void om_log_log(const OmLogModule *module, OmLogLevel level, const char *fmt, ..
         OmLogMsg msg;
         if (log_msg_build(&msg, module, level, osal_time_now_monotonic(), fmt, ap))
         {
-            log_ring_produce(&msg); /* 生产入环：形态唯一（消费触发 OM_LOG_ASYNC 决定；
-                                     * 满丢+计数；无消费者=滞留=“deferred”回归形态） */
+            log_ring_produce(&g_log_ring, &msg); /* 生产入环：形态唯一（实例属主=服务主体；
+                                                  * 满丢+计数；无消费者=滞留=“deferred”回归形态） */
         }
     }
     va_end(ap);
 }
+
+/** @brief 服务侧消费触发（服务主体实例编排——OM_INIT_SERVICE 就绪点与 host 测试共用） */
+void log_ring_service_flush(void)
+{
+    log_ring_flush(&g_log_ring);
+}
+
+/** @brief 服务侧环满丢弃计数（服务主体实例——om_log_stats 汇总用） */
+uint32_t log_ring_service_dropped(void)
+{
+    return log_dropped_ring(&g_log_ring);
+}
+
+#if OM_LOG_ASYNC
+/** @brief 异步消费调度器启动（OM_INIT_SERVICE——调度器后，可阻塞/建线程）：
+ *  门铃+线程入实例；之前生产流入环滞留——线程首轮 drain 接住
+ *  @return 透传 log_ring_async_start（OM_OK / OM_ERR_NO_MEM） */
+static OmRet log_async_start(void)
+{
+    return log_ring_async_start(&g_log_ring);
+}
+OM_INIT_SERVICE(log_async_start);
+#else
+/** @brief 服务就绪点（OM_INIT_SERVICE）：回放滞留段——调度器后、后端已注册（DRIVER 级）
+ *  @return OM_OK */
+static OmRet log_ring_ready(void)
+{
+    log_ring_service_flush();
+    return OM_OK;
+}
+OM_INIT_SERVICE(log_ring_ready);
+#endif
 
 /** @brief 故障直出（契约见 services/log/log.h）
  *  @param module 模块实例
