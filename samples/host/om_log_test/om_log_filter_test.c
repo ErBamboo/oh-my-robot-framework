@@ -117,7 +117,7 @@ static bool build_over_limit_probe(const char *fmt, ...)
     OmLogMsg m;
     va_list ap;
     va_start(ap, fmt);
-    bool ok = log_msg_build(&m, &g_fake_module, OM_LOG_LEVEL_INFO, fmt, ap);
+    bool ok = log_msg_build(&m, &g_fake_module, OM_LOG_LEVEL_INFO, 0U, fmt, ap);
     va_end(ap);
     return ok;
 }
@@ -167,10 +167,13 @@ int main(void)
     EXPECT(g_cap_a.len == len_a_off);
     EXPECT(g_cap_b.len > len_b_before);
 
-    /* capB 也 OFF → 全静默（无后端接受 → 零格式化） */
+    /* capB 也 OFF → 全静默（无后端接受 → 消息滞留环中，零格式化） */
     EXPECT(om_log_backend_set_level("capB", OM_LOG_LEVEL_OFF) == OM_OK);
     size_t len_b_off = g_cap_b.len;
     OM_LOG_ERROR("all off");
+    EXPECT(g_cap_b.len == len_b_off);
+    /* 服务就绪点回放（模拟）：滞留消息 emit——级别仍全 OFF → 无输出（回放时刻裁判） */
+    log_ring_flush();
     EXPECT(g_cap_b.len == len_b_off);
 
     /* om_log_stats：初始 0 → 超限丢弃后 dropped 递增（T6） */
