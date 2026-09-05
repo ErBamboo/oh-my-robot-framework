@@ -2,8 +2,9 @@
  * @file main.c
  * @brief 串口日志后端接线示范（组合层：drivers 工厂 + 板级日志口 + log 服务）
  * @details OM_INIT_DRIVER 注册后端（调度器前，早于 SERVICE 级业务日志——DRIVER 级
- *          之前（EARLIEST/BOARD）的日志 v1 静默丢弃，契约见 services/log/README.md）；
- *          OM_INIT_APPLICATION 建心跳线程持续输出（带序号，供接收端完整性分析）。
+ *          之前（EARLIEST/BOARD）的日志入消息环滞留，服务就绪后回放（"deferred"回归
+ *          形态，契约见 services/log/README.md）；OM_INIT_APPLICATION 建心跳线程
+ *          持续输出（带序号，供接收端完整性分析）。
  *
  *          压力测试档位（编译期宏，配合接收端分析脚本 stress_analyze.ps1）：
  *            LOG_STRESS_LEN       1=短~40B  2=中~200B  3=长~1KB（默认 1）
@@ -89,3 +90,14 @@ static OmRet log_demo(void)
     return OM_OK;
 }
 OM_INIT_APPLICATION(log_demo);
+
+/** @brief 消息环滞留示范：EARLIEST 级——调度器前、后端未注册时打日志
+ *  @return OM_OK
+ *  @note 此级日志无后端接受：入消息环滞留，服务就绪（SERVICE 级）后回放
+ *        （生产时刻时间戳/顺序保留——见服务 README 投递形态节） */
+static OmRet early_log_demo(void)
+{
+    OM_LOG_INFO("early demo: pre-scheduler log");
+    return OM_OK;
+}
+OM_INIT_EARLIEST(early_log_demo);
