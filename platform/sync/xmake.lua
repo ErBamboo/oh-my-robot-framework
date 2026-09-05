@@ -70,6 +70,7 @@ end
 --- @brief 同步原语静态库
 --- @details 注入同步原语与可选加速后端实现。
 target("tar_sync")
+    add_rules("oh_my_robot.project_cfg")
     set_kind("static")
     add_deps("tar_awapi_sync", {public = true})
     add_deps("tar_awcore", {public = true})

@@ -43,6 +43,7 @@ end
 --- @brief FreeRTOS 端口注入 OSAL event_flags 能力掩码
 --- @details 公共头仅消费该宏，不在头文件中做端口分支与默认兜底。
 target("tar_awapi_osal")
+    add_rules("oh_my_robot.project_cfg")
     add_cxflags("-DOM_OSAL_EVENT_FLAGS_USABLE_MASK=" .. freertos_event_flags_usable_mask, {public = true})
     add_includedirs(freertos_root, {public = true})  -- om_osal_portdef.h
 target_end()
@@ -51,6 +52,7 @@ target_end()
 --- @brief FreeRTOS 静态库
 --- @details 注入 FreeRTOS 内核与端口实现。
 target("tar_os")
+    add_rules("oh_my_robot.project_cfg")
     set_kind("static")
     add_rules("oh_my_robot.context")
     add_deps("tar_awapi_osal", {public = false})

@@ -10,6 +10,7 @@ local ipc_source_glob = path.join(lib_root, "ipc", "src", "*.c")
 --- @brief IPC 静态库
 --- @details 注入跨上下文数据通道实现。
 target("tar_ipc")
+    add_rules("oh_my_robot.project_cfg")
     set_kind("static")
     add_deps("tar_awapi_ipc", {public = true})
     add_deps("tar_awcore", {public = true})
