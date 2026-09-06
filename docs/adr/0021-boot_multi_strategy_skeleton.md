@@ -50,8 +50,8 @@ IAP bootloader + OTA 方向（四步开工序列）步骤 ② 的**设计前置*
 - **布局（rm-a/F427）**：bootloader 64K @ bank1 头；A = bank1 余量；B = bank2；meta 独立区双份轮转；无 factory。
 - **镜像头契约**：单头文件共享；digest 算法 ID + 摘要区预留；CRC32 起步、SHA-256+ECDSA 演进；校验模块构建期选型。
 - **回退**：启动计数 N 次（direct 语义），app confirm 停表。
-- **后门**：串口握手起步；下载方两路都留、bootloader 后门直写先行。
-- 决策记录索引：Q-01..10 拍板结论在 `multi_strategy_boot_design.md` §5；演进项（swap/overwrite 落地、SHA-256+ECDSA、多触发源后门、app OTA）在 §5.1。
+- **后门**：串口握手起步；下载方两路都留、bootloader 后门直写先行。**2026-09-07 补充（K-21）**：后门协议按**命令组形态**设计（组 ID + 载荷=镜像 + 块/续传，一组一命令 boot_upload 起步）——为通信/命令服务（services 层演进项，与 log v4 shell 规划合并）的**裁剪前身**；UART = 第一介质后端；boot 组为高危命令组（载荷覆写镜像），访问门禁（握手时序/口令/窗口）为设计约束，门禁位置实现期定。
+- 决策记录索引：Q-01..10 拍板结论在 `multi_strategy_boot_design.md` §5；演进项（swap/overwrite 落地、SHA-256+ECDSA、多触发源后门、通信/命令服务、app OTA）在 §5.1。
 
 ## 影响 (Consequences)
 
