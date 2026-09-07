@@ -62,6 +62,7 @@
 | K-18 | 回退窗口与提交策略强耦合（2026-09-07 调研）：**swap 系天然回滚**（旧镜像物理在场，提交中断即退/续——MCUboot，无启动计数）；**direct 系自动回退 = 启动计数**（ESP-IDF otadata：未 confirm 每启动 +1，达限翻回旧槽）；MCUboot direct-xip 明示无自动回退；看门狗超时属另一派（app 侧外设依赖重） | ESP otadata / MCUboot loader | direct 策略配启动计数 N 次（Q-06 拍板，无看门狗依赖）；swap 后续落地时回退语义随策略天然获得，骨架不重复造回退机制 |
 | K-19 | 裸机 osal 语义参考（2026-09-07 调研，用户指名 XRobot）：**同步原语在单执行流下保语义有直接先例**——XRobot/LibXR：统一系统 API（sem/thread/queue/mutex/timer）裸机全实现，等待路径驱动 idle 刷新（RefreshTimerInIdle），ISR 只交接不阻塞（FromISR 原语纪律与我们同语言）；FreeRTOS 协作模式 / Zephyr coop 佐证 **mutex/sem 语义与抢占无关**（表达资源/事件状态 + 临界区纪律）；任务化谱系 = 协作多任务（独立栈）/ Protothreads（共享栈）/ QP 活动对象 / 单执行流 + 软定时器（XRobot 裸机形态）；mbedTLS threading-alt 与 SFUD = "按面编译剔除"先例（非空转占位）。**修订 K-16 含义列**：U-Boot 空转宏为历史妥协；按面剔除 + 同步面保真为现代做法 | XRobot/LibXR / FreeRTOS 协作模式 / Zephyr K_COOP / QP / Protothreads / mbedTLS threading-alt / SFUD | osal-none 端口 = 时间面（SysTick/DWT）与中断面（irq_lock）保留 + 同步面保真（mutex=0/1 互斥开关、sem=生产消费计数、等待由 idle 刷新驱动——基于 osal 的 sync 组件裸机行为一致）+ 单执行流首版（thread 创建 NOT_SUPPORTED，async 随 OM_FLASH_SYNC_ONLY 编除）；协作式多任务记演进（ADR-0022 (osal_none_bare_metal)） |
 | K-20 | 槽位映射生态（2026-09-07 调研）：**成熟框架无"remap 框架 API"**——槽 = 静态表（Zephyr flash_map / 分区表，构建期固定）；启动 = 校验 + 跳转（MCUboot direct 固定 XIP 地址：设 VTOR + 跳入口，无 remap 动作）；真 remap（bank swap / MMU 重映射）为芯片级跳转前动作——ST 双 bank IAP（swap 位/option）、ESP 外部 flash MMU 在 ROM/bootloader 内消化 | MCUboot + Zephyr flash_map / ESP-IDF / ST 双 bank IAP | P-04 落点印证：板适配只提供"槽→物理"静态表 + 跳转动作；rm-a direct = 固定地址跳转（remap 平凡情形）；bank swap 类若未来使用 = 板适配跳转前动作，不产生框架 API（Q-10 拍板） |
+| K-21 | 下载通道命令组架构（2026-09-07 用户拍板）：**bootloader 只认镜像**（不care存储点与来源）；传输介质（UART/CAN/USB）与下载逻辑解耦的成熟形态 = **命令组 + 多介质 transport**（mcumgr SMP：Mgmt 组 ID 分发 + Transport 层多后端 serial/BLE/shell + img_mgmt 命令组载荷=镜像——上传 staging/test/confirm；MCUboot 不感知介质）。用户方案与拍板：**通用通信/命令服务**（services 层）承载命令组，boot 组（载荷=镜像）为其一组；bootloader 首版后门协议**按命令组形态设计**（骨架 = 该服务的裁剪前身，一组一命令 boot_upload，UART 第一介质后端）；服务本体记框架演进项（与 log v4 shell 规划合并），boot 组届时迁入。**boot 组为高危命令组**（载荷覆写镜像）——访问门禁（握手时序/口令/窗口）为设计约束，门禁位置（服务通用机制 vs boot 组自持）实现期定 | mcumgr SMP / Zephyr shell | 后门协议 = 命令组形态（非串口私有协议）；OTA 与后门共用协议语义（介质无感）；bootloader 侧裁剪子集面积预算须验证（K-11 64K）；Q-08 拍板语义扩展（串口 = 第一介质后端） |
 
 ## 5. 更新记录（追加式，不重排编号）
 
@@ -70,6 +71,7 @@
 - 2026-09-06（同日追加，v1）：真机验证（rm-a/F427）驱动异步重构——同步忙等饿死低优线程实测（FreeRTOS 持续就绪压制 log LOW 线程）+ 多片并发/read 语义调研（双层锁：device 锁管本片、总线锁仅传输瞬间；read 业界保持同步）→ F-04 修订为异步写/擦 + 同步读（F-06）；K-14 含义列同步；`flash_dev_design.md` v1 定稿。
 - 2026-09-06（同日追加）：K-16（完成源边界与事件范式裁决：事件不进框架 API、完成源差异留后端、bootloader 同步阻塞+拆片+主机超时、U-Boot 裁剪样板——Linux/Zephyr/CMSIS/MCUboot/OpenBLT/ST/TI/U-Boot 六方证据）；D-07 强化为"事件主路径、轮询退化"（`flash_dev_impl_design.md` §6.1）。
 - 2026-09-07（追加）：K-17..20（镜像校验链实践 / 回退窗口与策略耦合 / 裸机 osal 语义参考 / 槽位映射生态——boot 设计拍板 Q-04/06/10/11 的调研产出）；K-16 含义列经修订注记指向 K-19（"裸机 osal 空桩"表述细化：空转宏为历史妥协，按面剔除 + 同步面保真为现代做法）；§6 关联文件名修正（`multi_strategy_boot_design.md`，原误记 `boot_system_multi_strategy_design.md`）。
+- 2026-09-07（同日追加）：K-21（下载通道命令组架构——用户拍板：bootloader 只认镜像；通信/命令服务承载 boot 命令组；首版后门协议按命令组形态 = 服务裁剪前身；服务本体记 services 演进项与 shell 规划合并；boot 组高危需门禁——mcumgr SMP 先例）。
 
 ## 6. 关联文档
 
