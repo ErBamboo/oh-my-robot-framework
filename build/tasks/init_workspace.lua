@@ -185,13 +185,25 @@ task("init_workspace")
             return preset_path, "created"
         end
 
+        --- 将规则短名转换为 add_rules 调用片段
+        ---@param binary_rule_names string[] 规则短名列表（来自 binary_rules 模块）
+        ---@return string call_text add_rules 参数字符串
+        local function build_rules_call(binary_rule_names)
+            local quoted = {}
+            for _, rule_name in ipairs(binary_rule_names) do
+                table.insert(quoted, '"oh_my_robot.' .. rule_name .. '"')
+            end
+            return table.concat(quoted, ", ")
+        end
+
         --- 生成 workspace xmake.lua
         ---@param project_name string 项目名
         ---@param target_name string 目标名
         ---@param framework_alias string framework 别名目录
         ---@param entry_relative_path string 相对 framework 的入口路径
+        ---@param binary_rule_names string[] binary 目标标准规则短名（事实源：build/modules/binary_rules.lua）
         ---@return string content 文件内容
-        local function build_xmake_lua(project_name, target_name, framework_alias, entry_relative_path)
+        local function build_xmake_lua(project_name, target_name, framework_alias, entry_relative_path, binary_rule_names)
             return table.concat({
                 string.format('set_project("%s")', project_name),
                 'set_xmakever("3.0.7")',
@@ -206,7 +218,7 @@ task("init_workspace")
                 '    set_kind("binary")',
                 string.format('    set_filename("%s.elf")', target_name),
                 '    add_deps("tar_oh_my_robot")',
-                '    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")',
+                '    add_rules(' .. build_rules_call(binary_rule_names) .. ')',
                 string.format('    add_files(path.join([[%s]], [[%s]]))', framework_alias, entry_relative_path),
                 'target_end()',
                 "",
@@ -285,10 +297,24 @@ task("init_workspace")
         project_name = project_name and project_name ~= "" and project_name or basename(output_dir)
         assert_output_dir_writable(output_dir, framework_root, force)
 
+        -- 从 binary_rules 模块文件解析规则短名（该文件为规则集唯一事实源，行格式约定见其头注释）
+        local modules_root = path.join(framework_root, "build", "modules")
+        local binary_rules_src = io.readfile(path.join(modules_root, "binary_rules.lua"))
+        if not binary_rules_src then
+            raise("binary rules module not found: " .. path.join(modules_root, "binary_rules.lua"))
+        end
+        local binary_rule_names = {}
+        for short_name in binary_rules_src:gmatch('\n    "([%a_]+)",') do
+            table.insert(binary_rule_names, short_name)
+        end
+        if #binary_rule_names == 0 then
+            raise("no binary rules parsed from: " .. path.join(modules_root, "binary_rules.lua"))
+        end
+
         os.mkdir(output_dir)
         create_framework_alias(output_dir, framework_root, force)
         local preset_path, preset_status = ensure_project_preset(output_dir, preset_source_path, force)
-        io.writefile(path.join(output_dir, "xmake.lua"), build_xmake_lua(project_name, target_name, FRAMEWORK_ALIAS, entry_relative_path))
+        io.writefile(path.join(output_dir, "xmake.lua"), build_xmake_lua(project_name, target_name, FRAMEWORK_ALIAS, entry_relative_path, binary_rule_names))
         io.writefile(path.join(output_dir, "README.md"), build_readme(framework_root, preset_source_path))
         io.writefile(path.join(output_dir, ".gitignore"), build_gitignore())
 

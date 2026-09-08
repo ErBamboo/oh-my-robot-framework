@@ -78,7 +78,7 @@ includes("oh-my-robot")
 target("app")
     set_kind("binary")
     add_deps("tar_oh_my_robot")
-    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")
+    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert", "oh_my_robot.project_cfg", "oh_my_robot.selfreg")
     add_files("src/main.c")
 target_end()
 ```

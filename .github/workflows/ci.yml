@@ -44,6 +44,21 @@ jobs:
           xmake-version: latest
           actions-cache-folder: '.xmake-cache'
 
+      - name: init_workspace generator regression gate
+        # 生成器模板曾与规则演进脱节（漏 project_cfg/selfreg，生成壳链接报 undefined main）；
+        # 门禁：以 build/modules/binary_rules.lua（binary 规则集唯一事实源）为准，
+        # 逐条断言 init_workspace 生成的壳包含对应 add_rules，防模板再次漂移
+        run: |
+          xmake init_workspace --output=$RUNNER_TEMP/om_shell_smoke > /dev/null
+          fail=0
+          while read -r rule_name; do
+            if ! grep -q "oh_my_robot.$rule_name" "$RUNNER_TEMP/om_shell_smoke/xmake.lua"; then
+              echo "::error::init_workspace shell missing rule oh_my_robot.$rule_name"
+              fail=1
+            fi
+          done < <(sed -n 's/^    "\([a-z_]*\)",$/\1/p' build/modules/binary_rules.lua)
+          exit $fail
+
       - name: Setup GNU ARM Toolchain (official, pinned 14.2.rel1)
         # 弃用 carlosperate action（latest 版本波动 + 系统依赖不确定导致硬浮点试编译失败）；
         # 官方发布包直装到固定路径（与本地 14.2 同版本），版本固定防漂移。

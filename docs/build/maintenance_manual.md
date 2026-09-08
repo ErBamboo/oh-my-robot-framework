@@ -407,7 +407,7 @@ armlink 自动为每个执行域生成 `Image$$ER_OM_INIT_<N>$$Base` / `Image$$E
 
 **同级排序说明：** 级别顺序由链接器保证；同级内执行顺序由 prio 决定（启动期一次小排序）——armlink 无段内 `SORT_BY_NAME` 等价物，故 OMR 不做链接期 prio 排序（Zephyr 仅 GCC/Clang 系才用链接期排序）。
 
-**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。**框架默认 `main`（`lib/source/core/om_main.c`，弱符号）也经本规则注入** binary（`om_framework_main=on` 默认）；它不在 `tar_awcore` 归档内（`remove_files`），用户定义强 `main` 自动覆盖，`om_framework_main=off` 时整体关闭注入（见 ADR-0013）。
+**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert/project_cfg` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。**框架默认 `main`（`lib/source/core/om_main.c`，弱符号）也经本规则注入** binary（`om_framework_main=on` 默认）；它不在 `tar_awcore` 归档内（`remove_files`），用户定义强 `main` 自动覆盖，`om_framework_main=off` 时整体关闭注入（见 ADR-0013）。
 
 **校验：** 构建后 linkguard 会按工具链校验最终 ELF 的每级边界符号（GCC 查 `__om_init_<N>_start/end`、armclang 查 `Image$$ER_OM_INIT_<N>$$Base/Limit`，N=0..6）；若缺失，构建期即报错（"该板链接脚本未提供每级 `.om_init_<N>` 段边界符号"），不再等到运行期静默失败。
 
