@@ -202,7 +202,7 @@ target_end()
 - `set_kind("binary")`：目标是可执行镜像。
 - `set_filename("robot_project.elf")`：输出文件名（供调试配置中的 `executable` 路径使用）。
 - `add_deps("tar_oh_my_robot")`：依赖 OM 的聚合静态库目标。
-- `add_rules(...)` 五条规则（binary 目标标准集，事实源见 `oh-my-robot/build/modules/binary_rules.lua`）：
+- `add_rules(...)` 五条规则（binary 目标标准集，事实源见 `oh-my-robot/xmake/modules/binary_rules.lua`）：
   - `oh_my_robot.context`：注入构建上下文并决定工具链/编译参数。
   - `oh_my_robot.board_assets`：注入板级覆盖源与公共头（board 数据驱动）。
   - `oh_my_robot.image_convert`：生成 `.hex`/`.bin` 镜像。

@@ -46,7 +46,7 @@ jobs:
 
       - name: init_workspace generator regression gate
         # 生成器模板曾与规则演进脱节（漏 project_cfg/selfreg，生成壳链接报 undefined main）；
-        # 门禁：以 build/modules/binary_rules.lua（binary 规则集唯一事实源）为准，
+        # 门禁：以 xmake/modules/binary_rules.lua（binary 规则集唯一事实源）为准，
         # 逐条断言 init_workspace 生成的壳包含对应 add_rules，防模板再次漂移
         run: |
           xmake init_workspace --output=$RUNNER_TEMP/om_shell_smoke > /dev/null
@@ -56,7 +56,7 @@ jobs:
               echo "::error::init_workspace shell missing rule oh_my_robot.$rule_name"
               fail=1
             fi
-          done < <(sed -n 's/^    "\([a-z_]*\)",$/\1/p' build/modules/binary_rules.lua)
+          done < <(sed -n 's/^    "\([a-z_]*\)",$/\1/p' xmake/modules/binary_rules.lua)
           exit $fail
 
       - name: Setup GNU ARM Toolchain (official, pinned 14.2.rel1)
