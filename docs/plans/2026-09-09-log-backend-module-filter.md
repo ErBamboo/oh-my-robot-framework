@@ -113,7 +113,9 @@ git commit -m "test(log): 后端按模块过滤用例组（覆盖放宽/收紧/O
 
 ---
 
-### Task 2: backend.c 覆盖表 + 管理 API（绿）
+### Task 2: backend.c 覆盖表 + 管理 API + 消息级位图求值（合并原 Task 2/3）
+
+> **执行说明（2026-09-09 修订）**：原计划 Task 2/3 拆分的时序有误——覆盖 API 只落表、不求值（push 仍按默认级）时，Task 1 用例无法变绿（覆盖生效需消费侧按 `eff_level` 裁判）。**本任务与下节"Task 3: 消息级位图求值重构"须一次实现会话内完成**：先按本节实现表+API，再按下节实现 accept_mask/push_mask 重构，跑全绿后按本节下方提交指令**合并为一个提交**（不再分两次——中间态会让特征提交带红测试）。
 
 **Files:**
 - Modify: `lib/services/src/log/backend.c`（entry 增 modLevel、register 初始化 0xFF、unregister 清除、eff/查找 helper、API 三件套）
@@ -205,18 +207,21 @@ EXPECT(om_log_backend_set_module_level("backend_b", "mod_c", OM_LOG_LEVEL_MAX) =
 Run: `xmake build -P samples/host/om_log_test && xmake run -P samples/host/om_log_test om_log_module_filter_test`
 Expected: 退出码 0（EXPECT 全过）。
 
-**Step 4: Commit**
+**Step 4: 全绿后合并提交**（含 Task 3 重构——见任务顶部执行说明）
 
 ```bash
 git add lib/services/src/log/backend.c lib/services/src/log/module.c \
         lib/services/src/log/log_internal.h lib/services/include/services/log/log.h \
+        lib/services/src/log/core.c lib/services/src/log/ring.c \
         samples/host/om_log_test/om_log_module_filter_test.c
-git commit -m "feat(log): 后端按模块覆盖——set/clear/get_module_level + 密集覆盖表（默认级+0xFF=未覆盖）"
+git commit -m "feat(log): 后端按模块覆盖——密集覆盖表+set/clear/get_module_level，求值收敛消息级位图（accept_mask/push_mask）"
 ```
 
 ---
 
 ### Task 3: 消息级位图求值重构（any_accepts/push_all → accept_mask/push_mask）
+
+> **执行说明**：本任务内容并入 Task 2 一次实现（见 Task 2 顶部修订），不再单独提交；本节代码即实现指引。
 
 **Files:**
 - Modify: `lib/services/src/log/backend.c`（`log_backend_accept_mask` / `log_backend_push_mask`；删 `any_accepts`/`push_all` 或保留内部不用——按"删旧接口"收干净：删两函数）
@@ -273,14 +278,7 @@ ring.c:60：`bool fire = log_backend_accept_mask(msg->module, msg->level) != 0;`
 Run: 全部四个 host 目标
 Expected: `om_log_formatter_test`/`om_log_filter_test`/`om_log_ring_test` 退出码 0（默认级行为零变化回归）；`om_log_module_filter_test` 0。
 
-**Step 3: Commit**
-
-```bash
-git add lib/services/src/log/backend.c lib/services/src/log/log_internal.h \
-        lib/services/src/log/core.c lib/services/src/log/ring.c \
-        samples/host/om_log_test/om_log_module_filter_test.c
-git commit -m "refactor(log): 后端过滤收敛为消息级位图——accept_mask+push_mask（零格式化快路径保留，panic 语义不变）"
-```
+**Step 3: Commit**（已并入 Task 2 合并提交——见 Task 2 Step 4；本任务不单独提交）
 
 ---
 
@@ -323,4 +321,56 @@ Expected: `build ok` + ELF 存在（rm-a armclang；日志口 demo 含 log 服�
 ```bash
 git status --short   # 应无未提交（.xmake/ 与 build/ 已 ignore）
 git push origin logger_store
+```
+
+---
+
+### Task 6: 正式 sample（模块过滤真机演示）+ 真机验证（2026-09-09 增补）
+
+> 用户裁决：正式 sample 入库（真机回归载体），UART 观测 COM17，J-Link 烧录已就绪。
+
+**Files:**
+- Create: `samples/pal/log_module_filter/main.c`（新 sample，镜像 `samples/pal/log_serial/main.c` 接线形态）
+- Modify: 无仓库文件（构建接入走 logger_store_build 壳，不入库）
+
+**Step 1: 写 sample**
+
+结构镜像 `log_serial/main.c`：串口后端经板级日志口接线（`om_log_serial_backend_register` + `OM_INIT_DRIVER`）；演示模块过滤需要 ≥2 模块实例——每 TU 一次的 `OM_LOG_MODULE` 不够，sample 用**手写 `OmLogModule` 静态实例** + `om_log_log`（同 host 测试手法）：
+
+```c
+/* 模块实例（手写——过滤演示需多模块，OM_LOG_MODULE 宏每 TU 一次不敷用） */
+static OmLogModule g_mod_key  = {"key",  OM_LOG_LEVEL_DEBUG, -1}; /* 关键进度，想留 INFO */
+static OmLogModule g_mod_hb   = {"heartbeat", OM_LOG_LEVEL_DEBUG, -1}; /* 心跳噪音，想拒 */
+static OmLogModule g_mod_warn = {"warn", OM_LOG_LEVEL_DEBUG, -1}; /* 常规告警 */
+
+static OmRet filter_demo_setup(void)
+{
+    /* 后端已由 log_port_init（DRIVER 级）以 WARN 默认注册 → 覆盖表立白名单语义 */
+    om_log_backend_set_module_level("serial", "key", OM_LOG_LEVEL_INFO);   /* 放宽：key 的 INFO 留 */
+    om_log_backend_set_module_level("serial", "heartbeat", OM_LOG_LEVEL_OFF); /* 拒心跳 */
+    /* warn 模块走默认 WARN */
+    return OM_OK;
+}
+OM_INIT_APPLICATION(filter_demo_setup); /* SERVICE 后执行——此时后端已注册 */
+```
+
+业务线程轮发三模块日志（周期/档位宏同 log_serial 先例：`LOG_DEMO_PERIOD_MS` 默认 500），序列号供接收端完整性分析。文件头注释写明：观测预期（key INFO 出现、heartbeat 全部缺席、warn WARN 出现、演示了"默认档+放宽+显式拒"三种语义）。
+
+**Step 2: 构建接入（logger_store_build 壳）**
+
+- `logger_store_build/xmake.lua` 增 target `log_module_filter`（镜像现有 target：`add_files(path.join([[oh-my-robot]], [[samples/pal/log_module_filter/main.c]]))` + 5 规则）；preset `flash.target = "log_module_filter"`（或 `--target` 覆盖）。
+- Run: `xmake f -c && xmake`（rm-a armclang）
+- Expected: `build ok` + ELF。
+
+**Step 3: 烧录 + 观测（J-Link / COM17）**
+
+- Run: `xmake flash`（预设 jlink；按真机方法论：flash 后**独立复位**，避免自动 run 与复位波动干扰取证）
+- 观测：串口 COM17 捕获输出，核对预期（Step 1 注释：key 的 INFO 在、heartbeat 任何级别缺席、warn 的 WARN 在）；取证文本留存（命名如 `cap_modfilter1.txt`）。
+- 若输出与预期不符：停下报告差异（不得自行放宽断言）。
+
+**Step 4: 提交 sample**
+
+```bash
+git add samples/pal/log_module_filter/main.c
+git commit -m "feat(samples): 后端按模块过滤真机演示 sample（默认档+放宽+显式拒三语义，串口观测）"
 ```
