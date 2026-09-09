@@ -135,13 +135,15 @@ OmRet om_log_backend_set_module_level(const char *backend_name, const char *modu
 
 /** @brief 清除后端对某模块的覆盖（生效级回退该后端默认级）
  *  @param backend_name 后端名称
- *  @param module_name 模块名
+ *  @param module_name 模块名（未登记模块 = NOT_FOUND——模块首次打日志后登记，见
+ *        om_log_backend_set_module_level）
  *  @return OM_OK 成功；OM_ERR_NOT_FOUND 后端名/模块名未找到；OM_ERR_INVALID_ARG 参数非法 */
 OmRet om_log_backend_clear_module_level(const char *backend_name, const char *module_name);
 
 /** @brief 查询后端对某模块的生效级（覆盖命中 → 覆盖值；未覆盖 → 该后端默认级）
  *  @param backend_name 后端名称
- *  @param module_name 模块名
+ *  @param module_name 模块名（未登记模块 = NOT_FOUND——模块首次打日志后登记，见
+ *        om_log_backend_set_module_level）
  *  @param level 输出（NULL → OM_ERR_INVALID_ARG）
  *  @return OM_OK 成功；OM_ERR_NOT_FOUND 后端名/模块名未找到；OM_ERR_INVALID_ARG 参数非法 */
 OmRet om_log_backend_get_module_level(const char *backend_name, const char *module_name,
