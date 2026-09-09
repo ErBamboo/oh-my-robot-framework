@@ -1,7 +1,8 @@
 /**
  * @file om_log_module_filter_test.c
  * @brief log 后端按模块过滤测试：per-backend 默认级 + 按模块覆盖（覆盖放宽/收紧/
- *        OFF 显式拒/clear 回退默认/get 生效值——覆盖命中或回落默认级的判据）
+ *        OFF 显式拒/clear 回退默认/get 生效值——覆盖命中或回落默认级的判据；
+ *        用例 B：白名单/多后端独立/错误码路径）
  */
 
 #include "services/log/log.h"
@@ -117,9 +118,57 @@ static void test_override_basic(void)
     EXPECT(om_log_backend_unregister(&g_backend_a) == OM_OK);
 }
 
+/** @brief 用例 B：白名单（后端默认 OFF + 点名模块覆盖抬升）+ 多后端独立 + 错误码路径
+ *  @note 惰性登记陷阱：mod_c 按名设覆盖前须先打日志促登记（未登记 = NOT_FOUND——同
+ *        om_log_module_set_level 语义）；sync 模式 drain 在消费时刻裁判——滞留消息
+ *        随其后任一接受消息的 drain 一并发射，断言前按序重置捕获缓冲 */
+static void test_whitelist_and_errors(void)
+{
+    /* 后端 a 默认 WARN（多后端独立对照）；后端 b 默认 OFF + mod_c 覆盖抬升 INFO = 白名单 */
+    EXPECT(om_log_backend_register(&g_backend_a, OM_LOG_LEVEL_WARN) == OM_OK);
+    EXPECT(om_log_backend_register(&g_backend_b, OM_LOG_LEVEL_OFF) == OM_OK);
+
+    /* mod_c 先打一条促登记（INFO 无人接受 → 滞留环中，随后续 drain 以消费时刻裁判发射） */
+    om_log_log(&g_mod_c, OM_LOG_LEVEL_INFO, "reg mod_c");
+    EXPECT(om_log_backend_set_module_level("backend_b", "mod_c", OM_LOG_LEVEL_INFO) == OM_OK);
+
+    /* 白名单收：mod_c 的 INFO 仅 backend_b 收（backend_a 默认 WARN 拒 INFO——零段） */
+    memset(&g_cap_a, 0, sizeof(g_cap_a));
+    memset(&g_cap_b, 0, sizeof(g_cap_b));
+    om_log_log(&g_mod_c, OM_LOG_LEVEL_INFO, "info accepted via whitelist");
+    EXPECT(g_cap_a.seg_count == 0);
+    EXPECT(g_cap_b.len > 0);
+
+    /* 多后端独立：mod_a 全拒（滞留）；WARN 仅 backend_a 收——白名单外模块对 backend_b
+     * 任何级别零段 */
+    memset(&g_cap_a, 0, sizeof(g_cap_a));
+    memset(&g_cap_b, 0, sizeof(g_cap_b));
+    om_log_log(&g_mod_a, OM_LOG_LEVEL_INFO, "info to no backend");
+    EXPECT(g_cap_a.seg_count == 0);
+    EXPECT(g_cap_b.seg_count == 0);
+    om_log_log(&g_mod_a, OM_LOG_LEVEL_WARN, "warn to backend_a only");
+    EXPECT(g_cap_a.len > 0);
+    EXPECT(g_cap_b.seg_count == 0);
+
+    /* NOT_FOUND：模块未登记（"ghost_mod"从未打日志——惰性语义）/ 后端名不存在 */
+    EXPECT(om_log_backend_set_module_level("backend_b", "ghost_mod", OM_LOG_LEVEL_INFO) ==
+           OM_ERR_NOT_FOUND);
+    EXPECT(om_log_backend_set_module_level("no_such_backend", "mod_c", OM_LOG_LEVEL_INFO) ==
+           OM_ERR_NOT_FOUND);
+
+    /* INVALID_ARG：级别越界（>= MAX）/ get 输出指针 NULL */
+    EXPECT(om_log_backend_set_module_level("backend_b", "mod_c", OM_LOG_LEVEL_MAX) ==
+           OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_get_module_level("backend_b", "mod_c", NULL) == OM_ERR_INVALID_ARG);
+
+    EXPECT(om_log_backend_unregister(&g_backend_b) == OM_OK);
+    EXPECT(om_log_backend_unregister(&g_backend_a) == OM_OK);
+}
+
 int main(void)
 {
     test_override_basic();
+    test_whitelist_and_errors();
 
     if (g_log_test_failed)
     {
