@@ -19,6 +19,8 @@
  *            [warn] 的 WARN 行每周期一条、序号连续（默认档 WARN 通过）；
  *            [heartbeat] 任何级别不出（OFF 全级拒收——含配置末一条 OFF×FATAL
  *              探针：覆盖失效时该行会出现在串口，正常演示恒缺席，供失效自检）。
+ *          序号语义：三条编号行序号互相独立、各自从 0 起（每模块独立计数器）；
+ *          banner/登记触发行等一次性行无序号，不参与序号连续性核对。
  *
  *          惰性登记前置：模块首次打日志才入库，此前按名调覆盖 API 返回
  *          OM_ERR_NOT_FOUND——配置前各模块先打一条 DEBUG 触发行：低于默认档 WARN
@@ -46,7 +48,9 @@ static LogSerialBackend g_log_serial_backend;
 #define LOG_DEMO_PERIOD_MS 500
 #endif
 
-#if OM_USE_LOG /* 组合层可裁剪（组合逻辑随开关消失；类型保留——实例声明可在外） */
+/* 组合层可裁剪：OM_USE_LOG=0 时 log 公共函数声明消失——含其调用的逻辑须整段随开关
+ * 走（类型无条件保留——backend 实例声明才可留在 guard 外） */
+#if OM_USE_LOG
 
 /* 演示模块实例：手写静态实例 + 公开 om_log_log 调用（模块自身档全设 DEBUG——
  * 模块级 gate 恒放行，过滤语义全部落在后端覆盖表上，见文件头） */
@@ -85,7 +89,7 @@ static void mod_filter_cycle(void *arg)
 static OmRet mod_filter_setup(void)
 {
     OmRet ret;
-    OmLogLevel eff;
+    OmLogLevel eff = OM_LOG_LEVEL_OFF; /* 失败路径不写 eff——ERROR 行打印前先有确定值 */
 
     /* 惰性登记触发行：DEBUG 低于默认档 WARN 与放宽覆盖级 INFO——任何过滤状态下
      * 均不可见（登记先行，否则按名覆盖 API 返回 OM_ERR_NOT_FOUND） */
