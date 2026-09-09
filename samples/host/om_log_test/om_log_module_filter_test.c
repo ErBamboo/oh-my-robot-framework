@@ -174,6 +174,7 @@ static void test_whitelist_and_errors(void)
     EXPECT(om_log_backend_clear_module_level("no_such_backend", "mod_c") == OM_ERR_NOT_FOUND);
     OmLogLevel eff;
     EXPECT(om_log_backend_get_module_level("no_such_backend", "mod_c", &eff) == OM_ERR_NOT_FOUND);
+    EXPECT(om_log_backend_get_module_level("backend_b", "ghost_mod", &eff) == OM_ERR_NOT_FOUND);
 
     /* INVALID_ARG：级别越界（>= MAX）/ get 输出指针 NULL */
     EXPECT(om_log_backend_set_module_level("backend_b", "mod_c", OM_LOG_LEVEL_MAX) ==
