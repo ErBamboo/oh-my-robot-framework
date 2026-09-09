@@ -2,7 +2,7 @@
  * @file om_log_module_filter_test.c
  * @brief log 后端按模块过滤测试：per-backend 默认级 + 按模块覆盖（覆盖放宽/收紧/
  *        OFF 显式拒/clear 回退默认/get 生效值——覆盖命中或回落默认级的判据；
- *        用例 B：白名单/多后端独立/错误码路径）
+ *        用例 B：白名单/多后端独立/OFF×FATAL 探针/错误码路径（含 NULL 名参数））
  */
 
 #include "services/log/log.h"
@@ -150,16 +150,46 @@ static void test_whitelist_and_errors(void)
     EXPECT(g_cap_a.len > 0);
     EXPECT(g_cap_b.seg_count == 0);
 
+    /* OFF×FATAL 探针：白名单外模块的 FATAL 对默认 OFF 后端也零段——OFF = 显式拒（全级，
+     * 与"仅拒 < FATAL"的判据差异被钉死）；对照：默认 WARN 的 backend_a 应照收 */
+    memset(&g_cap_a, 0, sizeof(g_cap_a));
+    memset(&g_cap_b, 0, sizeof(g_cap_b));
+    om_log_log(&g_mod_a, OM_LOG_LEVEL_FATAL, "fatal rejected by whitelist");
+    EXPECT(g_cap_b.seg_count == 0);
+    EXPECT(g_cap_a.len > 0);
+
+    /* 白名单内模块（覆盖 INFO）的 FATAL 应收——覆盖只决定门槛：FATAL >= INFO 放行 */
+    memset(&g_cap_b, 0, sizeof(g_cap_b));
+    om_log_log(&g_mod_c, OM_LOG_LEVEL_FATAL, "fatal accepted by whitelist");
+    EXPECT(g_cap_b.len > 0);
+
     /* NOT_FOUND：模块未登记（"ghost_mod"从未打日志——惰性语义）/ 后端名不存在 */
     EXPECT(om_log_backend_set_module_level("backend_b", "ghost_mod", OM_LOG_LEVEL_INFO) ==
            OM_ERR_NOT_FOUND);
     EXPECT(om_log_backend_set_module_level("no_such_backend", "mod_c", OM_LOG_LEVEL_INFO) ==
            OM_ERR_NOT_FOUND);
 
+    /* clear/get_module_level 错误码补全：NOT_FOUND（未登记模块 / 不存在后端） */
+    EXPECT(om_log_backend_clear_module_level("backend_b", "ghost_mod") == OM_ERR_NOT_FOUND);
+    EXPECT(om_log_backend_clear_module_level("no_such_backend", "mod_c") == OM_ERR_NOT_FOUND);
+    OmLogLevel eff;
+    EXPECT(om_log_backend_get_module_level("no_such_backend", "mod_c", &eff) == OM_ERR_NOT_FOUND);
+
     /* INVALID_ARG：级别越界（>= MAX）/ get 输出指针 NULL */
     EXPECT(om_log_backend_set_module_level("backend_b", "mod_c", OM_LOG_LEVEL_MAX) ==
            OM_ERR_INVALID_ARG);
     EXPECT(om_log_backend_get_module_level("backend_b", "mod_c", NULL) == OM_ERR_INVALID_ARG);
+
+    /* 三 API 的 NULL 名参数 = INVALID_ARG：参数校验先于按名解析——NULL 模块名被拦在
+     * "未登记 NOT_FOUND"判定之前（resolve 不接触 NULL） */
+    EXPECT(om_log_backend_set_module_level(NULL, "mod_c", OM_LOG_LEVEL_INFO) ==
+           OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_set_module_level("backend_b", NULL, OM_LOG_LEVEL_INFO) ==
+           OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_clear_module_level(NULL, "mod_c") == OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_clear_module_level("backend_b", NULL) == OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_get_module_level(NULL, "mod_c", &eff) == OM_ERR_INVALID_ARG);
+    EXPECT(om_log_backend_get_module_level("backend_b", NULL, &eff) == OM_ERR_INVALID_ARG);
 
     EXPECT(om_log_backend_unregister(&g_backend_b) == OM_OK);
     EXPECT(om_log_backend_unregister(&g_backend_a) == OM_OK);
