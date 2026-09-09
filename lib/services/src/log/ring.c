@@ -57,8 +57,8 @@ void log_ring_produce(LogRing *ring, const OmLogMsg *msg)
         (void)osal_sem_post_auto(ring->doorbell); /* 线程/ISR 自动分流（post_from_isr 语义） */
     }
 #else
-    bool fire = log_backend_accept_mask(msg->module, msg->level) != 0; /* 现场判定：本消息
-       被任一后端接受才 drain（临界区内读表——含按模块覆盖的生效级裁判） */
+    /* 现场判定：本消息被任一后端接受才 drain（临界区内读表——含按模块覆盖的生效级裁判） */
+    bool fire = log_backend_accept_mask(msg->module, msg->level) != 0;
 #endif
     om_hw_restore_interrupt(key);
 #if !OM_LOG_ASYNC
