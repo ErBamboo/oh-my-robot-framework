@@ -101,6 +101,7 @@ P-03 的措辞为"驱动上层语义"。完整论证拆三条：
 - 存储形态全景：`docs/boot_ota/storage_landscape.md`（可擦族管理模块位）
 - 差距分析与本版动因：`docs/internal/active/issue_000_storage_gap_analysis/storage_gap_analysis.md`（G-06 无句柄化 API + 分区模块单例；P1）
 - 本版任务与实现计划：upstream Issue **#75**（`oh-my-robot/oh-my-robot-framework`）；`docs/plans/2026-09-14-partition-api-v2.md`（10 任务，TDD）
+- 决策提纯：ADR-0024 (partition_registry_handle)——注册表 + 句柄形态与信任模型（模块零状态；防伪造契约向业界收敛的记账）
 
 ## 7. 接口定稿（v2，2026-09-14 拍板后落码）
 
