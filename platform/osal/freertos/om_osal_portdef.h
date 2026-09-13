@@ -7,21 +7,13 @@
  * 位置：platform/osal/<os>/om_osal_portdef.h
  *
  * 移植者说明：
- *   - 本文件中的宏均无默认值；若缺失，osal_config.h / osal_event.h 将
- *     产生编译期 #error。
+ *   - 本文件中的宏均无默认值；若缺失，osal_config.h 将产生编译期 #error。
  *   - 值必须与实际 FreeRTOSConfig.h 一致（OSAL_PRIORITY_MAX 对齐
  *     configMAX_PRIORITIES，等等）。
  *===========================================================================*/
 
 #ifndef OM_OSAL_PORTDEF_H
 #define OM_OSAL_PORTDEF_H
-
-/*---------------------------------------------------------------------------
- * Event Flags — FreeRTOS 使用 24 位 (EventBits_t = uint32_t, 低 24 位)
- *---------------------------------------------------------------------------*/
-#ifndef OM_OSAL_EVENT_FLAGS_USABLE_MASK
-#define OM_OSAL_EVENT_FLAGS_USABLE_MASK   0x00FFFFFF
-#endif
 
 /*---------------------------------------------------------------------------
  * OSAL 参数 — 对齐 FreeRTOSConfig.h 默认值

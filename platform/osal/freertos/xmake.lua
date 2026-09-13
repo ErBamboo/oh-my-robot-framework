@@ -4,7 +4,6 @@
 local freertos_root = os.scriptdir()
 
 local include_dir = path.join(freertos_root, "FreeRTOS", "include")
-local freertos_event_flags_usable_mask = "0x00FFFFFFu"
 
 --- 解析 FreeRTOS 配置与端口路径
 ---@param board_config_dir string 板级 OS 配置目录
@@ -40,11 +39,9 @@ local function resolve_freertos_paths(board_config_dir, toolchain_name, arch)
 end
 
 --- @target tar_awapi_osal
---- @brief FreeRTOS 端口注入 OSAL event_flags 能力掩码
---- @details 公共头仅消费该宏，不在头文件中做端口分支与默认兜底。
+--- @brief FreeRTOS 端口公共头路径注入
 target("tar_awapi_osal")
     add_rules("oh_my_robot.project_cfg")
-    add_cxflags("-DOM_OSAL_EVENT_FLAGS_USABLE_MASK=" .. freertos_event_flags_usable_mask, {public = true})
     add_includedirs(freertos_root, {public = true})  -- om_osal_portdef.h
 target_end()
 
