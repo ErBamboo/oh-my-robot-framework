@@ -169,6 +169,30 @@ static void flash_request_worker(Work *work)
 static OmRet flash_submit(FlashDev *dev, uint32_t type, uint32_t addr, const void *data,
                           size_t len, FlashDoneCb done, void *param, FlashRequest **out_req)
 {
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+    /* 坍缩形态：单执行流无并发提交者——临界区非必需；且坍缩下
+     * workqueue_enqueue = 当场执行（长活/回调/内部等待），不得置于
+     * 关中断临界区内（workqueue 坍缩契约：执行点语义）。 */
+    FlashRequest *req = flash_find_free_slot(dev);
+    if (!req)
+    {
+        return OM_ERR_FLASH_BUSY;
+    }
+    req->type = type;
+    req->addr = addr;
+    req->len = len;
+    req->data = data;
+    req->done = done;
+    req->param = param;
+    req->result = OM_ERR_IO; /* 防未执行读脏值 */
+
+    OmRet ret = workqueue_enqueue(&dev->domain->wq, &req->work);
+    if (ret == OM_OK && out_req)
+    {
+        *out_req = req;
+    }
+    return ret;
+#else
     osal_irq_lock_task();
     FlashRequest *req = flash_find_free_slot(dev);
     if (!req)
@@ -191,6 +215,7 @@ static OmRet flash_submit(FlashDev *dev, uint32_t type, uint32_t addr, const voi
         *out_req = req;
     }
     return ret;
+#endif
 }
 
 /*===========================================================================

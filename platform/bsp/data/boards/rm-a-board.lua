@@ -57,6 +57,7 @@ local board = {
     },
     osal = {
         freertos = "boards/rm-a-board/osal/freertos",
+        none = "boards/rm-a-board/osal/none", -- 无板级 OS 配置；arch 钩子由工程源提供
     },
     startup = {
         ["gnu-rm"] = "boards/rm-a-board/startup/gcc/startup_stm32f427xx.s",
