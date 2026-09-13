@@ -6,7 +6,7 @@
  * 打点 = 长擦除期间 log 活性证据——128K 擦除 ms 级，让出式等待不应断流）：
  *   R1 真实非均匀扇区几何：每 bank 16K×4 / 64K / 128K×7、24 扇区；bank2 线性
  *      扇区 12..23 在适配器内映射为 SNB 16..27（+4）——真机几何表逐 region 打印
- *   R2 跨尺寸边界（16K→64K→128K）的分区判定：合法跨段 vs 差一个扇区；region
+ *   R2 跨尺寸边界（16K→64K→128K）的分区判定：合法跨段 vs 终点落扇区中部；region
  *      表逐段消费分支（is_partition_sector_aligned 最易错路径）
  *   R3 真实 FlashDev 通路：XIP 读 / 逐字 program（适配器写后回读校验）/
  *      EOP 中断驱动擦除——全部经 partition 句柄入口
@@ -14,9 +14,10 @@
  *
  * 安全性（照搬 samples/pal/flash/main.c 范式）：验证专用区 = bank2 尾 128K 扇区
  * [0x1E0000, 0x200000)（app 镜像只占低地址）；任何擦/写前先 blank 检查（读
- * 256B 全 erasedValue）；非空白（非本程序残留）→ 跳过全部破坏性用例、响亮
- * 报告，绝不擦。表内区外条目（sizespan / crossseg）只 open/read，绝不写/擦。
- * 观测：串口（-DOM_LOG_SERIAL=1）。
+ * 256B 全 erasedValue；读失败/几何不可得同样 fail-closed）；非空白或不可读 →
+ * 跳过全部破坏性用例、按因报告，绝不擦。VERIFY_FORCE_CLEAN（编译期显式开启，
+ * 默认关闭）提供中断残迹的自愈路径。表内区外条目（sizespan / crossseg）只
+ * open/read，绝不写/擦。观测：串口（-DOM_LOG_SERIAL=1）。
  */
 
 #include <string.h>
@@ -87,8 +88,8 @@ static int g_fail;
  * 分治（真机断言可归因）：
  *   good  = 全合法：R1/R3/R4 正例 + R2 合法跨尺寸条目（区外条目只读）
  *   bad   = 单条非扇区友好（128K 扇区的一半）→ 整表 fail-fast 拒绝
- *   mixed = 畸形条目前置 + 合法条目 → R2 反例（跨尺寸差一个扇区），并证明 open
- *           逐条校验：命中项不因表中别处畸形被拒（open 非全表校验器） */
+ *   mixed = 畸形条目前置 + 合法条目 → R2 反例（跨尺寸、终点落扇区中部），并证明
+ *           open 逐条校验：命中项不因表中别处畸形被拒（open 非全表校验器） */
 static const OmPartitionEntry g_table_good[] = {
     {"tail128", "flash0", REG_TAIL, TAIL_SIZE},  /* 恰一个 128K 扇区：唯一可擦写 */
     {"crossseg", "flash0", 0x1C0000u, 0x40000u}, /* s22+s23：与安全区后半重叠（只读） */
@@ -102,18 +103,34 @@ static const OmPartitionEntry g_table_bad[] = {
 static const OmPartitionRegistry g_reg_bad = OM_PARTITION_REGISTRY(g_table_bad);
 
 static const OmPartitionEntry g_table_mixed[] = {
-    {"span_short", "flash0", 0x100000u, 0x30000u}, /* 同起点差一个 128K 扇区（非法）*/
-    {"tail128", "flash0", REG_TAIL, TAIL_SIZE},    /* 合法：open 命中项 */
+    /* 同起点反例：0x30000 使终点停在 0x130000 = 128K 扇区 s17 [0x120000,0x140000)
+     * 中部（比合法跨段 sizespan 的 0x40000 少 64K 半扇区） */
+    {"span_short", "flash0", 0x100000u, 0x30000u},
+    {"tail128", "flash0", REG_TAIL, TAIL_SIZE}, /* 合法：open 命中项 */
 };
 static const OmPartitionRegistry g_reg_mixed = OM_PARTITION_REGISTRY(g_table_mixed);
 
-/** @brief 验证区是否空白（前 256B 全 erasedValue；读失败视为不可动）
+/** @brief 验证区是否空白（前 256B 全 erasedValue）
+ *  @param addr    区域起始
+ *  @param readRet 输出 flash_read 返回码（失败诊断用；可为 NULL）
+ *  @retval true   空白（前 256B 全 erasedValue）
+ *  @retval false  非空白，或读失败/几何不可得（几何 NULL 时无读取发生，
+ *                 readRet 置 OM_ERR_INVALID_ARG）——fail-closed：不得据此动区
  *  @note 走 raw flash 读——不依赖被测的 partition 层 */
-static bool part_is_blank(uint32_t addr)
+static bool part_is_blank(uint32_t addr, OmRet *readRet)
 {
     static uint8_t buf[256];
+    OmRet ret = OM_ERR_INVALID_ARG; /* 几何不可得：无读取结果可用 */
     const FlashGeometry *g = flash_geometry(g_flash);
-    if (!g || flash_read(g_flash, addr, buf, sizeof(buf)) != OM_OK)
+    if (g)
+    {
+        ret = flash_read(g_flash, addr, buf, sizeof(buf));
+    }
+    if (readRet)
+    {
+        *readRet = ret;
+    }
+    if (!g || ret != OM_OK)
     {
         return false;
     }
@@ -170,11 +187,14 @@ static void verify_geometry(void)
     OM_LOG_INFO("regions=%u sectors=%u coveredEnd=0x%X", (unsigned)nreg, (unsigned)sectors,
                 (unsigned)cover);
     /* 线性扇区 → SNB 映射无公开查询面：bank2 线性 12..23 → SNB 16..27（F42x
-     * SNB 12-15 保留）由安全区擦除（s23 → SNB 27）隐式验证——映射错即擦错扇区 */
-    OM_LOG_INFO("note: bank2 linear sector 12..23 -> SNB +4 (tail s23 = SNB 27)");
+     * SNB 12-15 保留）由安全区擦除（s23 → SNB 27）隐式验证——映射错即擦错扇区。
+     * 该 +4 编码的前提是 2MB dual-bank 模式（DB1M=0，2×1MB）；DB1M=1（dual-bank
+     * 1MB 变体）下此几何前提失效——故下行 OPTCR 须可读到 DB1M=0。本 sample 只
+     * 打印不硬判：选项字节不匹配时安全区擦除会先失败，无需在此重复裁判 */
+    OM_LOG_INFO("note: bank2 linear sector 12..23 -> SNB +4 (requires DB1M=0, 2MB dual-bank)");
 
 #if defined(STM32F427xx)
-    OM_LOG_INFO("OPTCR=0x%08X DB1M=%d nWRP=0x%03X", (unsigned)FLASH->OPTCR,
+    OM_LOG_INFO("OPTCR=0x%08X DB1M=%d (must be 0) nWRP=0x%03X", (unsigned)FLASH->OPTCR,
                 ((FLASH->OPTCR & FLASH_OPTCR_DB1M) != 0u) ? 1 : 0,
                 (unsigned)((FLASH->OPTCR & FLASH_OPTCR_nWRP_Msk) >> 16u));
 #endif
@@ -213,9 +233,10 @@ static void verify_registry_and_align(void)
           "span across 16K->64K->128K size changes opens (both ends aligned)");
     CHECK(h.index == 2u, "span handle indexes the sizespan entry");
 
-    /* R2 反例：同起点 0x100000、size 差一个 128K 扇区（终点落 128K 扇区中部） */
+    /* R2 反例：同起点 0x100000、size 0x30000——终点 0x130000 落 128K 扇区 s17
+     * [0x120000,0x140000) 中部（比合法跨段 sizespan 少 64K = 半个扇区） */
     CHECK(om_partition_open(&g_reg_mixed, "span_short", &h) == OM_ERR_INVALID_ARG,
-          "span one 128K sector short rejected at open");
+          "span ending 64K into final 128K sector rejected at open");
     CHECK(om_partition_registry_validate(&g_reg_mixed) == OM_ERR_INVALID_ARG,
           "mixed table rejected by full registry_validate (fail-fast)");
 
@@ -246,11 +267,28 @@ static void verify_data_path(void)
 {
     OM_LOG_INFO("--- R3/R4 data path + real erase latency ---");
 
-    /* 安全闸：非空白即跳过全部破坏性用例（响亮报告，绝不擦） */
-    if (!part_is_blank(REG_TAIL))
+#ifdef VERIFY_FORCE_CLEAN
+    /* 恢复逃生门（编译期显式开启，默认关闭）：上次运行中断留下残迹时无条件擦净
+     * 安全区自愈——不加 -DVERIFY_FORCE_CLEAN 则不生成，默认路径恒先 blank 检查 */
+    OM_LOG_INFO("FORCE_CLEAN: unconditional tail erase before blank check");
+    CHECK(flash_erase(g_flash, REG_TAIL, TAIL_SIZE) == OM_OK, "force clean tail");
+#endif
+
+    /* 安全闸：非空白/不可读即跳过全部破坏性用例（按因报告，绝不擦） */
+    OmRet readRet = OM_OK;
+    if (!part_is_blank(REG_TAIL, &readRet))
     {
-        OM_LOG_ERROR("tail [0x%X,0x%X) NOT blank: destructive cases SKIPPED, nothing erased",
-                     (unsigned)REG_TAIL, (unsigned)(REG_TAIL + TAIL_SIZE));
+        if (readRet != OM_OK)
+        {
+            OM_LOG_ERROR(
+                "tail [0x%X,0x%X) NOT readable (ret=%d): destructive cases SKIPPED, nothing erased",
+                (unsigned)REG_TAIL, (unsigned)(REG_TAIL + TAIL_SIZE), (int)readRet);
+        }
+        else
+        {
+            OM_LOG_ERROR("tail [0x%X,0x%X) NOT blank: destructive cases SKIPPED, nothing erased",
+                         (unsigned)REG_TAIL, (unsigned)(REG_TAIL + TAIL_SIZE));
+        }
         g_fail++;
         return;
     }
@@ -350,7 +388,7 @@ static void verify_data_path(void)
     CHECK(om_partition_erase(&h) == OM_OK, "om_partition_erase whole partition");
     uint32_t e1 = (uint32_t)osal_time_now_monotonic();
     OM_LOG_INFO("om_partition_erase 128K took %u ms (R4 second entry)", (unsigned)(e1 - e0));
-    CHECK(part_is_blank(REG_TAIL), "tail blank after restore erase");
+    CHECK(part_is_blank(REG_TAIL, NULL), "tail blank after restore erase");
 }
 
 /* ===================================================================
