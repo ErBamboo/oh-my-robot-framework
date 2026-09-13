@@ -100,6 +100,7 @@ P-03 的措辞为"驱动上层语义"。完整论证拆三条：
 - 器件访问底层：FlashDev 设备抽象（几何/擦除语义）——`docs/boot_ota/flash_dev_design.md`
 - 存储形态全景：`docs/boot_ota/storage_landscape.md`（可擦族管理模块位）
 - 差距分析与本版动因：`docs/internal/active/issue_000_storage_gap_analysis/storage_gap_analysis.md`（G-06 无句柄化 API + 分区模块单例；P1）
+- 本版任务与实现计划：upstream Issue **#75**（`oh-my-robot/oh-my-robot-framework`）；`docs/plans/2026-09-14-partition-api-v2.md`（10 任务，TDD）
 
 ## 7. 接口定稿（v2，2026-09-14 拍板后落码）
 
