@@ -1,7 +1,7 @@
 # 分区表抽象设计（可擦存储器件族的上层语义）
 
 > 版本：**v2 接口定稿**（2026-09-14；v1 = 2026-09-07 接口定稿，已被本版就地取代——v1 无任何生产消费者，不另立双事实源）
-> 状态：v2 接口定稿，待实现与验证（host + 实机）
+> 状态：v2 已落码；host 验证通过（`partition_test` 119/0）；实机验证 sample 已就绪（`samples/pal/partition`），待烧录观测
 > 关联：`docs/boot_ota/reference_design_notes.md`（P-03/K-02/ER-4）、`docs/boot_ota/multi_strategy_boot_design.md`（Q-02 布局拍板）、`docs/boot_ota/storage_landscape.md`（可擦族管理模块位）、ADR-0021 (boot_multi_strategy_skeleton)、ADR-0017 (project_config_layering)、`docs/internal/active/issue_000_storage_gap_analysis/storage_gap_analysis.md`（G-06/P1）
 
 ---
@@ -170,15 +170,27 @@ OmRet om_partition_erase_range(const OmPartitionHandle *h, uint32_t off, size_t 
 
 ### 7.4 语义与错误处理
 
+**错误码约定**（注册表**作为入参被检验** → `INVALID_ARG`；注册表被**查穿** → 空表/未命中 = `NOT_FOUND`）：
+
 | 情形 | 返回 |
 |---|---|
-| `reg == NULL \|\| reg->table == NULL \|\| reg->count == 0` | 空表语义 → `OM_ERR_NOT_FOUND`（沿用 v1） |
-| `open`：名字未命中 | `OM_ERR_NOT_FOUND` |
+| 注册表面：`registry_validate` / `registry_at` 收到不可用注册表（`reg == NULL \|\| table == NULL \|\| count == 0`） | `OM_ERR_INVALID_ARG`（入参被检验） |
+| 注册表面：`registry_at` 的 `index >= count` | `OM_ERR_NOT_FOUND` |
+| 查询面：`query` / `open` 收到不可用注册表 | 空表语义 → `OM_ERR_NOT_FOUND`（沿用 v1） |
+| `query` / `open`：名字未命中（表内无畸形条目） | `OM_ERR_NOT_FOUND` |
+| `open`：名字未命中**且表中存在畸形条目**（`name == NULL`） | `OM_ERR_INVALID_ARG`（配置错，非查找未命中） |
 | `open`：器件不存在 | `OM_ERR_NOT_FOUND` |
 | `open`：越器件容量 / 非扇区友好 | `OM_ERR_INVALID_ARG`（fail-fast，旧表不受影响） |
 | 操作期：`h == NULL \|\| h->reg == NULL \|\| h->index >= h->reg->count` | `OM_ERR_INVALID_ARG` |
 | 操作期：`off`/`len` 越分区 | `OM_ERR_INVALID_ARG`（双端；含 `off+len` 溢出防护，v1 次序保留） |
 | `erase_range`：非扇区对齐 | 由器件层返回 `OM_ERR_INVALID_ARG`，**不静默扩擦** |
+| `erase_range`：`len == 0` | `OM_OK`（无操作；**句柄有效性仍先行校验**） |
+| `read` / `write`：`len == 0` | `OM_OK`（`off` 仍须在域内、`buf`/`data` 仍须非空） |
+
+**两条易被"顺手修正"的语义，须留意**：
+
+1. **`open` 不是全表校验器**——首个名字命中即返回，故表中别处存在畸形条目时命中项仍返 `OM_OK`；全表 fail-fast 是 `registry_validate` 的职责。
+2. **畸形条目（`name == NULL`）在扫描中被跳过**（不可匹配、亦不会令 `strcmp` 触硬故障）——这是为"表可来自介质（运行期解析）、`registry_validate` 为可选"这一前提兜底；`query` 对同一张坏表仍返 `NOT_FOUND`（查询面只回答"名字在不在"）。
 
 **并发**：模块零状态 → 全部 API 天然可重入。数据通路的并发归属不变（设备级由 FlashDev 执行域收敛；分区级由表几何契约保证不重叠）。
 
