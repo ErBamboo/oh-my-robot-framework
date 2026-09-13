@@ -908,9 +908,11 @@ OM_LOG_MODULE(log_part, OM_LOG_LEVEL_INFO);
 #define CAP_FULL   0x200000u
 
 /* --- 分区表实例（编译期常量，免运行期注册 = v2 的核心诉求）---
- * 表覆盖验证专用区及其前置的 64K 扇区，用于 R2 跨尺寸边界判定：
+ * 表覆盖验证专用区及其前置扇区，用于 R2 跨尺寸边界判定：
  *   tail128  : 0x1E0000 + 0x20000  —— 恰好一个 128K 扇区（合法）
- *   crossseg : 0x1C0000 + 0x40000  —— 跨 64K→128K 边界，两端都是扇区边界（合法）
+ *   crossseg : 0x1C0000 + 0x40000  —— F427 bank2 的 s22+s23（两个 128K 扇区，
+ *              0x1C0000 处无尺寸变化；跨尺寸判定需另设条目：真正的
+ *              16K→64K→128K 跨段为 0x100000 + 0x40000）
  *   misalign : 0x1E0000 + 0x10000  —— 128K 扇区的一半（非法，open 应拒绝）
  */
 static const OmPartitionEntry g_table[] = {
@@ -968,10 +970,10 @@ static void verify_geometry_and_align(void)
     CHECK(om_partition_registry_validate(&g_reg_bad) == OM_ERR_INVALID_ARG,
           "misaligned entry rejects whole table (sector-friendly fail-fast)");
 
-    /* crossseg：跨 64K→128K，两端均为扇区边界 → 合法 */
+    /* crossseg：s22+s23 两个 128K 扇区，两端均为扇区边界 → 合法（非跨尺寸） */
     OmPartitionHandle h;
     CHECK(om_partition_open(&g_reg, "crossseg", &h) == OM_OK,
-          "cross-segment aligned partition opens (64K->128K boundary)");
+          "cross-segment aligned partition opens (s22+s23, no size change)");
     CHECK(om_partition_open(&g_reg, "misalign", &h) == OM_ERR_INVALID_ARG,
           "half-128K partition rejected at open");
     CHECK(om_partition_open(&g_reg, "tail128", &h) == OM_OK, "tail128 opens");
@@ -1083,7 +1085,7 @@ Expected 输出（示意）：
   PASS: flash_find("flash0")
 --- R1/R2 geometry + sector-friendly ---
   PASS: misaligned entry rejects whole table (sector-friendly fail-fast)
-  PASS: cross-segment aligned partition opens (64K->128K boundary)
+  PASS: cross-segment aligned partition opens (s22+s23, no size change)
   PASS: half-128K partition rejected at open
   PASS: tail128 opens
   PASS: unknown name rejected
