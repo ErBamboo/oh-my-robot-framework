@@ -186,7 +186,7 @@ target("robot_project")
     set_kind("binary")
     set_filename("robot_project.elf")
     add_deps("tar_oh_my_robot")
-    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")
+    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert", "oh_my_robot.project_cfg", "oh_my_robot.selfreg")
     add_files(path.join("oh-my-robot", "samples", "motor", "p1010b", "main.c")) -- 示例文件
 target_end()
 ```
@@ -202,7 +202,12 @@ target_end()
 - `set_kind("binary")`：目标是可执行镜像。
 - `set_filename("robot_project.elf")`：输出文件名（供调试配置中的 `executable` 路径使用）。
 - `add_deps("tar_oh_my_robot")`：依赖 OM 的聚合静态库目标。
-- `add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert")`：注入上下文、板级资源并生成镜像格式。
+- `add_rules(...)` 五条规则（binary 目标标准集，事实源见 `oh-my-robot/xmake/modules/binary_rules.lua`）：
+  - `oh_my_robot.context`：注入构建上下文并决定工具链/编译参数。
+  - `oh_my_robot.board_assets`：注入板级覆盖源与公共头（board 数据驱动）。
+  - `oh_my_robot.image_convert`：生成 `.hex`/`.bin` 镜像。
+  - `oh_my_robot.project_cfg`：注入工程配置（构建期配置/裁剪宏）。
+  - `oh_my_robot.selfreg`：自注册源（`OM_INIT_*`）保活并注入框架弱 `main`。
 - `add_files(path.join(...))`：指定入口源文件；当前示例使用 `oh-my-robot/samples/motor/p1010b/main.c`。
 
 ### 2.4 完成后验证

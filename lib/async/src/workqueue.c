@@ -57,6 +57,21 @@
 
 #include <stddef.h>
 
+/* ===================================================================
+ * 无 OS 形态（OM_OSAL_PORT == OSAL_PORT_NONE）：同步直调坍缩
+ *
+ * 无后台执行者（无线程调度）——队列不建 worker：
+ *   - init/deinit/start/stop：纯状态机（start = 状态迁移 no-op）；
+ *   - enqueue（任务上下文）：当场直调 work->func——入队即执行，
+ *     func 返回后 flags 归 IDLE（"恰好执行一次"语义保留）；
+ *     执行点 = 提交点（可预测），栈 = 调用者栈（预算须含 func 深度）；
+ *   - enqueue（ISR 上下文）：显式拒绝（ISR 无执行载体；交接走同步面
+ *     *_from_isr + 任务上下文提交）；
+ *   - cancel：无 PENDING 窗口 → 不在 pending（恒 OM_ERROR）；执行中 BUSY；
+ *   - flush：入队即完成 → barrier 立即可见；
+ *   - work_wait_idle：入队返回后必为 IDLE，轮询立即满足。
+ * =================================================================== */
+
 /** 信号量最大计数：1（二值信号量，用于唤醒通知） */
 #define WQ_SEM_MAX_COUNT ((uint32_t)1U)
 
@@ -73,6 +88,7 @@
  * 对应 Linux kernel process_one_work() 的简化版。
  * =================================================================== */
 
+#if (OM_OSAL_PORT != OSAL_PORT_NONE)
 /**
  * @brief Worker 线程入口函数
  *
@@ -144,6 +160,7 @@ static void workqueue_worker_entry(void *arg)
         }
     }
 }
+#endif /* OM_OSAL_PORT != OSAL_PORT_NONE */
 
 /* ===================================================================
  * 生命周期管理：init / deinit
@@ -163,8 +180,6 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
 {
     if (!wq || !cfg)
         return OM_ERROR_PARAM;
-    if (!cfg->stack_depth)
-        return OM_ERROR_PARAM;
 
     /** 防止重复初始化 */
     if (wq->state != WORKQUEUE_STATE_UNINIT)
@@ -173,6 +188,18 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
     /** 初始化 pending 链表为空的哨兵态（自循环） */
     INIT_LIST_HEAD(&wq->pending);
     wq->thread = NULL;
+    wq->sem = NULL;
+
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+    /** 坍缩形态：无后台执行者——不建信号量/completion；栈/优先级无意义 */
+    wq->state = WORKQUEUE_STATE_IDLE;
+    wq->name = cfg->name ? cfg->name : "wq";
+    wq->stack_depth = cfg->stack_depth;
+    wq->priority = cfg->priority;
+    return OM_OK;
+#else
+    if (!cfg->stack_depth)
+        return OM_ERROR_PARAM;
 
     /** 创建计数型信号量（最大计数 1，初始计数 0） */
     OsalStatus st = osal_sem_create(&wq->sem, WQ_SEM_MAX_COUNT, 0U);
@@ -195,6 +222,7 @@ OmRet workqueue_init(Workqueue *wq, const WorkqueueConfig *cfg)
     wq->priority = cfg->priority;
 
     return OM_OK;
+#endif
 }
 
 /**
@@ -215,6 +243,7 @@ OmRet workqueue_deinit(Workqueue *wq)
     if (wq->state != WORKQUEUE_STATE_IDLE)
         return OM_ERROR;
 
+#if (OM_OSAL_PORT != OSAL_PORT_NONE)
     if (wq->sem)
     {
         osal_sem_delete(wq->sem);
@@ -222,6 +251,7 @@ OmRet workqueue_deinit(Workqueue *wq)
     }
 
     completion_deinit(&wq->done);
+#endif
 
     wq->state = WORKQUEUE_STATE_UNINIT;
     wq->name = NULL;
@@ -259,6 +289,10 @@ OmRet workqueue_start(Workqueue *wq)
         osal_irq_unlock(key);
     }
 
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+    /** 坍缩形态：无 worker 线程可启动——状态迁移即全部 */
+    return OM_OK;
+#else
     /** 排空上一次循环可能残留的信号量计数 */
     while (osal_sem_wait(wq->sem, 0U) == OSAL_OK)
     {
@@ -294,6 +328,7 @@ OmRet workqueue_start(Workqueue *wq)
     }
 
     return OM_OK;
+#endif
 }
 
 /**
@@ -324,6 +359,11 @@ OmRet workqueue_stop(Workqueue *wq)
         osal_irq_unlock(key);
     }
 
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+    /** 坍缩形态：无 worker 可停；入队即执行故无 pending 可排空 */
+    wq->state = WORKQUEUE_STATE_IDLE;
+    return OM_OK;
+#else
     /** 唤醒 worker 线程，使其开始排空 */
     osal_sem_post(wq->sem);
 
@@ -361,6 +401,7 @@ OmRet workqueue_stop(Workqueue *wq)
     }
 
     return OM_OK;
+#endif
 }
 
 /* ===================================================================
@@ -394,6 +435,34 @@ OmRet workqueue_enqueue(Workqueue *wq, Work *work)
         return OM_ERROR;
     }
 
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+    /** 坍缩直调：入队即执行（任务上下文）。ISR 无执行载体——显式拒绝：
+     *  ISR 交接走同步面 *_from_isr + 任务上下文提交。 */
+    if (osal_is_in_isr())
+        return OM_ERR_NOT_SUPPORTED;
+
+    {
+        OsalIrqIsrState key;
+        osal_irq_lock(&key);
+        if (work->flags != WORK_FLAG_IDLE)
+        {
+            osal_irq_unlock(key);
+            return OM_ERROR_BUSY;
+        }
+        work->flags = WORK_FLAG_RUNNING;
+        osal_irq_unlock(key);
+    }
+
+    work->func(work); /* 执行点 = 提交点（可预测）；栈 = 调用者栈 */
+
+    {
+        OsalIrqIsrState key;
+        osal_irq_lock(&key);
+        work->flags = WORK_FLAG_IDLE;
+        osal_irq_unlock(key);
+    }
+    return OM_OK;
+#else
     /** 关中断：flags 去重检查 + 链表插入在同一临界区内 */
     {
         OsalIrqIsrState key;
@@ -415,6 +484,7 @@ OmRet workqueue_enqueue(Workqueue *wq, Work *work)
     osal_sem_post_auto(wq->sem);
 
     return OM_OK;
+#endif
 }
 
 /* ===================================================================

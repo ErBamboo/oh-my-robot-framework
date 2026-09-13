@@ -50,15 +50,6 @@
 #endif
 #endif
 
-/* 队列注册表最大数量（用于调试/统计）*/
-#ifndef OSAL_QUEUE_REGISTRY_MAX
-#ifdef OM_OSAL_QUEUE_REGISTRY_MAX
-#define OSAL_QUEUE_REGISTRY_MAX OM_OSAL_QUEUE_REGISTRY_MAX
-#else
-#define OSAL_QUEUE_REGISTRY_MAX 16u
-#endif
-#endif
-
 /* 语义优先级带宽宏（依赖 OSAL_PRIORITY_MAX，须在此之后引入） */
 #include "osal_priority.h"
 
