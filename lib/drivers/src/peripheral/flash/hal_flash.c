@@ -169,10 +169,12 @@ static void flash_request_worker(Work *work)
 static OmRet flash_submit(FlashDev *dev, uint32_t type, uint32_t addr, const void *data,
                           size_t len, FlashDoneCb done, void *param, FlashRequest **out_req)
 {
-#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+#if defined(OM_OSAL_PORT) && (OM_OSAL_PORT == OSAL_PORT_NONE)
     /* 坍缩形态：单执行流无并发提交者——临界区非必需；且坍缩下
      * workqueue_enqueue = 当场执行（长活/回调/内部等待），不得置于
-     * 关中断临界区内（workqueue 坍缩契约：执行点语义）。 */
+     * 关中断临界区内（workqueue 坍缩契约：执行点语义）。
+     * 守卫写作 defined(...) && (...)：宏未定义时安全默认到有 OS 路径
+     * （同 workqueue 守卫约定——裸比较会因两宏按 0 相等而静默坍缩）。 */
     FlashRequest *req = flash_find_free_slot(dev);
     if (!req)
     {
