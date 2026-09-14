@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OMHOST · 固件打包</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Saira+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0d0e;
+    --panel:     #111617;
+    --panel-2:   #161c1e;
+    --line:      #212a2c;
+    --line-2:    #2c3739;
+    --fg:        #dbe4e5;
+    --dim:       #7b8a8c;
+    --dim-2:     #4e5c5e;
+    --amber:     #ffb454;
+    --amber-2:   #c9852f;
+    --ok:        #5fd39a;
+    --fail:      #ff6b6b;
+    --info:      #5ac8ff;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --sans: "Saira Condensed", "Segoe UI", system-ui, sans-serif;
+    --r: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(1100px 420px at 18% -12%, rgba(255,180,84,.07), transparent 62%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 22px 26px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+    animation: rise .5s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .brand {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 25px;
+    letter-spacing: .22em;
+    color: var(--fg);
+    text-transform: uppercase;
+  }
+  .brand em { color: var(--amber); font-style: normal; }
+  .tagline { color: var(--dim-2); font-size: 11.5px; letter-spacing: .06em; }
+  .contract {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--dim);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r);
+    padding: 4px 9px;
+    background: var(--panel);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim-2); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(95,211,154,.55); }
+  .dot.off { background: var(--fail); box-shadow: 0 0 8px rgba(255,107,107,.5); }
+
+  /* ---------- 布局条 ---------- */
+  .map {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 14px 16px 12px;
+    animation: rise .5s .06s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .map-head {
+    display: flex; align-items: baseline; gap: 12px;
+    font-family: var(--sans); letter-spacing: .16em; text-transform: uppercase;
+    font-size: 12px; color: var(--dim); margin-bottom: 10px;
+  }
+  .map-head b { color: var(--fg); font-weight: 600; }
+  .map-total { margin-left: auto; font-family: var(--mono); letter-spacing: 0; text-transform: none; font-size: 11.5px; }
+
+  .strip {
+    display: flex;
+    height: 42px;
+    border-radius: var(--r);
+    overflow: hidden;
+    border: 1px solid var(--line-2);
+    background: #0d1112;
+  }
+  .seg {
+    position: relative;
+    min-width: 74px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: #0c1011;
+    transition: flex-grow .45s cubic-bezier(.2,.7,.2,1);
+    border-right: 1px solid rgba(0,0,0,.35);
+  }
+  .seg:last-child { border-right: 0; }
+  .seg span { position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+  .seg.s-head   { background: var(--amber); }
+  .seg.s-pad    { background: #3a4345; color: var(--dim); }
+  .seg.s-payload{ background: #2f6f8f; color: #cfe9f5; }
+  .seg.s-digest { background: #2a5c48; color: #c9eeda; }
+  .seg.empty    { background: #151a1b; color: var(--dim-2); }
+  .strip.ready .seg { animation: pop .45s cubic-bezier(.2,.7,.2,1) both; }
+  .seg .n { font-family: var(--mono); font-size: 10px; opacity: .78; margin-left: 5px; letter-spacing: 0; }
+
+  .ruler {
+    display: flex; justify-content: space-between;
+    margin-top: 6px; font-size: 10.5px; color: var(--dim-2);
+  }
+
+  /* ---------- 主体两栏 ---------- */
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(320px, 360px) 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    animation: rise .5s .12s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .card > h2 {
+    margin: 0;
+    padding: 10px 14px;
+    font-family: var(--sans); font-weight: 600;
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--dim);
+    border-bottom: 1px solid var(--line);
+  }
+  .card .body { padding: 14px; }
+
+  /* ---------- 拖放区 ---------- */
+  .drop {
+    border: 1px dashed var(--line-2);
+    border-radius: var(--r);
+    padding: 20px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .18s, background .18s;
+    background: #0d1112;
+  }
+  .drop:hover, .drop.hot { border-color: var(--amber-2); background: #12100a; }
+  .drop .big { font-family: var(--sans); font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg); }
+  .drop .sub { color: var(--dim-2); font-size: 11.5px; margin-top: 5px; }
+  .file {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px; padding: 7px 9px;
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r);
+    font-size: 11.5px;
+  }
+  .file .nm { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file .sz { color: var(--dim); margin-left: auto; flex: none; }
+  .kind {
+    font-family: var(--sans); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 2px; flex: none;
+  }
+  .kind.payload { background: #1d2a30; color: var(--info); }
+  .kind.image   { background: #2a2313; color: var(--amber); }
+
+  /* ---------- 表单 ---------- */
+  .form { display: grid; gap: 11px; margin-top: 14px; }
+  .row { display: grid; grid-template-columns: 88px 1fr; align-items: center; gap: 10px; }
+  .row > label {
+    font-family: var(--sans); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+  }
+  input[type=text], input[type=number], select {
+    width: 100%; background: #0d1112; color: var(--fg);
+    border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 6px 8px; font-family: var(--mono); font-size: 12.5px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus {
+    outline: none; border-color: var(--amber-2); box-shadow: 0 0 0 3px rgba(255,180,84,.1);
+  }
+  .seg-pick { display: flex; gap: 6px; }
+  .seg-pick button {
+    flex: 1; background: #0d1112; color: var(--dim);
+    border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 6px 0; font-family: var(--mono); font-size: 12.5px; cursor: pointer;
+    transition: all .15s;
+  }
+  .seg-pick button:hover { border-color: var(--line-2); color: var(--fg); }
+  .seg-pick button.on { background: var(--amber); border-color: var(--amber); color: #0c1011; font-weight: 600; }
+
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn {
+    font-family: var(--sans); font-size: 13.5px; letter-spacing: .14em; text-transform: uppercase;
+    padding: 9px 16px; border-radius: var(--r); cursor: pointer;
+    border: 1px solid var(--line-2); background: var(--panel-2); color: var(--fg);
+    transition: all .15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--amber-2); color: var(--amber); }
+  .btn.primary { background: var(--amber); border-color: var(--amber); color: #0c1011; font-weight: 600; flex: 1; }
+  .btn.primary:hover:not(:disabled) { background: #ffc579; color: #0c1011; }
+  .btn:disabled { opacity: .38; cursor: not-allowed; }
+
+  /* ---------- 字段表 ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th {
+    font-family: var(--sans); font-weight: 600; font-size: 11px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--dim-2);
+    border-bottom-color: var(--line-2);
+  }
+  td.k { color: var(--fg); }
+  td.o { color: var(--dim-2); width: 48px; }
+  td.v { color: var(--amber); font-weight: 500; }
+  td.n { color: var(--dim); }
+  tbody tr { transition: background .15s; }
+  tbody tr:hover { background: var(--panel-2); }
+
+  .placeholder { color: var(--dim-2); padding: 26px 4px; text-align: center; font-size: 12.5px; }
+
+  /* ---------- 结论条 ---------- */
+  .verdict {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: var(--r); margin-bottom: 12px;
+    border: 1px solid var(--line-2); background: var(--panel-2);
+    font-size: 12.5px;
+    animation: rise .35s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .verdict.ok  { border-color: rgba(95,211,154,.4); background: rgba(95,211,154,.07); color: var(--ok); }
+  .verdict.bad { border-color: rgba(255,107,107,.42); background: rgba(255,107,107,.07); color: var(--fail); }
+  .verdict .lbl {
+    font-family: var(--sans); font-weight: 700; letter-spacing: .16em; text-transform: uppercase; flex: none;
+  }
+  .verdict ul { margin: 0; padding-left: 16px; color: var(--fg); }
+  .verdict li { font-size: 11.5px; }
+
+  .digest {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 12px; padding: 9px 12px;
+    border: 1px solid var(--line-2); border-radius: var(--r); background: #0d1112;
+  }
+  .digest .lbl {
+    font-family: var(--sans); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim-2);
+  }
+  .digest .val { color: var(--amber); font-size: 14px; letter-spacing: .04em; }
+  .digest .alg { margin-left: auto; color: var(--dim); font-size: 11.5px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 9px 16px; font-size: 12.5px; color: var(--fg);
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  @keyframes pop  { from { opacity: .35; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="brand">OM<em>HOST</em></div>
+    <div class="tagline">固件打包 · 镜像检查</div>
+    <div class="contract" id="contract">
+      <span class="dot" id="cdot"></span>
+      <span id="ctext">正在读取契约…</span>
+    </div>
+  </header>
+
+  <section class="map">
+    <div class="map-head">
+      <b>槽内布局</b><span>· 头 → 填充 → 负载 → 摘要区</span>
+      <span class="map-total" id="mapTotal">—</span>
+    </div>
+    <div class="strip" id="strip">
+      <div class="seg empty" style="flex:1"><span>等待镜像</span></div>
+    </div>
+    <div class="ruler"><span>槽基址 + 0</span><span id="rulerEnd">—</span></div>
+  </section>
+
+  <div class="cols">
+
+    <section class="card">
+      <h2>输入</h2>
+      <div class="body">
+        <div class="drop" id="drop">
+          <div class="big">拖入文件</div>
+          <div class="sub">裸固件 .bin 打包 · 已有镜像自动识别为检查</div>
+        </div>
+        <input type="file" id="picker" hidden>
+        <div class="file" id="fileBox" style="display:none">
+          <span class="kind" id="fileKind">—</span>
+          <span class="nm" id="fileName">—</span>
+          <span class="sz" id="fileSize">—</span>
+        </div>
+
+        <div class="form">
+          <div class="row"><label>版本</label><input type="text" id="version" placeholder="1.2.3" value="1.0.0"></div>
+          <div class="row"><label>槽位</label>
+            <div class="seg-pick" id="slot"><button data-slot="a" class="on">A</button><button data-slot="b">B</button></div>
+          </div>
+          <div class="row"><label>摘要</label><select id="algo"></select></div>
+          <div class="row"><label>负载偏移</label><input type="text" id="offset"></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="pack" disabled>打包</button>
+          <button class="btn" id="save" disabled>下载</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>镜像头字段</h2>
+      <div class="body" id="result">
+        <div class="placeholder">拖入固件后点打包，或拖入一个已有镜像直接查看。</div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const HEX = (n, w) => "0x" + Number(n).toString(16).toUpperCase().padStart(w || 0, "0");
+
+  const state = { contract: null, file: null, kind: null, imageBase64: null, name: "image.bin" };
+
+  // ---------------------------------------------------------------- 契约
+  async function loadContract() {
+    try {
+      const c = await (await fetch("/api/contract")).json();
+      state.contract = c;
+      $("cdot").className = "dot " + (c.ok ? "on" : "off");
+      $("ctext").textContent = c.ok
+        ? `契约头已加载 · 魔数 ${HEX(c.magic, 8)} · 头长 ${c.hdrSize}B`
+        : "契约头未加载（使用内置兜底值）";
+      $("ctext").title = c.headerPath + (c.message ? "\n" + c.message : "");
+
+      $("offset").value = HEX(c.payloadOffset);
+      $("offset").title = `默认取契约头约定值 ${HEX(c.payloadOffset)}；须 0x200 对齐且等于 app 链接偏移`;
+      const sel = $("algo");
+      sel.innerHTML = "";
+      c.algos.forEach((a) => {
+        const o = document.createElement("option");
+        o.value = a.key; o.textContent = a.name;
+        sel.appendChild(o);
+      });
+    } catch (e) {
+      $("cdot").className = "dot off";
+      $("ctext").textContent = "后端不可达";
+    }
+  }
+
+  // ---------------------------------------------------------------- 拖放
+  const drop = $("drop");
+  drop.addEventListener("click", () => $("picker").click());
+  $("picker").addEventListener("change", (e) => e.target.files[0] && take(e.target.files[0]));
+  ["dragenter", "dragover"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hot"); }));
+  drop.addEventListener("drop", (e) => {
+    const f = e.dataTransfer.files[0];
+    if (f) take(f);
+  });
+
+  async function take(file) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    state.file = new Uint8Array(buf);
+    state.name = file.name;
+    state.imageBase64 = null;
+    state.kind = looksLikeImage(buf) ? "image" : "payload";
+
+    $("fileBox").style.display = "flex";
+    $("fileKind").className = "kind " + state.kind;
+    $("fileKind").textContent = state.kind === "image" ? "镜像" : "固件";
+    $("fileName").textContent = file.name;
+    $("fileSize").textContent = state.file.length.toLocaleString() + " B";
+    $("save").disabled = true;
+
+    if (state.kind === "image") inspect();
+    else { $("pack").disabled = false; renderIdle(); }
+  }
+
+  // 用契约里的魔数识别（界面不写死任何常量）
+  function looksLikeImage(buf) {
+    const magic = state.contract && state.contract.magic;
+    if (!magic || buf.length < 4) return false;
+    const v = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+    return (v >>> 0) === (magic >>> 0);
+  }
+
+  // ---------------------------------------------------------------- 槽位
+  $("slot").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    [...$("slot").children].forEach((x) => x.classList.toggle("on", x === b));
+  });
+  const slotValue = () => $("slot").querySelector("button.on").dataset.slot;
+
+  // ---------------------------------------------------------------- 请求
+  async function pack() {
+    if (!state.file) return;
+    busy(true, "打包中…");
+    const q = new URLSearchParams({
+      version: $("version").value.trim(),
+      slot: slotValue(),
+      algo: $("algo").value,
+      payloadOffset: $("offset").value.trim(),
+    });
+    try {
+      const r = await post("/api/pack?" + q, state.file);
+      if (!r.ok) { renderError(r.error || "打包失败"); return; }
+      state.imageBase64 = r.imageBase64;
+      state.name = suggestName();
+      $("save").disabled = false;
+      render(r, "打包完成");
+      toast("镜像已生成：" + state.name);
+    } catch (e) { renderError(String(e)); }
+    finally { busy(false); }
+  }
+
+  async function inspect() {
+    busy(true, "解析中…");
+    try {
+      const r = await post("/api/inspect", state.file);
+      if (r.fatal) { renderError(r.fatal); return; }
+      render(r, "镜像检查");
+    } catch (e) { renderError(String(e)); }
+    finally { busy(false); }
+  }
+
+  async function post(url, bytes) {
+    const res = await fetch(url, { method: "POST", body: bytes });
+    return await res.json();
+  }
+
+  function suggestName() {
+    const base = state.name.replace(/\.(bin|img)$/i, "");
+    return `${base}_${slotValue()}${$("version").value.trim() ? "_v" + $("version").value.trim() : ""}.img.bin`;
+  }
+
+  // ---------------------------------------------------------------- 渲染
+  function renderIdle() {
+    const hdr = state.contract ? state.contract.hdrSize : 64;
+    const off = state.contract ? state.contract.payloadOffset : 512;
+    const region = state.contract ? state.contract.digestRegionSize : 256;
+    const total = off + state.file.length + region;
+
+    $("strip").className = "strip ready";
+    $("strip").innerHTML = layoutSegments(hdr, off - hdr, state.file.length, region);
+    $("mapTotal").textContent = "待打包 · 预计槽内占用 " + total.toLocaleString() + " B";
+    $("rulerEnd").textContent = `负载 @${HEX(off)} · 预计末端 @${HEX(total)}`;
+    $("result").innerHTML = '<div class="placeholder">固件已就绪，点「打包」生成镜像。</div>';
+  }
+
+  // 段宽按字节比例（flex-grow 权重），窄段由 min-width 保证可读
+  function seg(cls, label, bytes) {
+    return `<div class="seg ${cls}" style="flex:${Math.max(bytes, 1)} 1 0">` +
+      `<span>${label}<i class="n">${bytes.toLocaleString()}B</i></span></div>`;
+  }
+
+  function layoutSegments(header, pad, payload, region) {
+    return seg("s-head", "头", header) + seg("s-pad", "填充", pad) +
+      seg("s-payload", "负载", payload) + seg("s-digest", "摘要区", region);
+  }
+
+  function render(r, title) {
+    const v = r.verdict;
+    const span = r.span;
+    const hdrSize = fieldValue(r, "hdrSize") || state.contract.hdrSize; // 以镜像自身字段为准
+    const pad = Math.max(span.payloadOffset - hdrSize, 0);
+
+    $("strip").className = "strip ready";
+    $("strip").innerHTML = layoutSegments(hdrSize, pad, span.imageSize, span.digestRegionSize);
+    $("mapTotal").textContent = title + " · 槽内占用 " + span.total.toLocaleString() + " B";
+    $("rulerEnd").textContent = `负载 @${HEX(span.payloadOffset)} · 摘要 @${HEX(span.digestOffset)} · 末端 @${HEX(span.total)}`;
+
+    const notes = v.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("");
+    const banner = `<div class="verdict ${v.ok ? "ok" : "bad"}">
+        <span class="lbl">${v.ok ? "校验通过" : "拒绝"}</span>
+        <ul>${notes}</ul>
+      </div>`;
+
+    const digest = r.digestHex
+      ? `<div class="digest"><span class="lbl">摘要</span><span class="val">${r.digestHex}</span>
+         <span class="alg">${algoName(fieldValue(r, "digestAlgo"))}</span></div>`
+      : "";
+
+    const rows = r.fields.map((f) => `<tr>
+        <td class="k">${escapeHtml(f.name)}</td>
+        <td class="o">${f.offset}</td>
+        <td class="v">${escapeHtml(f.value)}</td>
+        <td class="n">${escapeHtml(f.note || "")}</td>
+      </tr>`).join("");
+
+    $("result").innerHTML = banner + digest +
+      `<table><thead><tr><th>字段</th><th>偏移</th><th>值</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderError(msg) {
+    $("result").innerHTML = `<div class="verdict bad"><span class="lbl">失败</span><ul><li>${escapeHtml(msg)}</li></ul></div>`;
+    $("strip").className = "strip";
+  }
+
+  const fieldValue = (r, name) => {
+    const f = r.fields.find((x) => x.name === name);
+    return f ? Number(f.value) : 0;
+  };
+  const algoName = (v) => {
+    const a = state.contract && state.contract.algos.find((x) => x.value === v);
+    return a ? a.name : "未知算法 " + v;
+  };
+
+  // ---------------------------------------------------------------- 下载
+  $("save").addEventListener("click", () => {
+    if (!state.imageBase64) return;
+    const bin = atob(state.imageBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = state.name; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  $("pack").addEventListener("click", pack);
+
+  // ---------------------------------------------------------------- 杂项
+  function busy(on, text) {
+    $("pack").disabled = on || !state.file || state.kind === "image";
+    if (on && text) $("mapTotal").textContent = text;
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  loadContract();
+})();
+</script>
+</body>
+</html>
