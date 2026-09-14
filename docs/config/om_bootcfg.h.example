@@ -25,7 +25,12 @@
  * meta 双份轮转 2×16K + 预留 1×16K（swap 进度/策略扩展），B 槽 64K 对齐）
  * =================================================================== */
 
-/* X-macro 列表：X(name, devName, offset, size) */
+/* X-macro 列表：X(name, devName, offset, size)
+ *
+ * app_a / app_b 的 offset 是**槽基址**，不是 app 的链接基址：镜像头占据槽基址起
+ * 的头部区域，负载从镜像头的 payloadOffset（约定 0x200）开始。app 的链接基址 =
+ * 槽基址 + payloadOffset（本表参考值下为 0x10200 / 0x110200）。引导方按分区名取
+ * 槽，槽内偏移由镜像头自描述，配置表里不需要出现链接基址。 */
 #define OM_BOOT_PARTITIONS           \
     X("bootloader", "flash0", 0x000000u, 0x10000u) /* bank1 头 4×16K */ \
     X("app_a", "flash0", 0x010000u, 0xF0000u)      /* bank1 余量 ~960K */ \
