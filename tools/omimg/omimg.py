@@ -272,12 +272,12 @@ def selftest():
     else:
         notes.append("OK   CRC-32/ISO-HDLC 自检向量 0xCBF43926")
 
-    # 2) 与 C 契约头的常量一致
-    mirrored = {
+    # 2) 与 C 契约头一致：契约不变量必须相等；负载偏移是**可覆写默认值**，
+    #    工程覆写后镜像头字段会不同，故此处只核对两侧默认值相同
+    contract = {
         "MAGIC": MAGIC,
         "HDR_VERSION": HDR_VERSION,
         "HDR_SIZE": HDR_SIZE,
-        "PAYLOAD_OFFSET": PAYLOAD_OFFSET,
         "DIGEST_REGION_SIZE": DIGEST_REGION_SIZE,
     }
     try:
@@ -286,10 +286,15 @@ def selftest():
         ok = False
         notes.append("FAIL %s" % exc)
     else:
-        for name, value in header.items():
-            if value != mirrored[name]:
+        for name, value in contract.items():
+            if header[name] != value:
                 ok = False
-                notes.append("FAIL 常量漂移 %s：头 %d != 工具 %d" % (name, value, mirrored[name]))
+                notes.append("FAIL 契约常量漂移 %s：头 %d != 工具 %d" % (name, header[name], value))
+        if header["PAYLOAD_OFFSET"] != PAYLOAD_OFFSET:
+            ok = False
+            notes.append(
+                "FAIL 负载偏移默认值漂移：头 %d != 工具 %d" % (header["PAYLOAD_OFFSET"], PAYLOAD_OFFSET)
+            )
         if ok:
             notes.append("OK   契约常量与 C 头一致（%s）" % _HEADER_PATH.name)
 
@@ -347,12 +352,20 @@ def cmd_pack(args):
     algo = {"crc32": DIGEST_CRC32_ISO_HDLC, "sha256": DIGEST_SHA256, "none": DIGEST_NONE}[args.algo]
     version = parse_version(args.version) if args.version else 0
 
-    image = build_image(payload, version=version, slot=SLOT_ID[args.slot], algo=algo, flags=flags)
+    image = build_image(
+        payload,
+        version=version,
+        slot=SLOT_ID[args.slot],
+        algo=algo,
+        flags=flags,
+        payload_offset=args.payload_offset,
+    )
     path = Path(args.output)
     path.write_bytes(image)
 
     h = parse_image(image)
     print("已写出 %s" % path)
+    print("  负载偏移  0x%X（= app 链接偏移）" % h["payloadOffset"])
     print("  负载      %d 字节（补齐后 %d）" % (len(payload), h["imageSize"]))
     print("  镜像总长  %d 字节（含头/填充/摘要区）" % h["imageTotalSize"])
     print("  版本      0x%08X" % h["imageVersion"])
@@ -440,6 +453,12 @@ def main(argv=None):
     p.add_argument("--algo", default="crc32", choices=("crc32", "sha256", "none"), help="摘要算法")
     p.add_argument("--flags", type=lambda v: int(v, 0), default=None, help="flags 原始值（默认 SLOT_BOUND）")
     p.add_argument("--no-slot-bound", action="store_true", help="清除 SLOT_BOUND 位")
+    p.add_argument(
+        "--payload-offset",
+        type=lambda v: int(v, 0),
+        default=PAYLOAD_OFFSET,
+        help="负载偏移，须 0x200 对齐且等于 app 链接偏移（默认 0x%X）" % PAYLOAD_OFFSET,
+    )
     p.set_defaults(func=cmd_pack)
 
     p = sub.add_parser("inspect", help="打印头部字段")

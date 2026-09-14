@@ -28,6 +28,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef OM_USE_BOOTCFG
+/* 工程配置可覆写本文件的布局默认值（构建注入宏；无工程配置时不引入任何头）。
+ * 契约头本身绝不反向被工程配置包含——那会形成循环。 */
+#include "om_bootcfg.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -48,10 +54,14 @@ extern "C" {
  *  概念的分界——二者刻意不共用一个字段。 */
 #define OM_IMAGE_HDR_SIZE 64u
 
-/** 负载偏移约定值：负载相对槽基址的偏移，也是 app 的链接偏移基准。
- *  取 0x200 是为满足向量表对齐（异常向量表基址须对齐到 条目数×4 向上取
- *  2 的幂）。镜像头里的 payloadOffset 字段是每镜像自描述值，正常应等于本值。 */
+/** 负载偏移的**约定默认值**（布局值，工程可覆写）。取 0x200 是为满足向量表对齐
+ *  （异常向量表基址须对齐到 条目数×4 向上取 2 的幂）；目标芯片要求不同或工程
+ *  布局另有安排时，在工程配置中定义同名宏覆写。
+ *  它必须等于 app 的链接偏移；**引导方不读本宏**——镜像头里的 payloadOffset
+ *  字段是每镜像自描述值，引导方以字段为准。 */
+#ifndef OM_IMAGE_PAYLOAD_OFFSET
 #define OM_IMAGE_PAYLOAD_OFFSET 0x200u
+#endif
 
 /** 摘要区预留容量（槽内负载之后）。预留恒定，使"摘要算法演进"不改变布局。 */
 #define OM_IMAGE_DIGEST_REGION_SIZE 256u
