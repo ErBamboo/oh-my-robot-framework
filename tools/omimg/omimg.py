@@ -64,6 +64,10 @@ _FALLBACK = {
     "DIGEST_REGION_SIZE": DIGEST_REGION_SIZE,
 }
 
+# 契约头加载状态（load_contract 填充；消费者据此显示"是否已与 C 契约头对齐"）
+CONTRACT_LOADED = False
+CONTRACT_MESSAGE = "尚未加载契约头"
+
 # 跨语言对拍基准（与 host 语料同源）：同一负载与元数据在两侧必须得到同一摘要
 FIXTURE = {
     "payload_len": 1300,
@@ -253,6 +257,37 @@ def verify_image(data, slot_capacity=None):
     return True, notes
 
 
+def header_rows(hdr):
+    """把头字段整理成展示用行（名称/偏移/显示值/备注），供 CLI 与界面对齐复用。"""
+    version = hdr["imageVersion"]
+    return [
+        {"name": "magic", "offset": 0, "value": "0x%08X" % hdr["magic"], "note": "OMRI" if hdr["magic"] == MAGIC else "非本框架镜像"},
+        {"name": "hdrVersion", "offset": 4, "value": str(hdr["hdrVersion"]), "note": ""},
+        {"name": "hdrSize", "offset": 6, "value": str(hdr["hdrSize"]), "note": "头本体字节数"},
+        {"name": "payloadOffset", "offset": 8, "value": "0x%X" % hdr["payloadOffset"], "note": "= app 链接偏移"},
+        {"name": "imageSize", "offset": 12, "value": str(hdr["imageSize"]), "note": "不含头/摘要区"},
+        {"name": "imageTotalSize", "offset": 16, "value": str(hdr["imageTotalSize"]), "note": "槽内占用"},
+        {
+            "name": "imageVersion",
+            "offset": 20,
+            "value": "0x%08X" % version,
+            "note": "%d.%d.%d" % ((version >> 24) & 0xFF, (version >> 16) & 0xFF, (version >> 8) & 0xFF),
+        },
+        {"name": "flags", "offset": 24, "value": "0x%08X" % hdr["flags"], "note": _fmt_flags(hdr["flags"])},
+        {
+            "name": "digestAlgo",
+            "offset": 28,
+            "value": str(hdr["digestAlgo"]),
+            "note": ALGO_NAMES.get(hdr["digestAlgo"], "未知"),
+        },
+        {"name": "digestLen", "offset": 30, "value": str(hdr["digestLen"]), "note": ""},
+        {"name": "digestOffset", "offset": 32, "value": "0x%X" % hdr["digestOffset"], "note": "摘要区起点"},
+        {"name": "digestRegionSize", "offset": 36, "value": str(hdr["digestRegionSize"]), "note": "预留容量"},
+        {"name": "slotId", "offset": 38, "value": str(hdr["slotId"]), "note": ""},
+        {"name": "headerCrc32", "offset": 40, "value": "0x%08X" % hdr["headerCrc32"], "note": "未启用（恒 0）"},
+    ]
+
+
 def parse_version(text):
     """'1.2.3' → major<<24 | minor<<16 | patch<<8"""
     parts = [int(p) for p in re.split(r"[._-]", text.strip())]
@@ -299,11 +334,16 @@ def load_contract():
     返回（是否加载成功, 说明）。
     """
     global MAGIC, HDR_VERSION, HDR_SIZE, PAYLOAD_OFFSET, DIGEST_REGION_SIZE
+    global CONTRACT_LOADED, CONTRACT_MESSAGE
     try:
         values = _read_header_constants()
     except ImageError as exc:
-        return False, "未能从契约头加载常量，使用内置兜底值：%s" % exc
+        CONTRACT_LOADED = False
+        CONTRACT_MESSAGE = "未能从契约头加载常量，使用内置兜底值：%s" % exc
+        return False, CONTRACT_MESSAGE
 
+    CONTRACT_LOADED = True
+    CONTRACT_MESSAGE = ""
     MAGIC = values["MAGIC"]
     HDR_VERSION = values["HDR_VERSION"]
     HDR_SIZE = values["HDR_SIZE"]
@@ -445,29 +485,9 @@ def cmd_inspect(args):
         print("解析失败：%s" % exc, file=sys.stderr)
         return 1
 
-    print("字段            值")
-    print("magic           0x%08X%s" % (h["magic"], "" if h["magic"] == MAGIC else "   ← 非本框架镜像"))
-    print("hdrVersion      %d" % h["hdrVersion"])
-    print("hdrSize         %d" % h["hdrSize"])
-    print("payloadOffset   0x%X" % h["payloadOffset"])
-    print("imageSize       %d" % h["imageSize"])
-    print("imageTotalSize  %d" % h["imageTotalSize"])
-    print(
-        "imageVersion    0x%08X  (%d.%d.%d)"
-        % (
-            h["imageVersion"],
-            (h["imageVersion"] >> 24) & 0xFF,
-            (h["imageVersion"] >> 16) & 0xFF,
-            (h["imageVersion"] >> 8) & 0xFF,
-        )
-    )
-    print("flags           0x%08X  (%s)" % (h["flags"], _fmt_flags(h["flags"])))
-    print("digestAlgo      %d  (%s)" % (h["digestAlgo"], ALGO_NAMES.get(h["digestAlgo"], "未知")))
-    print("digestLen       %d" % h["digestLen"])
-    print("digestOffset    0x%X" % h["digestOffset"])
-    print("digestRegionSize %d" % h["digestRegionSize"])
-    print("slotId          %d" % h["slotId"])
-    print("headerCrc32     0x%08X" % h["headerCrc32"])
+    print("%-16s %-6s %-14s %s" % ("字段", "偏移", "值", "备注"))
+    for row in header_rows(h):
+        print("%-16s %-6d %-14s %s" % (row["name"], row["offset"], row["value"], row["note"]))
 
     if h["digestLen"] and h["digestOffset"] + h["digestLen"] <= len(data):
         print("摘要值          %s" % data[h["digestOffset"] : h["digestOffset"] + h["digestLen"]].hex())
