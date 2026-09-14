@@ -1,7 +1,7 @@
 # 分区表抽象设计（可擦存储器件族的上层语义）
 
 > 版本：**v2 接口定稿**（2026-09-14；v1 = 2026-09-07 接口定稿，已被本版就地取代——v1 无任何生产消费者，不另立双事实源）
-> 状态：v2 已落码；host 验证通过（`partition_test` 119/0）；实机验证 sample 已就绪（`samples/pal/partition`），待烧录观测
+> 状态：v2 已落码并通过**双端验证**——host（`partition_test` 119/0）+ 实机（rm-a/F427，`samples/pal/partition` **53/0**；128K 扇区擦除实测 1072 ms，擦除期间心跳线程零断流）
 > 关联：`docs/boot_ota/reference_design_notes.md`（P-03/K-02/ER-4）、`docs/boot_ota/multi_strategy_boot_design.md`（Q-02 布局拍板）、`docs/boot_ota/storage_landscape.md`（可擦族管理模块位）、ADR-0021 (boot_multi_strategy_skeleton)、ADR-0017 (project_config_layering)、`docs/internal/active/issue_000_storage_gap_analysis/storage_gap_analysis.md`（G-06/P1）
 
 ---
