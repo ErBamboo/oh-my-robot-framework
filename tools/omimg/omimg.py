@@ -54,6 +54,28 @@ ALGO_NAMES = {
     DIGEST_SHA256: "SHA256",
 }
 
+# 兜底值＝上面的字面量。正常运行时不使用它们：main 会先从 C 契约头加载真值
+# （契约头是唯一事实源），兜底只在契约头不可读时生效，并由自检报告其是否陈旧。
+_FALLBACK = {
+    "MAGIC": MAGIC,
+    "HDR_VERSION": HDR_VERSION,
+    "HDR_SIZE": HDR_SIZE,
+    "PAYLOAD_OFFSET": PAYLOAD_OFFSET,
+    "DIGEST_REGION_SIZE": DIGEST_REGION_SIZE,
+}
+
+# 跨语言对拍基准（与 host 语料同源）：同一负载与元数据在两侧必须得到同一摘要
+FIXTURE = {
+    "payload_len": 1300,
+    "version": 0x01020300,
+    "slot": 0,
+    "flags": F_SLOT_BOUND,
+    "image_size": 1300,
+    "total_size": 2068,
+    "digest_offset": 0x714,
+    "digest": 0x947D81DC,
+}
+
 # 头字段：15 项，全小端、无对齐填充
 _HDR_FMT = "<IHHIIIIIHHIHHI20s"
 _HDR_FIELDS = (
@@ -110,10 +132,18 @@ def build_image(
     slot=SLOT_ID["a"],
     algo=DIGEST_CRC32_ISO_HDLC,
     flags=None,
-    payload_offset=PAYLOAD_OFFSET,
-    digest_region_size=DIGEST_REGION_SIZE,
+    payload_offset=None,
+    digest_region_size=None,
 ):
-    """由裸负载构造完整镜像（头 + 填充 + 负载 + 摘要区）。"""
+    """由裸负载构造完整镜像（头 + 填充 + 负载 + 摘要区）。
+
+    payload_offset / digest_region_size 缺省取当前生效的契约值（load_contract 后
+    即契约头中的值）。
+    """
+    if payload_offset is None:
+        payload_offset = PAYLOAD_OFFSET
+    if digest_region_size is None:
+        digest_region_size = DIGEST_REGION_SIZE
     if payload_offset < HDR_SIZE or payload_offset % 4:
         raise ImageError("payload_offset 必须 >= 头长且 4 字节对齐")
     if payload_offset % 0x200:
@@ -150,7 +180,10 @@ def build_image(
         bytes([FILL]) * 20,
     )
     if len(header) != HDR_SIZE:
-        raise ImageError("头长度与契约不符：%d" % len(header))
+        raise ImageError(
+            "头布局串算出的长度 %d 与契约头的头长 %d 不符——字段增删后本文件的 _HDR_FMT "
+            "必须同步更新，且契约头长须走版本演进" % (len(header), HDR_SIZE)
+        )
 
     body = header + bytes([FILL]) * (payload_offset - HDR_SIZE) + payload_padded
     digest = compute_digest(algo, body)
@@ -259,6 +292,26 @@ def _read_header_constants():
     }
 
 
+def load_contract():
+    """从 C 契约头加载常量并覆盖本模块的字面量（契约头 = 唯一事实源）。
+
+    契约头不可读时保留兜底值并给出警告——工具仍可用，但自检会报告失败。
+    返回（是否加载成功, 说明）。
+    """
+    global MAGIC, HDR_VERSION, HDR_SIZE, PAYLOAD_OFFSET, DIGEST_REGION_SIZE
+    try:
+        values = _read_header_constants()
+    except ImageError as exc:
+        return False, "未能从契约头加载常量，使用内置兜底值：%s" % exc
+
+    MAGIC = values["MAGIC"]
+    HDR_VERSION = values["HDR_VERSION"]
+    HDR_SIZE = values["HDR_SIZE"]
+    PAYLOAD_OFFSET = values["PAYLOAD_OFFSET"]
+    DIGEST_REGION_SIZE = values["DIGEST_REGION_SIZE"]
+    return True, ""
+
+
 def selftest():
     """返回（是否通过, 说明列表）。覆盖：算法自检向量、契约常量一致、往返与损坏检测。"""
     ok = True
@@ -272,31 +325,19 @@ def selftest():
     else:
         notes.append("OK   CRC-32/ISO-HDLC 自检向量 0xCBF43926")
 
-    # 2) 与 C 契约头一致：契约不变量必须相等；负载偏移是**可覆写默认值**，
-    #    工程覆写后镜像头字段会不同，故此处只核对两侧默认值相同
-    contract = {
-        "MAGIC": MAGIC,
-        "HDR_VERSION": HDR_VERSION,
-        "HDR_SIZE": HDR_SIZE,
-        "DIGEST_REGION_SIZE": DIGEST_REGION_SIZE,
-    }
+    # 2) 契约头可读，且内置兜底不陈旧（兜底只在契约头不可读时生效，陈旧即隐性漂移）
     try:
         header = _read_header_constants()
     except ImageError as exc:
         ok = False
-        notes.append("FAIL %s" % exc)
+        notes.append("FAIL 契约头不可读：%s" % exc)
     else:
-        for name, value in contract.items():
-            if header[name] != value:
-                ok = False
-                notes.append("FAIL 契约常量漂移 %s：头 %d != 工具 %d" % (name, header[name], value))
-        if header["PAYLOAD_OFFSET"] != PAYLOAD_OFFSET:
+        stale = [name for name, value in _FALLBACK.items() if header[name] != value]
+        if stale:
             ok = False
-            notes.append(
-                "FAIL 负载偏移默认值漂移：头 %d != 工具 %d" % (header["PAYLOAD_OFFSET"], PAYLOAD_OFFSET)
-            )
-        if ok:
-            notes.append("OK   契约常量与 C 头一致（%s）" % _HEADER_PATH.name)
+            notes.append("FAIL 内置兜底值陈旧（与契约头不符）：%s" % ", ".join(stale))
+        else:
+            notes.append("OK   契约头可读且内置兜底一致（%s）" % _HEADER_PATH.name)
 
     # 3) 往返：打包 → 校验通过；改一个负载字节 → 被拒绝
     payload = bytes(range(256)) * 5 + b"\x01\x02\x03"  # 非 4 倍数，触发补齐
@@ -325,6 +366,23 @@ def selftest():
         notes.append("FAIL 空负载镜像未通过：%s" % detail)
     else:
         notes.append("OK   空负载镜像通过校验")
+
+    # 5) 跨语言对拍基准：与 host 语料断言同一组值（任一侧布局漂移都会被抓住）
+    payload = bytes(((i * 37 + 11) & 0xFF) for i in range(FIXTURE["payload_len"]))
+    image = build_image(payload, version=FIXTURE["version"], slot=FIXTURE["slot"], flags=FIXTURE["flags"])
+    hdr = parse_image(image)
+    digest = int.from_bytes(image[hdr["digestOffset"] : hdr["digestOffset"] + 4], "little")
+    for label, got, want in (
+        ("负载长度", hdr["imageSize"], FIXTURE["image_size"]),
+        ("镜像总长", hdr["imageTotalSize"], FIXTURE["total_size"]),
+        ("摘要偏移", hdr["digestOffset"], FIXTURE["digest_offset"]),
+        ("摘要值", digest, FIXTURE["digest"]),
+    ):
+        if got != want:
+            ok = False
+            notes.append("FAIL 对拍基准 %s 不符：0x%X != 0x%X" % (label, got, want))
+        else:
+            notes.append("OK   对拍基准 %s = 0x%X" % (label, got))
 
     return ok, notes
 
@@ -441,6 +499,10 @@ def main(argv=None):
                 stream.reconfigure(encoding="utf-8", errors="replace")
             except (ValueError, OSError):
                 pass
+
+    loaded, message = load_contract()
+    if not loaded:
+        print("警告：%s" % message, file=sys.stderr)
 
     parser = argparse.ArgumentParser(description="镜像打包与检查（镜像格式契约的主机侧实现）")
     sub = parser.add_subparsers(dest="command", required=True)
