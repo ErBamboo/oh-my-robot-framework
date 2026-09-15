@@ -43,6 +43,7 @@ bootloader 运行时形态决策（Q-07）及其衍生的框架缺口（Q-11）�
   - 线程面：thread 创建返回 NOT_SUPPORTED；
   - async 随 OM_FLASH_SYNC_ONLY 编除（FlashDev 同步直跑，D-08）。
 - **协作式多任务记演进**（触发条件 = 框架裁剪形态的裸机业务需求出现；XRobot 裸机形态为参考，K-19）。
+- **2026-09-16 修订注记（口径）**：`OM_FLASH_SYNC_ONLY` 经全仓实核为**幽灵宏**——仅出现在文档与 `pal_flash_dev.h` 注释中，**零代码消费**；真实形态开关 = OS 轴 `OM_OSAL_PORT == OSAL_PORT_NONE`（坍缩分支见 `workqueue.c:199-205,298-300,444-470`、`hal_flash.c:172-196`），且该轴下 FlashDev 的形态是**同步直跑**（提交即执行、不建 worker 线程），**不是**"async 返 NOT_SUPPORTED"；线程序列同理为**直调占位**（`osal_thread_none.c:31-50`，entry 当场执行）而非返回 NOT_SUPPORTED。裁剪判据以 `platform/osal/none/osal_none_core_design.md` A8（判据 = os 轴，不引入模块级宏）为准，本文其余决策不受影响。
 
 ## 影响 (Consequences)
 

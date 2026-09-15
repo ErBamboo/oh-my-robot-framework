@@ -65,20 +65,20 @@
 /*
  * 表实例化与注册（数据 .c，随两工程各编译一份——如 boot_partition_data.c）：
  *
- *   #include "core/om_init.h"
  *   #include "drivers/storage/partition.h"
  *   #include "om_bootcfg.h"
  *   #define X(n, d, o, s) {n, d, o, s},
  *   static const OmPartitionEntry s_boot_partitions[] = {OM_BOOT_PARTITIONS};
  *   #undef X
- *   static OmRet boot_partitions_self_init(void)
- *   {
- *       return om_partition_register(s_boot_partitions,
- *           sizeof(s_boot_partitions) / sizeof(s_boot_partitions[0]));
- *   }
- *   OM_INIT_DRIVER(boot_partitions_self_init);   /* OS 形态：DRIVER 级自注册 */
+ *   static const OmPartitionRegistry s_boot_registry =
+ *       OM_PARTITION_REGISTRY(s_boot_partitions);
  *
- *   bootloader 裁剪形态（无 initcall）：启动流开头显式调用同一 register。
- *   契约：表须 const 静态存储期（模块不拷贝——保持只读存储驻留）；
- *   register 先于一切分区操作。
+ *   取槽（代码中只出现分区名，不出现地址字面量）：
+ *       om_partition_open(&s_boot_registry, "app_a", &h);
+ *
+ *   bootloader 裁剪形态（无 initcall）：启动流开头显式校验一次——
+ *       om_partition_registry_validate(&s_boot_registry);   /* 几何 fail-fast */
+ *   OS 形态可把同一调用挂 OM_INIT_DRIVER 自注册。
+ *   契约：表须 const 静态存储期（可整体驻 ROM）；注册表对象须比其派生的
+ *   任何句柄活得久；v2 无运行期注册 API（ADR-0024）。
  */
