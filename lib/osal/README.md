@@ -3,24 +3,24 @@
 本目录提供操作系统抽象层（OSAL）。上层模块仅依赖 OSAL 接口，具体 RTOS/系统由端口层适配实现。
 
 ## 目录结构
-- `include/osal`：OSAL 核心接口（线程、时间、事件、互斥锁、信号量、队列、定时器）。
+- `include/osal`：OSAL 核心接口（最小原语集：线程、时间、互斥锁、信号量、定时器；队列/事件语义由纯数据结构 + 原语组合实现，见 ADR-0023）。
 - `platform/osal/freertos`：FreeRTOS 端口实现（MCU 优先）。
-- `platform/osal/linux`：Linux 端口骨架（Phase 0 占位）。
+- `platform/osal/none`：裸机单执行流端口（os=none，见 ADR-0022）。
 
 ## OSAL 接口
 `include/osal` 下的头文件是对外唯一接口：
 - `osal_core.h`：中断判断、临界区、内存申请释放、通用返回码。
 - `osal_thread.h`：线程创建/join/退出/终止/让出。
 - `osal_time.h`：单调时钟（ms）、休眠与周期延时。
-- `osal_event.h`：事件标志对象（event flags，支持 ISR set）。
 - `osal_timer.h`：软件定时器。
 - `osal_mutex.h`：互斥锁（线程上下文）。
 - `osal_sem.h`：信号量（ISR 支持 post，支持计数查询）。
-- `osal_queue.h`：队列（ISR 支持收发）。
+- `osal_priority.h`：优先级带定义。
+- `osal_port.h`：端口枚举与取值校验（`OSAL_PORT_FREERTOS` / `OSAL_PORT_POSIX` / `OSAL_PORT_NONE`）。
 
 ## 端口层说明
 - `platform/osal/freertos`：基于 FreeRTOS 的实现。
-- `platform/osal/linux`：Linux 端口骨架（待后续阶段启用）。
+- `platform/osal/none`：裸机单执行流实现（时间/中断面保留，同步面保真，见 ADR-0022）。
 
 ## 时间单位约定
 - OSAL 公共接口默认使用毫秒。
@@ -40,11 +40,9 @@
 ## ISR 使用规则
 - ISR 中禁止调用阻塞接口。
 - 仅使用 ISR 版本 API：
-  - `osal_event_flags_set_from_isr`
   - `osal_sem_post_from_isr`
   - `osal_sem_get_count_from_isr`
-  - `osal_queue_send_from_isr`
-  - `osal_queue_recv_from_isr`
+  - `osal_irq_lock_from_isr` / `osal_irq_unlock_from_isr`
 - 线程接口约束：
   - `OsalThreadAttr_s.stackSize` 统一使用“字节”语义。
   - `osal_thread_create/join/terminate/yield/exit/kernel_start` 仅允许在线程上下文调用。
@@ -59,7 +57,7 @@
 - `OSAL_QUEUE_REGISTRY_MAX`：队列注册表最大数量。
 
 ## 构建开关
-- `OM_OSAL_PORT`：选择 OSAL 后端（`freertos` / `posix`）。
+- `OM_OSAL_PORT`：选择 OSAL 端口（`OSAL_PORT_FREERTOS` / `OSAL_PORT_POSIX` / `OSAL_PORT_NONE`；取值校验见 `osal_port.h`）。
 
 ## 测试策略
 当前阶段（架构早期、跨平台构建刚搭起）：优先做接口一致性验证。行为测试可在 BSP 与样例稳定后，再在板级或 HIL 环境引入。

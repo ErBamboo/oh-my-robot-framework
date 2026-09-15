@@ -15,7 +15,7 @@
 | D-05 | 域 worker 实现 | **复用 Workqueue 原语**（每域一个实例 = 自带 worker 线程/FIFO/门铃/生命周期）。**不借道 SPI per-bus wq**（flash 长操作会饿死同总线短传输） |
 | D-06 | 后端契约 | 同步签名 + **让出硬契约**（write/erase 内部等待必须让出）。SPI 后端事务用**同步 spi_transfer**（其 completion 等 ISR = OS 级阻塞让出，白送） |
 | D-07 | 完成源 | **事件主路径、轮询退化**（2026-09-06 定稿强化）：后端等待以硬件完成事件为主路径（ISR 给 completion/sem），软件合成轮询（睡眠轮询 BSY）为无中断芯片的退化路径；**事件化适用对象 = 完成延迟远大于事件开销的长操作（扇区擦/大块编程）**——亚毫秒粒度操作（单字 program ~30us）用微等待（低于调度粒度，天然不构成饿死），不做每字中断 |
-| D-08 | 无 OSAL（bootloader） | 编译期裁剪：不建 worker；同步 API 直跑后端；async API 返回 `NOT_SUPPORTED`。**复用形态（K-16 证据）**：带 OS 的 bootloader 用同步等待原语（worker 让出）；裸机用 `OM_FLASH_SYNC_ONLY` + osal 空桩（U-Boot compat.h 同款：OS 原语裁剪为空转）；擦除的静默阻塞由上层策略消化（拆片 + 主机长超时——OpenBLT/ST 惯例），框架不提供事件化擦写 |
+| D-08 | 无 OSAL（bootloader） | 编译期裁剪：不建 worker；同步 API 直跑后端；async API 返回 `NOT_SUPPORTED`。**复用形态（K-16 证据）**：带 OS 的 bootloader 用同步等待原语（worker 让出）；裸机用 `OM_FLASH_SYNC_ONLY` + osal 空桩（U-Boot compat.h 同款：OS 原语裁剪为空转）；擦除的静默阻塞由上层策略消化（拆片 + 主机长超时——OpenBLT/ST 惯例），框架不提供事件化擦写。**2026-09-16 修订注记**：本行的"`OM_FLASH_SYNC_ONLY` + osal 空桩"与"async 返回 NOT_SUPPORTED"经实核不成立——`OM_FLASH_SYNC_ONLY` 为幽灵宏（全仓零代码消费），真实开关 = OS 轴 `OM_OSAL_PORT == OSAL_PORT_NONE`，该轴下**不建 worker、提交即执行（同步直跑）**，async 仅在 ISR 上下文返回 `OM_ERR_NOT_SUPPORTED`（`workqueue.c:444-448`）；裁剪判据见 `osal_none_core_design.md` A8 与 ADR-0022 修订注记 |
 
 ## 2. 模块与文件布局
 
