@@ -42,6 +42,8 @@
 | 17 | **linkguard 对裁剪 binary 的适用性** | 守卫要求 7 级边界符号 + 强符号（`toolchain_linkguard.lua`），GCC 侧边界符号由 `PROVIDE` 定义（未被引用可能不落地） | 确认/调整守卫对 bootloader binary 的策略，避免误报 |
 | 18 | **面积门禁** | 报告只打印不 fail | 可选：bootloader 目标加 64K 阈值断言 |
 | 19 | **构建脚本可疑路径** | `platform/bsp/boards/rm-a-board/xmake.lua:21` 导入 `build/modules`（该目录不存在；模块实际在 `xmake/modules`），当前靠 xmake 默认搜索路径兜住 | S2-3 动构建时确认并统一（本次未改，避免影响现有构建） |
+| 20 | **ART 缓存未使能 + D-cache 勘误未处理**（2026-09-16 实核新增） | ① vendor `SystemInit` 为裁剪版、**不设 `FLASH_ACR`**；全仓非 vendor 代码**零 `ICEN`/`DCEN`/`PRFTEN` 使能点**（仅 `HAL_RCC_ClockConfig(..., FLASH_LATENCY_5)` 设了等待周期）→ **ART 指令/数据缓存当前是关的**；② F4 适配器未处理 **ST ES0206 勘误 2.2.15**（"Data cache might be corrupted during Flash memory read-while-write operation"，workaround = 写前 `DCEN=0` → 写后 `DCRST` 复位 → 重开；Zephyr `drivers/flash/flash_stm32f4x.c` 已实现并引用该勘误） | 二选一并落文档：① **保持缓存关闭**（当前事实）并写明"性能代价 + 为什么不能随手打开"；② **开缓存**（180MHz 下显然是性能正解）并**同时在适配器实现勘误 workaround**。注意：勘误当前**不生效**（数据缓存未开），但一旦为性能开启，就正好命中我们的 RWW 场景（写 bank2 / 跑 bank1） |
+| 21 | **决策数据副本份数未定**（Q-12 待讨论） | 擦除归属已改引导侧（K-36/K-37/K-38），不变式要求副本 ≥3 份；2 份推演见 `multi_strategy_boot_design.md` §5.2 | 定份数后同步：`meta`/`meta_resv` 用途、bank2 头部 16K 空档的归属（与日志分区候选地互斥）、未确认窗口的启动时间预算 |
 
 ## 3. 阻塞关系
 
