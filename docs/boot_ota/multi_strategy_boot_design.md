@@ -104,7 +104,7 @@
 | Q-09 | 升级下载驱动方 | **两路都留（K-13），bootloader 后门直写先行**（与 Q-08 同通道，服务现场灌固件与防砖）；app 内 OTA 服务归步骤③ | K-13 |
 | Q-10 | remap/介质映射接口形状 | **随板适配实现期定**：生态无"remap 框架 API"先例——槽=静态表+跳转（direct 固定 XIP 地址连 remap 都不需要）；bank swap/MMU 为板适配跳转前动作；分区表抽象（P-03）随步骤② 前置落地 | P-04；K-20 |
 | Q-11 | （Q-07 衍生）裸机 osal 形态 | **正式 osal-none 端口**：时间/中断面保留 + **同步面保真**（mutex=0/1 互斥开关 + irq_lock 临界、sem=生产消费计数、等待由 idle 刷新驱动——基于 osal 的 sync 组件裸机行为一致）+ **首版单执行流**（thread 创建 NOT_SUPPORTED，async 随 OM_FLASH_SYNC_ONLY 编除）；协作式多任务记演进。**2026-09-16 修订注记**：`OM_FLASH_SYNC_ONLY` 实为幽灵宏（零代码消费），真实开关 = OS 轴 `OM_OSAL_PORT == OSAL_PORT_NONE`，该轴下形态为同步直跑 | K-16（修订注记）；K-19；ADR-0022 修订注记 |
-| Q-12 | 决策数据 entry 布局与写序 | **32B 定长整写式**：`seq` / `active_slot` / `state` / `boot_count` / `image_version` / `flags` / `reserved` / `crc32`（**CRC 覆盖决策字段全集**，不含自身）；写序 = 擦另一份扇区 → 写字段 → **CRC 最后写**（提交标记最后落地）；**永不擦当前有效份**；计数 +1 写入时**顺带 `seq +1`**（哪份新恒由 seq 决定）；N 默认 3 | K-24（三条铁律）/K-30（ESP otadata + U-Boot 双份 env 同构，CRC 覆盖面为改进点）/K-31 |
+| Q-12 | 决策数据 entry 布局与写序 | **32B 定长**：`seq` / `activeSlot` / `state` / `bootCount` / `imageVersion` / `flags` / `reserved` / `crc32`（**CRC 覆盖决策字段全集**，不含自身）；**写者只向"已擦副本" program（自身不做擦除），擦除归引导侧**（bootloader 在引导期擦"非最新份"——此期无应用并发；2026-09-16 依 K-36/K-37/K-38 修订）；**永不擦最新有效份**；计数 +1 写入时**顺带 `seq +1`**（哪份新恒由 seq 决定）；N 默认 3。**份数待讨论**（见 §5.2） | K-24（三条铁律）/K-30（+修订注记）/K-31；擦除归属 K-36（MCUboot 先例）/K-37（各生态对照）/K-38（ST 预擦机制与耐久定义） |
 | Q-13 | 中断责任方（R-JMP-2 定死） | **方案 A：bootloader 跳转前重建复位态后放开**——关中断 → ICER/ICPR 全清 → 停 SysTick 并清其 pending → `HAL_DeInit()` → 写 VTOR → 装 MSP → 清 CONTROL → 放开中断 → 跳；**app 既有启动流程零改动** | K-32（清单）/K-33（OpenBLT 先例，注释成文）；方案 B 否决依据 = os=none 下不存在放开点（`osal_kernel_start()` 为 no-op）且 pre-scheduler 段中断语义需重新定义 |
 | Q-14 | 看门狗首版形态 | **不启用**：bootloader 不启动 IWDG；看门狗保护记演进（启用时须同时定义"谁喂"契约） | K-33（IWDG 启动后不可软件关闭；生态跳转点均不碰狗；两处成文先例要求"谁喂"入契约） |
 | Q-15 | 防降级（R-IMG-2）首版边界 | **不纳入，记演进**：direct-xip 下纯版本比较不适用（生态自身 `depends on !BOOT_DIRECT_XIP`）；硬件计数器须依赖签名链才有意义（签名属 Q-04 演进档） | K-34；R-IMG-2 据此收敛为演进档需求 |
@@ -124,6 +124,36 @@
 | 看门狗保护（Q-14） | bootloader 侧启动 IWDG + app 侧接管喂狗的契约（MCUboot Cypress / ESP Kconfig 两处成文先例） |
 | 防降级（Q-15） | 签名链（SHA-256+ECDSA）落地后；届时可选纯版本比较或硬件安全计数器（后者需设备侧单调 NV 计数 + 不可逆代价评估） |
 | 后门会话凭证（Q-16） | 门禁强度需求出现时；形态参照 OpenBLT XCP seed&key（注意其无重试计数/无锁定的弱点） |
+
+## 5.2 待讨论：决策数据副本份数（2026-09-16 记录，未决）
+
+**已定**：擦除归引导侧（Q-12）——写者只向"已擦副本"program，bootloader 在引导期恢复"至少一份已擦"的不变式。**未定**：副本份数。
+
+**2 份推演（不变式撑不住）**：
+
+| 步骤 | 谁 | 动作 | c1 | c2 |
+|---|---|---|---|---|
+| 稳态 | — | — | VALID·seq20 | 已擦 |
+| ① 写 PENDING | app | program c2 | seq20 | PENDING·seq21 |
+| ② 引导 | bootloader | 需已擦份 → 无 → 擦 c1 → program c1（计数 +1） | seq22 | seq21 |
+| ②' 引导 | bootloader | 再擦 c2（非最新）腾出空位 | seq22 | 已擦 |
+| ③ 写 CONFIRM | app（新槽） | program c2 | seq22 | VALID·seq23 |
+| ④ 稳态 | — | 零写 | seq22 | seq23 |
+| ⑤ **下一轮 PENDING** | app | **池中无已擦份可用** ✗ | — | — |
+
+卡点在 ⑤：确认之后池中 0 份已擦，而下一轮 PENDING 发生在**任何 bootloader 运行之前**（设备持续运行中发起升级）。要重新腾出已擦份只剩三条路：**稳态启动期擦**（违反 R-SLOT-8 稳态零写、且烧寿命）／**app 自己擦**（即 ≈260ms stall，等于现状）／**多留一份**。
+
+**3 份推演（不变式自持）**：bootloader 每次引导**只保留最新份有效、其余全部擦掉**（保底 2 份已擦）→ CONFIRM 消耗 1 份后仍余 1 份，正好接上下一轮 PENDING；稳态零写不破。
+
+**选项与代价**：
+
+| 方案 | app 侧擦除 | 第三份来源 | 代价 |
+|---|---|---|---|
+| 3 份（meta 32K + `meta_resv` 16K） | 0 | 征用 `meta_resv` | 该 16K 原声明给 swap 进度/策略扩展；未确认窗口内每次启动 +≈260ms（bootloader 多擦 1–2 次） |
+| 3 份（meta 32K + bank2 头部 16K 空档） | 0 | `0x10C000` 空档 | 与"日志分区"候选地**互斥** |
+| 2 份（维持现状语义） | 每周期 1 次 ≈260ms | — | 语义最简；该 stall 落在"刚下完镜像/刚启动确认"两个相对安全的时点 |
+
+**讨论要点**：① 那 ≈260ms 落在安全时点是否可接受；② `meta_resv` 的 swap 预留是否愿意让位；③ 若将来日志也要占 bank2 空档，两者取一。
 
 ## 6. 与开工序列的关系
 
