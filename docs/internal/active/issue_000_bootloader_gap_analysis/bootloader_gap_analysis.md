@@ -44,6 +44,8 @@
 | 19 | **构建脚本可疑路径** | `platform/bsp/boards/rm-a-board/xmake.lua:21` 导入 `build/modules`（该目录不存在；模块实际在 `xmake/modules`），当前靠 xmake 默认搜索路径兜住 | S2-3 动构建时确认并统一（本次未改，避免影响现有构建） |
 | 20 | **ART 缓存未使能 + D-cache 勘误未处理**（2026-09-16 实核新增） | ① vendor `SystemInit` 为裁剪版、**不设 `FLASH_ACR`**；全仓非 vendor 代码**零 `ICEN`/`DCEN`/`PRFTEN` 使能点**（仅 `HAL_RCC_ClockConfig(..., FLASH_LATENCY_5)` 设了等待周期）→ **ART 指令/数据缓存当前是关的**；② F4 适配器未处理 **ST ES0206 勘误 2.2.15**（"Data cache might be corrupted during Flash memory read-while-write operation"，workaround = 写前 `DCEN=0` → 写后 `DCRST` 复位 → 重开；Zephyr `drivers/flash/flash_stm32f4x.c` 已实现并引用该勘误） | 二选一并落文档：① **保持缓存关闭**（当前事实）并写明"性能代价 + 为什么不能随手打开"；② **开缓存**（180MHz 下显然是性能正解）并**同时在适配器实现勘误 workaround**。注意：勘误当前**不生效**（数据缓存未开），但一旦为性能开启，就正好命中我们的 RWW 场景（写 bank2 / 跑 bank1） |
 | 21 | **决策数据副本份数未定**（Q-12 待讨论） | 擦除归属已改引导侧（K-36/K-37/K-38），不变式要求副本 ≥3 份；2 份推演见 `multi_strategy_boot_design.md` §5.2 | 定份数后同步：`meta`/`meta_resv` 用途、bank2 头部 16K 空档的归属（与日志分区候选地互斥）、未确认窗口的启动时间预算 |
+| 22 | **跨介质槽的落地前提**（若将来启用，K-39） | 分区表已支持 `devName`（架构就绪），但落地还差：外部器件进 flash map、驱动支持单字节读写与"片内→片外"写、跨介质时 `BOOT_MAX_IMG_SECTORS` 按外片粒度放大与写对齐显式覆盖、direct-xip 需外片 memory-mapped | 步骤 ④（外部 flash 批次）随 W25Q 驱动一起评估；**推论**：F427 片内变扇区槽排除 swap-offset/move，swap 只能 scratch 且 scratch ≥ 128K |
+| 23 | **策略级几何约束无校验**（2026-09-16 实核新增） | 现状：只有运行期（注册期）的**通用几何**校验（扇区对齐/不越容量/不重叠，`om_partition_registry_validate`）；**策略级约束无人管**——如 direct-xip 的"两槽等大"、swap 的"scratch ≥ 最大扇区"、overwrite 的"staging 存在"。生态做法（K-40）：几何开放 + **构建期工具链**强制语义约束，而"等大性"几乎无人做构建期强制、失效形态是**静默降级** | 补两层（都符合本框架"配置错误显式报错、不静默"原则）：① **编译期 `_Static_assert`**（布局表是编译期常量，可拦等大性/对齐关系/scratch 与 staging 的存在性与最小尺寸/槽容量 ≥ 镜像上限）；② **工具侧容量校验**（`omimg verify` 已有 `--slot-capacity`，接进构建流程）。另可借鉴 settings-NVS 范式：把"用户填绝对值"改为"填相对量 + 框架按几何折算/夹取" |
 
 ## 3. 阻塞关系
 
@@ -51,7 +53,7 @@
 - **7 是入口前置**：不选定启动流形态，bootloader 进不了 main。
 - **8 / 9 / 10 是主体**，其中 9 依赖 ADR-0025 的 entry 契约；10 依赖 K-32 清单。
 - **14（后门）与 15（host 语料）可并行**：前者独立批次（协议未定），后者依赖 8。
-- **待调研（2026-09-16 已开两路）**：① 跨介质槽的成熟配置形态（MCUboot/Zephyr 上"primary 片内 + secondary 片外"怎么写、跨介质 swap 是否有人做）；② 槽与 meta 的**配置面与各策略约束**（哪些数值可配、哪些被框架写死、违反时是构建期报错还是运行期失败）。两者回来后并入 K 条目并回写本节。
+- **两路调研已完成（2026-09-16）** → K-39（跨介质槽：MCUboot/NCS 官方支持，几何约束 = 扇区尺寸互为倍数 + scratch ≥ 最大扇区 + scratch 模式等面积）、K-40（配置面：几何开放 + 构建期工具强制语义约束；"等大性"生态几乎无人做构建期强制且失效形态为静默降级）。落地项见缺口 #23。
 - RWW 事实（`flash_dev_design.md` §8）：bootloader 位于 bank1 头部、与 app_a 同擦写域 → **擦写 app_a 会 stall bootloader**（16K 擦 ≈260ms、128K 擦 ≈1059ms），擦写 app_b 与 meta（bank2）不 stall；os=none 下无让出，属硬阻塞 → 由 R-DL-7/8（停等 + 超时覆盖最坏擦除）承接。
 
 ## 4. 同期执行的文档口径回改（2026-09-16）
