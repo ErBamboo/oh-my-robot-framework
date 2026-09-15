@@ -201,6 +201,7 @@ xmake clean
 - **context missing**：未完成 `xmake f` 或配置不完整。重新执行配置命令。
 - **worktree 只有框架仓，无法直接编完整应用**：先在当前 checkout 执行 `xmake init_workspace --output=<dir>`，再进入生成的项目壳目录构建。
 - **toolchain path not set / sdk not found / bin not found**：未提供 `--sdk/--bin` 或 preset 路径错误。
+- **host 测试构建报 `x86_64-w64-mingw32-gcc: fatal error: cannot execute 'cc1'`**：xmake 找不到 MinGW SDK 时会退回 PATH 上探测到的 Git 自带 `mingw64`（其中没有 gcc）。host 样例是独立 xmake 工程，读不到项目壳的 `om_preset.lua`，故 SDK 路径走 xmake 机器级配置：本机执行一次 `xmake g --mingw="<本机 mingw64 sdk 路径>"`，之后 `xmake f -c -P samples/host/<name> -p mingw -m debug` 即可。
 - **board/os not found**：`--board` 或 `--os` 不存在于数据/目录中。
 - **startup/linkerscript not found**：板级/芯片/厂商数据中缺少映射。
 - **image tool not found**：工具链镜像转换工具未安装或 `bin` 路径不正确。

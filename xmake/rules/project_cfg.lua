@@ -3,6 +3,7 @@
 --- @details ①检测工程 cfg/ 目录中的配置片段并注入编译上下文：
 ---   cfg/om_appcfg.h                        → 框架层覆写（注入 -DOM_USE_APPCFG）
 ---   cfg/boards/<board>/om_boardcfg.h       → 板层覆写（注入 -DOM_USE_BOARDCFG）
+---   cfg/boards/<board>/om_bootcfg.h        → boot 布局覆写（注入 -DOM_USE_BOOTCFG）
 ---           片段不存在 = 零成本（不注入任何内容）；<board> 取当前构建板
 ---           （context.board_name——与 preset board= 一致）。
 --- ②配置变更感知：每个配置再生（xmake f）向 <project>/.xmake/om_cfg_state
@@ -33,14 +34,17 @@ rule("oh_my_robot.project_cfg")
         local board_name = context.board_name
         local boardcfg = board_name and path.join(project_dir, "cfg", "boards", board_name, "om_boardcfg.h") or nil
         local has_boardcfg = boardcfg and os.isfile(boardcfg) or false
+        local bootcfg = board_name and path.join(project_dir, "cfg", "boards", board_name, "om_bootcfg.h") or nil
+        local has_bootcfg = bootcfg and os.isfile(bootcfg) or false
 
         -- 配置状态摘要：内容 = 注入决定性状态（含片段文件原文——值变更即感知）；
         -- 仅当内容变化时重写（mtime 变化→depfile 触发重编）
         local function cfg_content(p)
             return os.isfile(p) and io.readfile(p) or ""
         end
-        local state = string.format("board=%s\n== appcfg ==\n%s\n== boardcfg ==\n%s",
-                                    tostring(board_name), cfg_content(appcfg), cfg_content(boardcfg))
+        local state = string.format("board=%s\n== appcfg ==\n%s\n== boardcfg ==\n%s\n== bootcfg ==\n%s",
+                                    tostring(board_name), cfg_content(appcfg), cfg_content(boardcfg),
+                                    cfg_content(bootcfg))
         local marker = cfg_state_file()
         local cur = os.isfile(marker) and io.readfile(marker) or nil
         if cur ~= state then
@@ -67,6 +71,10 @@ rule("oh_my_robot.project_cfg")
         end
         if has_boardcfg then
             target:add("defines", "OM_USE_BOARDCFG")
+            target:add("includedirs", path.join(project_dir, "cfg", "boards", board_name))
+        end
+        if has_bootcfg then
+            target:add("defines", "OM_USE_BOOTCFG")
             target:add("includedirs", path.join(project_dir, "cfg", "boards", board_name))
         end
     end)

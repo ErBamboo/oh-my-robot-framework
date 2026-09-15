@@ -161,3 +161,15 @@ jobs:
 
       - name: Build flash device host tests
         run: xmake build -P samples/host/flash_dev_test
+
+      - name: Configure boot image host tests
+        run: xmake f -P samples/host/boot_image_test -p linux -m debug
+
+      - name: Build boot image host tests
+        run: xmake build -P samples/host/boot_image_test
+
+      - name: Run boot image tests
+        run: xmake run -P samples/host/boot_image_test host_boot_image_test
+
+      - name: Run image tool selftest
+        run: python tools/omimg/omimg.py selftest

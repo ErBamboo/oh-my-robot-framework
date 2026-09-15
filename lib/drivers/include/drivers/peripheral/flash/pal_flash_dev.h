@@ -127,7 +127,7 @@ typedef struct FlashDomain {
  * @param prio  worker 线程优先级（OSAL_PRIO_<band>_BASE + offset）
  * @param stack worker 线程栈大小（字节）
  * @retval OM_OK 成功
- * @note 线程上下文；无 OSAL 编译（OM_FLASH_SYNC_ONLY）返回 OM_ERR_NOT_SUPPORTED
+ * @note 线程上下文；无 OSAL 编译（os=none）下不建 worker 线程，域初始化退化为状态迁移
  */
 OmRet flash_domain_init(FlashDomain *dom, const char *name, uint32_t prio, uint32_t stack);
 

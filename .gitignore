@@ -1,3 +1,9 @@
 .xmake/
-# xmake 构建输出目录（构建系统源码在顶层 xmake/，不入此忽略）
+# xmake 构建输出目录（构建系统源码在顶层 xmake/，不入此忽略）；
+# 裸 build/ 同时匹配各样例工程下的 build/，但也误伤了文档目录 docs/build/，故补否定项
 build/
+!docs/build/
+
+# Python 工具（tools/）运行产物
+__pycache__/
+*.pyc
