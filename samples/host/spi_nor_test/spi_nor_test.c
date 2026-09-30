@@ -25,6 +25,7 @@
 #include "drivers/peripheral/flash/spi_nor_w25q256jv.h"
 #include "drivers/peripheral/spi/pal_spi_dev.h"
 
+#include "host_gpio_fake.h"
 #include "spi_nor_sim.h"
 
 /* ===================================================================
@@ -100,6 +101,48 @@ static bool fixture_up(void)
 static FlashDev *nor_dev(void)
 {
     return flash_find(NOR_NAME);
+}
+
+/* ---- 第二条路径：片选走 GPIO 控制器（与板上的接法一致） ---- */
+
+static SpiNorSim g_sim_gpio;
+static SpiBus g_bus_gpio;
+static HalSpiDevice g_spiDev_gpio;
+static W25q256jvDev g_nor_gpio;
+static HostGpioFake g_gpio;
+
+#define NOR_GPIO_NAME "nor_gpio_cs"
+#define GPIO_CS_OFFSET 4u
+
+static const SpiDeviceCfg g_cfg_gpio = {
+    .csSpec = {.controller = "fakepio", .offset = GPIO_CS_OFFSET, .flags = 0u},
+    .mode = SPI_MODE_0,
+    .maxHz = 10000000u,
+    .dataWidth = SPI_DATA_WIDTH_8,
+    .bitOrder = SPI_MSB_FIRST,
+    .transferOverheadMs = 5u,
+};
+
+static bool fixture_up_gpio(void)
+{
+    spi_nor_sim_init(&g_sim_gpio);
+    if (!g_sim_gpio.mem)
+    {
+        return false;
+    }
+    if (host_gpio_fake_register(&g_gpio, "fakepio", &g_sim_gpio, GPIO_CS_OFFSET) != OM_OK)
+    {
+        return false;
+    }
+    if (spi_bus_register(&g_bus_gpio, &g_sim_gpio, &g_sim_gpio.ops) != OM_OK)
+    {
+        return false;
+    }
+    if (spi_device_attach(1u, &g_spiDev_gpio, "spi_nor_gpio", &g_cfg_gpio) != OM_OK)
+    {
+        return false;
+    }
+    return w25q256jv_register(&g_nor_gpio, NOR_GPIO_NAME, &g_spiDev_gpio) == OM_OK;
 }
 
 /* ===================================================================
@@ -321,6 +364,66 @@ static void test_range_semantics(void)
           "null buffer -> INVALID_ARG");
 }
 
+static void test_gpio_cs_path(void)
+{
+    printf("[T10] cs via gpio controller\n");
+
+    /* 挂载期由框架配置片选：输出、推挽、初始释放态 */
+    CHECK(g_gpio.configureCalls >= 1u, "framework configured the cs pin at attach");
+    CHECK(g_gpio.lastDirection == GPIO_DIR_OUTPUT, "cs pin driven as output");
+    CHECK(g_gpio.lastPushPull, "cs pin driven push-pull");
+    CHECK(g_gpio.lastInitHigh, "cs initial level is the deasserted one");
+    CHECK(g_gpio.levels[GPIO_CS_OFFSET] == 1u, "cs idle high after attach (chip deselected)");
+
+    /* 片选真的随事务翻转，且器件按命令边界解出了数据 */
+    uint32_t asserts_before = g_sim_gpio.csAsserts;
+    uint32_t id = 0u;
+    CHECK(w25q256jv_read_jedec_id(&g_spiDev_gpio, &id) == OM_OK && id == 0xEF4019u,
+          "jedec id over the gpio-cs device");
+    CHECK(g_sim_gpio.csAsserts > asserts_before, "cs was asserted on the wire (%u times)",
+          (unsigned)(g_sim_gpio.csAsserts - asserts_before));
+    CHECK(g_gpio.writeCalls > 0u, "pin writes reached the gpio controller");
+
+    /* 走一整轮：擦 → 写 → 读 */
+    FlashDev *dev = flash_find(NOR_GPIO_NAME);
+    CHECK(dev != NULL, "gpio-cs device registered & found by name");
+
+    uint8_t out[128];
+    uint8_t in[128];
+    for (size_t i = 0; i < sizeof(out); i++)
+    {
+        out[i] = (uint8_t)(0x11u + i);
+    }
+    memset(in, 0, sizeof(in));
+
+    CHECK(flash_erase(dev, 0x80000u, SPI_NOR_SIM_SECTOR_SIZE) == OM_OK,
+          "erase over gpio-cs path");
+    CHECK(flash_write(dev, 0x80000u, out, sizeof(out)) == OM_OK, "write over gpio-cs path");
+    CHECK(flash_read(dev, 0x80000u, in, sizeof(in)) == OM_OK, "read over gpio-cs path");
+    CHECK(memcmp(out, in, sizeof(out)) == 0, "content matches over gpio-cs path");
+    CHECK(g_gpio.levels[GPIO_CS_OFFSET] == 1u, "cs released after the last transfer");
+}
+
+static void test_gpio_cs_rejections(void)
+{
+    printf("[T11] cs spec rejections at attach\n");
+
+    /* 不存在（或未注册）的 GPIO 控制器 */
+    static HalSpiDevice dev_bad_ctrl;
+    SpiDeviceCfg cfg = g_cfg_gpio;
+    cfg.csSpec.controller = "no_such_pio";
+    CHECK(spi_device_attach(1u, &dev_bad_ctrl, "spi_bad_ctrl", &cfg) != OM_OK,
+          "attach fails when the gpio controller is absent");
+
+    /* 低有效标志与片选时序约定冲突：断言写 0 会被反转成物理高 */
+    static HalSpiDevice dev_active_low;
+    SpiDeviceCfg cfg_al = g_cfg_gpio;
+    cfg_al.csSpec.flags = GPIO_FLAG_ACTIVE_LOW;
+    CHECK(spi_device_attach(1u, &dev_active_low, "spi_active_low", &cfg_al) ==
+              OM_ERR_INVALID_ARG,
+          "attach rejects an active-low cs spec (would invert assert/release)");
+}
+
 /* ===================================================================
  * 入口
  * =================================================================== */
@@ -334,6 +437,11 @@ int main(void)
         printf("FIXTURE FAILED: bus/device/registration setup did not come up\n");
         return 2;
     }
+    if (!fixture_up_gpio())
+    {
+        printf("FIXTURE FAILED: gpio-cs fixture did not come up\n");
+        return 2;
+    }
 
     test_identity_and_geometry();
     test_erase_and_readback();
@@ -344,8 +452,11 @@ int main(void)
     test_wait_path_yields();
     test_program_bit_semantics();
     test_range_semantics();
+    test_gpio_cs_path();
+    test_gpio_cs_rejections();
 
     spi_nor_sim_deinit(&g_sim);
+    spi_nor_sim_deinit(&g_sim_gpio);
 
     printf("=== %d passed, %d failed ===\n", g_pass, g_fail);
     return (g_fail == 0) ? 0 : 1;

@@ -35,11 +35,14 @@ target("host_spi_nor_test")
     -- drivers 公共头
     add_includedirs(path.join(fw, "lib/drivers/include"))
 
-    add_files("spi_nor_test.c", "host_osal.c", "host_gpio_stub.c", "spi_nor_sim.c")
+    add_files("spi_nor_test.c", "host_osal.c", "host_mem.c", "host_gpio_fake.c", "spi_nor_sim.c")
     -- 框架实现直编（仿 om_core_test/workqueue 模式）
     add_files(path.join(fw, "lib/drivers/src/peripheral/flash/spi_nor_w25q256jv.c"))
     add_files(path.join(fw, "lib/drivers/src/peripheral/flash/hal_flash.c"))
     add_files(path.join(fw, "lib/drivers/src/peripheral/spi/hal_spi.c"))
+    -- GPIO：片选两路径都要覆盖——控制器路径（挂载期由框架配置引脚）用真实
+    -- hal_gpio.c + 本地假控制器；控制器直控路径（csSpec.controller == NULL）不经 GPIO。
+    add_files(path.join(fw, "lib/drivers/src/peripheral/gpio/hal_gpio.c"))
     add_files(path.join(fw, "lib/drivers/src/model/device.c"))
     add_files(path.join(fw, "lib/async/src/workqueue.c"))
 

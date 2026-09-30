@@ -61,4 +61,8 @@ static inline void osal_irq_unlock(OsalIrqIsrState key)
 #define OSAL_PRIO_HIGH_BASE         (OSAL_PRIO_ABOVE_NORMAL_BASE + OSAL_PRIO_BAND_WIDTH)
 #define OSAL_PRIO_CRITICAL_BASE     (OSAL_PRIO_HIGH_BASE + OSAL_PRIO_BAND_WIDTH)
 
+/* 堆接口：仅 GPIO 控制器注册期使用（分配中断回调表）。签名与 lib 版一致 */
+void *osal_malloc(size_t size);
+void osal_free(void *ptr);
+
 #endif /* OM_OSAL_CORE_H */

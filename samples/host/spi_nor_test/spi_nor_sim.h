@@ -66,4 +66,9 @@ void spi_nor_sim_deinit(SpiNorSim *sim);
 /** @brief 全片填充指定值（构造"未擦"介质用） */
 void spi_nor_sim_fill(SpiNorSim *sim, uint8_t value);
 
+/** @brief 注入片选边沿
+ *  GPIO 片选路径下，框架的片选经引脚写入落到硬件，不再经过控制器 ops->setCs，
+ *  故由引脚侧把边沿转给器件，器件才能划分命令边界。 */
+void spi_nor_sim_cs_edge(SpiNorSim *sim, bool assert);
+
 #endif /* SPI_NOR_SIM_H */

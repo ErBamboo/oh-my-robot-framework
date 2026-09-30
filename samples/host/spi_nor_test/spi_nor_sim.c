@@ -251,19 +251,7 @@ static OmRet sim_control(SpiBus *bus, uint32_t cmd, void *arg)
 static void sim_set_cs(SpiBus *bus, uint8_t cs_id, bool assert)
 {
     (void)cs_id;
-    SpiNorSim *s = bus ? bus->hwPrivate : NULL;
-    if (!s)
-    {
-        return;
-    }
-    if (assert)
-    {
-        s->csAsserts++;
-    }
-    else
-    {
-        sim_end_command(s);
-    }
+    spi_nor_sim_cs_edge(bus ? bus->hwPrivate : NULL, assert);
 }
 
 /*===========================================================================
@@ -297,5 +285,21 @@ void spi_nor_sim_fill(SpiNorSim *sim, uint8_t value)
     if (sim->mem)
     {
         memset(sim->mem, value, sim->capacity);
+    }
+}
+
+void spi_nor_sim_cs_edge(SpiNorSim *sim, bool assert)
+{
+    if (!sim)
+    {
+        return;
+    }
+    if (assert)
+    {
+        sim->csAsserts++;
+    }
+    else
+    {
+        sim_end_command(sim);
     }
 }
