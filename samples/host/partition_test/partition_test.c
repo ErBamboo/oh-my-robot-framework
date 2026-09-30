@@ -9,7 +9,7 @@
  * flash_dev_test 基础设施）。
  *
  * 跨用例数据态管线（插入/重排用例须保持）：T2 置脏 boot → T3 整擦复位 →
- * T4/T6 复写 boot。flash_sim 开启严格编程（落位 = dst & src，写未擦区返回
+ * T4/T6 复写 boot；T9 置于末尾（改动 boot/meta，无后继消费者）。flash_sim 开启严格编程（落位 = dst & src，写未擦区返回
  * OM_ERR_FLASH_IO），"擦除→复写"的次序是硬约束；每个用例的置脏数据必须
  * 自备（见 T3 的 (prep) 步骤），不得依赖前序用例的遗留字节。
  *
@@ -24,6 +24,7 @@
 #include "drivers/peripheral/flash/pal_flash_dev.h"
 #include "drivers/storage/partition.h"
 #include "osal/osal_sem.h"
+#include "osal/osal_thread.h"
 
 #include "flash_sim.h"
 
@@ -66,14 +67,96 @@ static const FlashGeometry geom_uniform = {
     .sectorRegions = NULL,
 };
 
+/* 裸后端：只用于"注册期拒绝"的坏器件用例（不进数据通路） */
 static const FlashOps sim_ops = {
     .read = flash_sim_read,
     .write = flash_sim_write,
     .erase = flash_sim_erase,
 };
 
+/* 后端探针（包 sim_ops）：统计"同时处于后端内的调用数"。分区层自身不加锁，
+ * 同一物理片上两个分区的并发访问必须由器件层串行——峰值恒为 1 即其证据 */
+static volatile long g_inBackend;
+static volatile long g_maxInBackend;
+
+/* 构建固定在 gnu11 方言（见 xmake.lua），故直接用 GCC 原子内建，不引平台头 */
+static long exc_atomic_inc(volatile long *p)
+{
+    return __sync_add_and_fetch(p, 1);
+}
+
+static long exc_atomic_dec(volatile long *p)
+{
+    return __sync_sub_and_fetch(p, 1);
+}
+
+static OmRet wrap_read(FlashDev *dev, uint32_t addr, void *buf, size_t len)
+{
+    long n = exc_atomic_inc(&g_inBackend);
+    if (n > g_maxInBackend)
+    {
+        g_maxInBackend = n;
+    }
+    OmRet r = flash_sim_read(dev, addr, buf, len);
+    (void)exc_atomic_dec(&g_inBackend);
+    return r;
+}
+
+static OmRet wrap_write(FlashDev *dev, uint32_t addr, const void *data, size_t len)
+{
+    long n = exc_atomic_inc(&g_inBackend);
+    if (n > g_maxInBackend)
+    {
+        g_maxInBackend = n;
+    }
+    OmRet r = flash_sim_write(dev, addr, data, len);
+    (void)exc_atomic_dec(&g_inBackend);
+    return r;
+}
+
+static OmRet wrap_erase(FlashDev *dev, uint32_t addr, size_t len)
+{
+    long n = exc_atomic_inc(&g_inBackend);
+    if (n > g_maxInBackend)
+    {
+        g_maxInBackend = n;
+    }
+    OmRet r = flash_sim_erase(dev, addr, len);
+    (void)exc_atomic_dec(&g_inBackend);
+    return r;
+}
+
+static const FlashOps wrap_ops = {
+    .read = wrap_read,
+    .write = wrap_write,
+    .erase = wrap_erase,
+};
+
 static FlashDev g_flash_dev;
 static FlashSim g_flash_sim;
+
+/* —— 非均一几何夹具：同一器件内含多种扇区尺寸 ——
+ * 通用构造，不绑定任何平台族。擦除单位 API 只有在非均一下才测得出真行为
+ * （均一几何下"单位序列"退化为等分，测不出跨尺寸切换） */
+#define CAP_MIX (288u * 1024u)
+static const FlashSectorRegion regs_mix[] = {
+    {0u, 16384u, 2u},      /*   0 ..  32K：16K × 2 */
+    {32768u, 65536u, 1u},  /*  32K ..  96K：64K × 1 */
+    {98304u, 131072u, 1u}, /*  96K .. 224K：128K × 1 */
+    {229376u, 32768u, 2u}, /* 224K .. 288K：32K × 2 */
+};
+static const FlashGeometry geom_mix = {
+    .capacity = CAP_MIX,
+    .erasedValue = 0xFF,
+    .writeUnit = 4u,
+    .pageSize = 0u,
+    .sectorSize = 0u, /* 0 = 使用区域表 */
+    .sectorCount = 0,
+    .sectorRegions = regs_mix,
+};
+
+static FlashDev g_mix_dev;
+static FlashSim g_mix_sim;
 
 /* 分区名（表符号的 host 替身） */
 #define P_BOOT "boot"
@@ -116,6 +199,17 @@ static const OmPartitionEntry bad_field[] = {{NULL, "flash0", 0u, 0x1000u}};
 static const OmPartitionRegistry reg_bad_field = OM_PARTITION_REGISTRY(bad_field);
 static const OmPartitionEntry zero_size[] = {{P_APP, "flash0", 0u, 0u}};
 static const OmPartitionRegistry reg_zero_size = OM_PARTITION_REGISTRY(zero_size);
+
+/* 非均一表（挂 flash_mix）：三个互不重叠的分区，覆盖单位序列的三态 */
+#define P_MIX_SPAN "mix_span" /*   0 ..  96K：16K+16K+64K → 非均一，3 单位，max 64K */
+#define P_MIX_WIDE "mix_wide" /*  96K .. 224K：128K       → 均一，1 单位 */
+#define P_MIX_FLAT "mix_flat" /* 224K .. 288K：32K×2     → 均一，2 单位 */
+static const OmPartitionEntry table_mix[] = {
+    {P_MIX_SPAN, "flash_mix", 0u, 98304u},
+    {P_MIX_WIDE, "flash_mix", 98304u, 131072u},
+    {P_MIX_FLAT, "flash_mix", 229376u, 65536u},
+};
+static const OmPartitionRegistry reg_mix = OM_PARTITION_REGISTRY(table_mix);
 
 /* 不可用注册表（空表语义）三形态：全空 / NULL 表 / count==0 */
 static const OmPartitionRegistry reg_none = {NULL, 0u};
@@ -178,7 +272,7 @@ static void test_registry_defenses(void)
           "capacity check deferred while flash0 not registered");
 
     /* 注册 flash 器件（几何真源就位） */
-    CHECK(flash_register(&g_flash_dev, "flash0", &geom_uniform, &sim_ops, &g_flash_sim, NULL) ==
+    CHECK(flash_register(&g_flash_dev, "flash0", &geom_uniform, &wrap_ops, &g_flash_sim) ==
               OM_OK,
           "register sim flash0");
 
@@ -254,12 +348,12 @@ static void test_io_boundary(void)
     CHECK(om_partition_read(&h, 0u, buf, sizeof(buf)) == OM_OK, "read within partition");
     CHECK(buf[0] == 0x5A && buf[511] == 0x5A, "roundtrip content matches");
 
-    /* 双端越界 */
-    CHECK(om_partition_read(&h, 0x1000u, buf, 1u) == OM_ERR_INVALID_ARG,
+    /* 双端越界 → OM_ERR_RANGE（与 INVALID_ARG 分开：改偏移即可，行动不同） */
+    CHECK(om_partition_read(&h, 0x1000u, buf, 1u) == OM_ERR_RANGE,
           "read at partition end rejected");
-    CHECK(om_partition_read(&h, 0x0FF0u, buf, 0x20u) == OM_ERR_INVALID_ARG,
+    CHECK(om_partition_read(&h, 0x0FF0u, buf, 0x20u) == OM_ERR_RANGE,
           "read crossing end rejected");
-    CHECK(om_partition_write(&h, 0x0FFCu, buf, 8u) == OM_ERR_INVALID_ARG,
+    CHECK(om_partition_write(&h, 0x0FFCu, buf, 8u) == OM_ERR_RANGE,
           "write crossing end rejected");
     CHECK(om_partition_read(&h, 0u, NULL, 1u) == OM_ERR_INVALID_ARG, "read NULL buf rejected");
     CHECK(om_partition_write(&h, 0u, NULL, 1u) == OM_ERR_INVALID_ARG, "write NULL data rejected");
@@ -275,7 +369,7 @@ static void test_io_boundary(void)
           "read len==0 NULL buf rejected");
     CHECK(om_partition_write(&h, 0u, NULL, 0u) == OM_ERR_INVALID_ARG,
           "write len==0 NULL data rejected");
-    CHECK(om_partition_read(&h, 0x1000u, buf, 0u) == OM_ERR_INVALID_ARG,
+    CHECK(om_partition_read(&h, 0x1000u, buf, 0u) == OM_ERR_RANGE,
           "read len==0 at partition end rejected (off must be in range)");
 
     /* v1 的"按名未命中"在 v2 由 open 表达 */
@@ -474,15 +568,21 @@ static void test_erase_range(void)
     CHECK(om_partition_read(&hb, 0x0FF0u, probe, sizeof(probe)) == OM_OK, "read boot tail");
     CHECK(probe[0] == 0xAB, "preceding partition untouched");
 
-    /* 非扇区对齐 / 错位偏移：器件层显式拒绝 */
+    /* 非扇区对齐 / 错位偏移：器件层显式拒绝（范围内，故报 INVALID_ARG） */
     CHECK(om_partition_erase_range(&h, 0u, 0x800u) == OM_ERR_INVALID_ARG,
           "half-sector length rejected by device layer");
-    CHECK(om_partition_erase_range(&h, 2u, 0x1000u) == OM_ERR_INVALID_ARG,
+    CHECK(om_partition_erase_range(&h, 2u, 0x800u) == OM_ERR_INVALID_ARG,
           "misaligned offset rejected by device layer");
+
+    /* 越界优先于未对齐：off 错位（0x1F002 % 0x1000 != 0）且长度越尾
+     * （0x1F002 + 0x2000 > 0x20000）→ 报 RANGE，不是 INVALID_ARG。
+     * 与上一条成对，钉住两者的优先级：越界是更根本的错误 */
+    CHECK(om_partition_erase_range(&h, 0x1F002u, 0x2000u) == OM_ERR_RANGE,
+          "OOB precedes misalignment");
 
     /* 越分区尾：器件层会放行（0x20000/0x22000 都是扇区边界），只有本层双端断言
      * 能拦住"擦穿邻分区"——分区层的边界是防静默扩擦的最后一道 */
-    CHECK(om_partition_erase_range(&h, 0x1F000u, 0x2000u) == OM_ERR_INVALID_ARG,
+    CHECK(om_partition_erase_range(&h, 0x1F000u, 0x2000u) == OM_ERR_RANGE,
           "range crossing partition end rejected (would spill into meta)");
 
     /* len == 0：无操作，但句柄有效性先行 */
@@ -533,12 +633,237 @@ static void test_malformed_entries(void)
  * main
  * =================================================================== */
 
+/* ===================================================================
+ * T9: 能力与几何查询面——非均一几何是主战场
+ * =================================================================== */
+
+static void test_capability_queries(void)
+{
+    printf("[T9] capability & geometry queries\n");
+
+    CHECK(flash_register(&g_mix_dev, "flash_mix", &geom_mix, &sim_ops, &g_mix_sim) == OM_OK,
+          "register non-uniform device");
+
+    OmPartitionHandle h;
+
+    /* —— 查询面：分区只回答容量；器件属性一律经器件几何查，不存副本 —— */
+    CHECK(om_partition_open(&reg_mix, P_MIX_SPAN, &h) == OM_OK, "open non-uniform partition");
+    CHECK(om_partition_capacity(&h) == 98304u, "capacity = partition size (not device capacity)");
+    const FlashGeometry *dg = om_partition_dev_geom(&h);
+    CHECK(dg != NULL, "dev geom non-NULL for valid handle");
+    CHECK(dg->writeUnit == 4u && dg->erasedValue == 0xFFu, "device facts come from the device");
+    /* 能力位取否定式：零值 = 保守默认（须擦）。用 bool 的话零值恰好是危险侧 */
+    CHECK((dg->caps & FLASH_CAP_NO_ERASE_NEEDED) == 0u,
+          "cap: NO_ERASE_NEEDED unset (conservative default)");
+    CHECK(flash_geom_needs_erase(&geom_uniform), "cap: device requires erase before write");
+
+    /* —— 非均一：单位序列必须逐段正确（本 API 存在的理由） —— */
+    CHECK(om_partition_erase_unit_count(&h) == 3u, "non-uniform: 3 units");
+    CHECK(!om_partition_is_uniform(&h), "non-uniform detected");
+    CHECK(om_partition_max_erase_unit(&h) == 65536u, "max unit = 64K (explicit, not silent)");
+
+    OmPartitionEraseUnit u;
+    CHECK(om_partition_erase_unit_at(&h, 0u, &u) == OM_OK && u.offset == 0u && u.size == 16384u,
+          "unit[0] = {0, 16K}");
+    CHECK(om_partition_erase_unit_at(&h, 1u, &u) == OM_OK && u.offset == 16384u &&
+              u.size == 16384u,
+          "unit[1] = {16K, 16K}");
+    CHECK(om_partition_erase_unit_at(&h, 2u, &u) == OM_OK && u.offset == 32768u &&
+              u.size == 65536u,
+          "unit[2] = {32K, 64K}");
+    CHECK(om_partition_erase_unit_at(&h, 3u, &u) == OM_ERR_NOT_FOUND, "unit[3] out of range");
+    CHECK(om_partition_erase_unit_at(&h, 0u, NULL) == OM_ERR_INVALID_ARG, "at(NULL out) rejected");
+
+    /* —— 点查询：跨尺寸边界必须切换 —— */
+    CHECK(om_partition_erase_unit_covering(&h, 0u, &u) == OM_OK && u.offset == 0u &&
+              u.size == 16384u,
+          "covering(0) -> unit[0]");
+    CHECK(om_partition_erase_unit_covering(&h, 0x3FFFu, &u) == OM_OK && u.offset == 0u,
+          "covering(16K-1) stays in unit[0]");
+    CHECK(om_partition_erase_unit_covering(&h, 0x4000u, &u) == OM_OK && u.offset == 16384u,
+          "covering(16K) -> unit[1]");
+    CHECK(om_partition_erase_unit_covering(&h, 0x7FFFu, &u) == OM_OK && u.offset == 16384u,
+          "covering(32K-1) stays in unit[1]");
+    CHECK(om_partition_erase_unit_covering(&h, 0x8000u, &u) == OM_OK && u.offset == 32768u &&
+              u.size == 65536u,
+          "covering(32K) -> unit[2] (64K)");
+    CHECK(om_partition_erase_unit_covering(&h, 0x17FFFu, &u) == OM_OK && u.offset == 32768u,
+          "covering(96K-1) stays in unit[2]");
+    CHECK(om_partition_erase_unit_covering(&h, 0x18000u, &u) == OM_ERR_RANGE,
+          "covering(partition end) -> RANGE");
+    CHECK(om_partition_erase_unit_covering(&h, 0u, NULL) == OM_ERR_INVALID_ARG,
+          "covering(NULL out) rejected");
+
+    /* —— 其余两态：均一多单位 / 均一单单位 —— */
+    CHECK(om_partition_open(&reg_mix, P_MIX_FLAT, &h) == OM_OK, "open uniform 2-unit partition");
+    CHECK(om_partition_is_uniform(&h), "uniform detected");
+    CHECK(om_partition_erase_unit_count(&h) == 2u, "uniform: 2 units");
+    CHECK(om_partition_max_erase_unit(&h) == 32768u, "uniform max = 32K");
+    CHECK(om_partition_open(&reg_mix, P_MIX_WIDE, &h) == OM_OK, "open 1-unit partition");
+    CHECK(om_partition_is_uniform(&h), "1-unit partition is uniformly sized");
+    CHECK(om_partition_erase_unit_count(&h) == 1u, "1-unit partition count");
+    CHECK(om_partition_max_erase_unit(&h) == 131072u, "1-unit partition max");
+
+    /* —— 非法句柄：查询面一律不崩，返回保守值 —— */
+    OmPartitionHandle junk;
+    memset(&junk, 0, sizeof(junk));
+    CHECK(om_partition_capacity(&junk) == 0u, "capacity(junk handle) -> 0");
+    CHECK(om_partition_dev_geom(&junk) == NULL, "dev geom(junk handle) -> NULL");
+    CHECK(om_partition_erase_unit_count(&junk) == 0u, "count(junk handle) -> 0");
+    CHECK(!om_partition_is_uniform(&junk), "is_uniform(junk) -> false (conservative)");
+    CHECK(om_partition_max_erase_unit(&junk) == 0u, "max(junk handle) -> 0");
+    CHECK(om_partition_erase_unit_at(&junk, 0u, &u) == OM_ERR_INVALID_ARG,
+          "at(junk handle) rejected");
+
+    /* —— 已擦自检 —— */
+    CHECK(om_partition_open(&reg_mix, P_MIX_FLAT, &h) == OM_OK, "open for is_erased");
+    bool erased = false;
+    CHECK(om_partition_is_erased(&h, 0u, 4096u, &erased) == OM_OK && erased,
+          "fresh partition reads as erased");
+    uint8_t pat[64];
+    memset(pat, 0x00, sizeof(pat));
+    CHECK(om_partition_write(&h, 0u, pat, sizeof(pat)) == OM_OK, "(prep) dirty first 64 bytes");
+    CHECK(om_partition_is_erased(&h, 0u, 4096u, &erased) == OM_OK && !erased,
+          "dirtied partition not erased");
+    CHECK(om_partition_is_erased(&h, 64u, 4032u, &erased) == OM_OK && erased,
+          "undirtied tail still erased");
+    CHECK(om_partition_is_erased(&h, 0u, 0u, &erased) == OM_OK && erased,
+          "len==0 vacuously erased");
+    CHECK(om_partition_is_erased(&h, 0x10000u, 1u, &erased) == OM_ERR_RANGE,
+          "is_erased OOB -> RANGE");
+    CHECK(om_partition_is_erased(&h, 0u, 1u, NULL) == OM_ERR_INVALID_ARG,
+          "is_erased NULL out rejected");
+    CHECK(om_partition_erase(&h) == OM_OK, "(prep) erase partition");
+    CHECK(om_partition_is_erased(&h, 0u, 65536u, &erased) == OM_OK && erased,
+          "erased partition reads as erased again");
+
+    /* —— 擦后校验：后端"报告成功但未落位" ⇒ 器件层判该区结构性不可用 ——
+     * 这是"以为已擦"的防线：擦除返回 OK 不再等于"确实处于已擦状态" */
+    CHECK(om_partition_open(&reg_mix, P_MIX_FLAT, &h) == OM_OK, "open for erase-verify test");
+    memset(pat, 0x00, sizeof(pat));
+    CHECK(om_partition_write(&h, 0u, pat, sizeof(pat)) == OM_OK, "(prep) dirty for verify test");
+    uint32_t opsBefore = g_mix_sim.opCount;
+    flash_sim_set_silent_erase_fail(&g_mix_sim, true);
+    CHECK(om_partition_erase(&h) == OM_ERR_FLASH_UNUSABLE,
+          "silent erase failure -> UNUSABLE (not OK)");
+    /* 默认 OM_FLASH_ERASE_VERIFY_ATTEMPTS == 1 ⇒ 恰好 1 次擦 + 1 次校验读
+     * （首块即失配，校验提前返回）。调大该宏时此断言应同步改成 2*N */
+    CHECK(g_mix_sim.opCount == opsBefore + 2u,
+          "attempts=1: exactly one erase + one verify read");
+    flash_sim_set_silent_erase_fail(&g_mix_sim, false);
+    CHECK(om_partition_erase(&h) == OM_OK, "erase OK again once fault cleared");
+    CHECK(om_partition_is_erased(&h, 0u, 4096u, &erased) == OM_OK && erased,
+          "verified erase really erased");
+
+    /* —— 缓存指针守卫：句柄内 dev 为空即拒（零初始化/半填句柄的廉价保险） —— */
+    CHECK(om_partition_open(&reg_mix, P_MIX_WIDE, &h) == OM_OK, "open for cached-field guard");
+    FlashDev *keptDev = h.dev;
+    h.dev = NULL;
+    CHECK(om_partition_read(&h, 0u, pat, 1u) == OM_ERR_INVALID_ARG,
+          "NULL cached dev rejected");
+    CHECK(om_partition_dev_geom(&h) == NULL, "dev geom query rejected too");
+    h.dev = keptDev;
+    CHECK(om_partition_read(&h, 0u, pat, 1u) == OM_OK, "handle restored");
+}
+
+/* ===================================================================
+ * T9: 排他性——分区层不持锁，排他由器件层承担
+ *
+ * 两个线程各持一个句柄、各占同一物理片上的一块分区，同时做擦→写→读校验：
+ * 分区窗口不同，后端却是同一个器件。若分区层自行其是（或器件层不互斥），
+ * 两线程的后端调用就会交错。判据：后端并发度峰值恒为 1，且各自分区内容
+ * 不被对方破坏。
+ * =================================================================== */
+
+typedef struct
+{
+    const char *name; /* 分区名（两线程取不同分区） */
+    uint8_t pattern;  /* 本线程自己的写入模式 */
+    uint32_t rounds;
+    uint32_t fails;
+} ExcArg;
+
+static void exclusion_worker(void *arg)
+{
+    ExcArg *a = (ExcArg *)arg;
+    OmPartitionHandle h = {0};
+    if (om_partition_open(&reg_good, a->name, &h) != OM_OK)
+    {
+        a->fails++;
+        return;
+    }
+    uint8_t wbuf[64];
+    uint8_t rbuf[64];
+    memset(wbuf, a->pattern, sizeof(wbuf));
+    for (uint32_t r = 0; r < a->rounds; r++)
+    {
+        if (om_partition_erase(&h) != OM_OK)
+        {
+            a->fails++;
+            break;
+        }
+        if (om_partition_write(&h, 0u, wbuf, sizeof(wbuf)) != OM_OK)
+        {
+            a->fails++;
+            break;
+        }
+        memset(rbuf, 0x00, sizeof(rbuf));
+        if (om_partition_read(&h, 0u, rbuf, sizeof(rbuf)) != OM_OK)
+        {
+            a->fails++;
+            break;
+        }
+        if (memcmp(wbuf, rbuf, sizeof(wbuf)) != 0)
+        {
+            a->fails++;
+        }
+    }
+}
+
+static void test_exclusion(void)
+{
+    printf("[T9] exclusivity (device-level, across partition handles)\n");
+
+    /* 4KB 分区：擦除带擦后校验，后端调用次数足够多，交错窗口够宽 */
+    flash_sim_set_delay(&g_flash_sim, 1u);
+    g_inBackend = 0;
+    g_maxInBackend = 0;
+
+    ExcArg a1 = {P_BOOT, 0x11u, 2u, 0u};
+    ExcArg a2 = {P_META, 0x22u, 2u, 0u};
+    OsalThread *t1 = NULL;
+    OsalThread *t2 = NULL;
+    OsalThreadAttr attr = {"exc", 2048u, OSAL_PRIO_NORMAL_BASE};
+    CHECK(osal_thread_create(&t1, &attr, exclusion_worker, &a1) == OSAL_OK, "spawn worker boot");
+    CHECK(osal_thread_create(&t2, &attr, exclusion_worker, &a2) == OSAL_OK, "spawn worker meta");
+    (void)osal_thread_join(t1, OSAL_WAIT_FOREVER);
+    (void)osal_thread_join(t2, OSAL_WAIT_FOREVER);
+    flash_sim_set_delay(&g_flash_sim, 0u);
+
+    CHECK(a1.fails == 0 && a2.fails == 0, "both partitions clean (no torn operation)");
+    CHECK(g_maxInBackend == 1, "backend never entered concurrently across handles (peak=%ld)",
+          g_maxInBackend);
+    CHECK(g_inBackend == 0, "in-flight counter balanced");
+
+    /* 各自分区内容归各自线程所有 */
+    OmPartitionHandle h = {0};
+    uint8_t b = 0;
+    CHECK(om_partition_open(&reg_good, P_BOOT, &h) == OM_OK &&
+              om_partition_read(&h, 0u, &b, 1u) == OM_OK && b == 0x11u,
+          "boot holds its own pattern (%02X)", b);
+    CHECK(om_partition_open(&reg_good, P_META, &h) == OM_OK &&
+              om_partition_read(&h, 0u, &b, 1u) == OM_OK && b == 0x22u,
+          "meta holds its own pattern (%02X)", b);
+}
+
 int main(void)
 {
     printf("=== partition abstraction host test (v2) ===\n");
 
     flash_sim_init(&g_flash_sim, CAP, 0xFFu, 4u);
     CHECK(g_flash_sim.mem != NULL, "sim memory allocated");
+    flash_sim_init(&g_mix_sim, CAP_MIX, 0xFFu, 4u);
+    CHECK(g_mix_sim.mem != NULL, "non-uniform sim memory allocated");
 
     test_registry_defenses(); /* 内含按防线顺序的器件注册点 */
     test_query();
@@ -548,8 +873,11 @@ int main(void)
     test_ram_sourced_registry();
     test_erase_range();
     test_malformed_entries();
+    test_capability_queries();
+    test_exclusion(); /* 置于末尾：改动 boot/meta 内容，不影响前序用例管线 */
 
     flash_sim_deinit(&g_flash_sim);
+    flash_sim_deinit(&g_mix_sim);
 
     printf("=== %d passed, %d failed ===\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;

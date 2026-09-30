@@ -56,19 +56,21 @@ static FlashDev *g_flash;
 static int g_pass;
 static int g_fail;
 
-#define CHECK(cond, ...)                          \
-    do                                            \
-    {                                             \
-        if (cond)                                 \
-        {                                         \
-            g_pass++;                             \
-            OM_LOG_INFO("  PASS: " __VA_ARGS__);  \
-        }                                         \
-        else                                      \
-        {                                         \
-            g_fail++;                             \
-            OM_LOG_ERROR("  FAIL: " __VA_ARGS__); \
-        }                                         \
+#define CHECK(cond, ...)                                                               \
+    do                                                                                 \
+    {                                                                                  \
+        if (cond)                                                                      \
+        {                                                                              \
+            g_pass++;                                                                  \
+            OM_LOG_INFO("  PASS: " __VA_ARGS__);                                       \
+        }                                                                              \
+        else                                                                           \
+        {                                                                              \
+            g_fail++;                                                                  \
+            OM_LOG_ERROR("  FAIL: " __VA_ARGS__);                                      \
+        }                                                                              \
+        osal_sleep_ms(20); /* 输出节流：串口后端非阻塞提交（txFifo 满即静默截断）， */ \
+        /* 爆发式输出会被通道吃掉——逐条让出，验证结果才完整 */                         \
     } while (0)
 
 /* ===================================================================
@@ -356,12 +358,14 @@ static void verify_data_path(void)
           "direct flash_read at tail+0x10000");
     CHECK(memcmp(rd, r2, sizeof(rd)) == 0, "handle read == direct device read");
 
-    /* 契约边界（全部在触达器件前拒绝，无破坏） */
-    CHECK(om_partition_read(&h, TAIL_SIZE, r2, 4u) == OM_ERR_INVALID_ARG, "read off==size rejected");
-    CHECK(om_partition_read(&h, 0u, r2, TAIL_SIZE + 1u) == OM_ERR_INVALID_ARG,
-          "read len crossing partition end rejected");
+    /* 契约边界（全部在触达器件前拒绝，无破坏）。两类码刻意分开：
+     * 越界 = 调用方请求越出可访问范围 → RANGE（改偏移即可）；
+     * 未对齐/空参 = 参数本身不成立 → INVALID_ARG */
+    CHECK(om_partition_read(&h, TAIL_SIZE, r2, 4u) == OM_ERR_RANGE, "read off==size rejected (RANGE)");
+    CHECK(om_partition_read(&h, 0u, r2, TAIL_SIZE + 1u) == OM_ERR_RANGE,
+          "read len crossing partition end rejected (RANGE)");
     CHECK(om_partition_read(&h, 0u, NULL, 0u) == OM_ERR_INVALID_ARG, "read NULL buf rejected");
-    CHECK(om_partition_write(&h, TAIL_SIZE, w2, 4u) == OM_ERR_INVALID_ARG, "write off==size rejected");
+    CHECK(om_partition_write(&h, TAIL_SIZE, w2, 4u) == OM_ERR_RANGE, "write off==size rejected (RANGE)");
     CHECK(om_partition_write(&h, 0u, w2, 2u) == OM_ERR_INVALID_ARG,
           "write len 2 (non-word) rejected by device layer");
     CHECK(om_partition_write(&h, 2u, w2, 4u) == OM_ERR_INVALID_ARG,
@@ -370,12 +374,12 @@ static void verify_data_path(void)
           "erase_range 1KB (non-sector) rejected by device layer");
     CHECK(om_partition_erase_range(&h, 0u, 0x10000u) == OM_ERR_INVALID_ARG,
           "erase_range half-128K sector rejected (no silent expand)");
-    CHECK(om_partition_erase_range(&h, 1u, TAIL_SIZE) == OM_ERR_INVALID_ARG,
-          "erase_range misaligned off rejected");
+    CHECK(om_partition_erase_range(&h, 1u, TAIL_SIZE) == OM_ERR_RANGE,
+          "erase_range off 1 (off+len crosses end) rejected as RANGE");
     CHECK(om_partition_erase_range(&h, 0u, 0u) == OM_OK, "erase_range len==0 no-op");
     CHECK(om_partition_read(&h, 0u, r2, 0u) == OM_OK, "read len==0 in-domain no-op");
-    CHECK(om_partition_read(&h, TAIL_SIZE, r2, 0u) == OM_ERR_INVALID_ARG,
-          "read len==0 still checks off domain");
+    CHECK(om_partition_read(&h, TAIL_SIZE, r2, 0u) == OM_ERR_RANGE,
+          "read len==0 still checks off domain (RANGE)");
 
     /* 句柄信任模型：域校验拒绝伪造/损坏句柄（index >= count） */
     OmPartitionHandle forged = {&g_reg_good, 99u};
