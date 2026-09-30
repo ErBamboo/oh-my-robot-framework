@@ -23,6 +23,8 @@ log 服务持久化后端：把通过过滤的日志消息以记录形式可靠�
 
 **归属**：实现住 `lib/drivers/src/storage/`（依赖 partition → drivers 层；服务接口经开放头 `services/log/log.h` 反向接入——串口后端先例；services/platform 均不合规：services 不得依赖 drivers、platform 不碰 services 开放面）。公共头 `lib/drivers/include/drivers/storage/log_persist.h`。
 
+**分区接入（分区层 v2 形态，2026-09-15 适配）**：实例在 init 期以 `om_partition_open(reg, name, &h)` 取句柄并常驻私有态，此后数据通路一律走该句柄（`om_partition_read` / `om_partition_write` / `om_partition_erase_range`）——分区模块零状态（无全局查找、无 init 顺序依赖、API 天然可重入），故实例自身持有全部运行态；代价是**注册表对象须比实例活得久**（句柄按指针引用注册表）。本稿其余部分不受 v2 影响。
+
 ```
 日志线程(广播)                 写线程(LOW, 可裁剪)
    │ push(段, 恒快)                  │
@@ -31,7 +33,7 @@ log 服务持久化后端：把通过过滤的日志消息以记录形式可靠�
                                                   │
                                      扇区预擦轮转 ◄─┘
                                                   ▼
-                                      om_partition_write(同步, 线程态)
+                                   om_partition_write(句柄, 同步, 线程态)
 ```
 
 组件：① 后端实例（OmLogBackend 内嵌 + container_of 私有态：游标/计数/统计）；② 行组装+截断；③ 写队列（SPSC 定长）；④ 写线程（水印/超时；可裁剪开关退化同步批写）；⑤ 扇区环管理；⑥ 恢复扫描；⑦ 读迭代器（C 节）；⑧ 转存入口接缝（E 节）。
