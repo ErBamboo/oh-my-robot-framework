@@ -1,6 +1,6 @@
 /**
  * @file   pal_flash_dev.h
- * @brief  非易失存储设备接口（片内/外部 NOR 统一设备模型）
+ * @brief  flash 器件接口（片内/外部 NOR 统一设备模型）
  *
  * 本层 = 一套接口 + 一份能力描述：
  * - 接口：读 / 写 / 擦 + 几何查询。擦除是接口里的一个操作，不是对所有实现的行为
@@ -55,7 +55,6 @@ extern "C" {
 #define OM_ERR_FLASH_INVALID_ARG   OM_ERR_INVALID_ARG   /* 未对齐/参数为空/几何非法 */
 #define OM_ERR_FLASH_RANGE         OM_ERR_RANGE         /* 越界：地址区间超出器件容量 */
 #define OM_ERR_FLASH_IO            OM_ERR_IO            /* 硬件/物理错误 */
-#define OM_ERR_FLASH_BUSY          OM_ERR_BUSY          /* 设备忙：设备锁获取失败 */
 #define OM_ERR_FLASH_TIMEOUT       OM_ERR_TIMEOUT       /* 内部等待超时 */
 #define OM_ERR_FLASH_NOT_SUPPORTED OM_ERR_NOT_SUPPORTED /* 不支持的操作（如未实现的控制命令） */
 
@@ -193,7 +192,8 @@ const FlashGeometry *flash_geometry(FlashDev *dev);
  * 并发契约：
  * - read / write / erase 全部在调用者上下文同步执行并阻塞至完成；三者共用
  *   一把每设备睡眠互斥量，故同一设备上的操作天然互斥、逐次串行。
- * - 互斥量等待为无限阻塞：本层不返回"忙"，调用者不会被拒绝。
+ * - 互斥量等待为无限阻塞：本层不因争用拒绝调用者；锁不可用属框架内部故障
+ *   （注册后不应出现），按通用 IO 归因。
  * - 本层不持有线程。任何"提交即返回"的需求由上层自建线程承担。
  * - 禁止在 ISR 上下文调用本族 API（总线路径与互斥量等待均可阻塞）。
  * 地址语义：设备内偏移（0 起），越界返回 OM_ERR_RANGE，与未对齐、参数非法的

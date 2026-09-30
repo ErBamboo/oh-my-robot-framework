@@ -357,10 +357,11 @@ const FlashGeometry *flash_geometry(FlashDev *dev)
  * 核心 API（调用者上下文同步执行，读/写/擦共用设备锁）
  *===========================================================================*/
 
-/** @brief 取设备锁；失败仅在锁句柄无效时发生（注册后不可能） */
+/** @brief 取设备锁；失败仅在锁句柄无效时发生（注册后不可能）——属框架内部故障，
+ *  与介质操作失败的 OM_ERR_FLASH_IO 归因不同，故取通用 IO */
 static OmRet flash_lock(FlashDev *dev)
 {
-    return (osal_mutex_lock(dev->lock, OSAL_WAIT_FOREVER) == OSAL_OK) ? OM_OK : OM_ERR_FLASH_BUSY;
+    return (osal_mutex_lock(dev->lock, OSAL_WAIT_FOREVER) == OSAL_OK) ? OM_OK : OM_ERR_IO;
 }
 
 static void flash_unlock(FlashDev *dev)

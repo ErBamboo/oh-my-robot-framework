@@ -181,15 +181,15 @@ static bool partition_erase_unit_probe(const FlashGeometry *g, uint32_t off, uin
 
 /** @brief 句柄 → 权威条目 + 器件几何（几何由器件指针唯一决定） */
 static const FlashGeometry *partition_query_geom(const OmPartitionHandle *h,
-                                                 const OmPartitionEntry **outE)
+                                                 const OmPartitionEntry **outEntry)
 {
     if (!partition_handle_valid(h))
     {
         return NULL;
     }
-    if (outE)
+    if (outEntry)
     {
-        *outE = partition_entry_at(h->reg, h->index);
+        *outEntry = partition_entry_at(h->reg, h->index);
     }
     return flash_geometry(h->dev);
 }
@@ -359,7 +359,7 @@ OmRet om_partition_open(const OmPartitionRegistry *reg, const char *name,
 
 /** @brief 句柄域校验 + 权威条目/器件解析 + 分区内范围断言 */
 static OmRet partition_range(const OmPartitionHandle *h, uint32_t off, size_t len,
-                             const OmPartitionEntry **outE, FlashDev **outDev)
+                             const OmPartitionEntry **outEntry, FlashDev **outDev)
 {
     if (!partition_handle_valid(h))
     {
@@ -378,7 +378,7 @@ static OmRet partition_range(const OmPartitionHandle *h, uint32_t off, size_t le
      * 几何查询与扇区友好校验（后者是 open 期一次性的配置判定）。
      * 仍保留的是"offset/size 恒从表取"：地址数值依旧不可伪造；
      * 让出的是 dev 指针的不可伪造性（显式交换，见 partition.h 的 @warning） */
-    *outE = e;
+    *outEntry = e;
     *outDev = h->dev;
     return OM_OK;
 }
