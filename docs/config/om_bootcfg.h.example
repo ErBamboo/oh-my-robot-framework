@@ -7,9 +7,10 @@
  * 两个工程对同一板构建时引用同一份 om_bootcfg.h——布局天然同源。
  *
  * 分工：
- * - 本文件 = 用户可配面：分区布局表 + boot 行为参数（回退计数等）；
- * - 不可配契约常量（镜像头/meta entry 结构布局/版本）走契约头（Q-05），
- *   与配置体系分离。
+ * - 本文件 = 用户可配面：分区布局表 + 镜像**布局值**（负载偏移）+ boot 行为参数
+ *   （回退计数等）；
+ * - 不可配契约常量（镜像头/meta entry 的**结构布局**、magic、版本、标志位与算法
+ *   枚举）走契约头，与配置体系分离——这类值双侧互认，每工程不同即无法互认。
  *
  * 表符号契约：分区抽象（lib/drivers storage）声明 extern
  *   om_partition_table[] / om_partition_count；本模板用 X-macro 列表定义之，
@@ -25,13 +26,31 @@
  * meta 双份轮转 2×16K + 预留 1×16K（swap 进度/策略扩展），B 槽 64K 对齐）
  * =================================================================== */
 
-/* X-macro 列表：X(name, devName, offset, size) */
+/* X-macro 列表：X(name, devName, offset, size)
+ *
+ * app_a / app_b 的 offset 是**槽基址**，不是 app 的链接基址：镜像头占据槽基址起
+ * 的头部区域，负载从镜像头的 payloadOffset（约定 0x200）开始。app 的链接基址 =
+ * 槽基址 + payloadOffset（本表参考值下为 0x10200 / 0x110200）。引导方按分区名取
+ * 槽，槽内偏移由镜像头自描述，配置表里不需要出现链接基址。 */
 #define OM_BOOT_PARTITIONS           \
     X("bootloader", "flash0", 0x000000u, 0x10000u) /* bank1 头 4×16K */ \
     X("app_a", "flash0", 0x010000u, 0xF0000u)      /* bank1 余量 ~960K */ \
     X("meta", "flash0", 0x100000u, 0x08000u)       /* bank2 头 2×16K 双份轮转 */ \
     X("meta_resv", "flash0", 0x108000u, 0x04000u)  /* 预留：swap 进度/策略扩展 */ \
     X("app_b", "flash0", 0x110000u, 0xF0000u)      /* bank2 余量 ~960K（64K 对齐） */
+
+/* ===================================================================
+ * 镜像参数（布局值——与上面的分区布局表同源，两侧必须一致）
+ * =================================================================== */
+
+/* 负载相对槽基址的偏移（= app 链接基址 − 槽基址）。
+ * 取值须满足目标芯片的向量表对齐要求；改它必须同时改 app 的链接偏移。两者
+ * 不一致时镜像仍能被打包，但启动才会失败（引导方有向量表地址的兜底校验）。
+ * 引导方不读本宏——镜像头里的 payloadOffset 是自描述字段；本宏供打包工具与
+ * app 构建使用。契约头的默认值为 0x200。 */
+#ifndef OM_IMAGE_PAYLOAD_OFFSET
+#define OM_IMAGE_PAYLOAD_OFFSET 0x200u
+#endif
 
 /* ===================================================================
  * boot 行为参数（可配策略；数值为参考，工程按需覆写）
@@ -46,20 +65,20 @@
 /*
  * 表实例化与注册（数据 .c，随两工程各编译一份——如 boot_partition_data.c）：
  *
- *   #include "core/om_init.h"
  *   #include "drivers/storage/partition.h"
  *   #include "om_bootcfg.h"
  *   #define X(n, d, o, s) {n, d, o, s},
  *   static const OmPartitionEntry s_boot_partitions[] = {OM_BOOT_PARTITIONS};
  *   #undef X
- *   static OmRet boot_partitions_self_init(void)
- *   {
- *       return om_partition_register(s_boot_partitions,
- *           sizeof(s_boot_partitions) / sizeof(s_boot_partitions[0]));
- *   }
- *   OM_INIT_DRIVER(boot_partitions_self_init);   /* OS 形态：DRIVER 级自注册 */
+ *   static const OmPartitionRegistry s_boot_registry =
+ *       OM_PARTITION_REGISTRY(s_boot_partitions);
  *
- *   bootloader 裁剪形态（无 initcall）：启动流开头显式调用同一 register。
- *   契约：表须 const 静态存储期（模块不拷贝——保持只读存储驻留）；
- *   register 先于一切分区操作。
+ *   取槽（代码中只出现分区名，不出现地址字面量）：
+ *       om_partition_open(&s_boot_registry, "app_a", &h);
+ *
+ *   bootloader 裁剪形态（无 initcall）：启动流开头显式校验一次——
+ *       om_partition_registry_validate(&s_boot_registry);   /* 几何 fail-fast */
+ *   OS 形态可把同一调用挂 OM_INIT_DRIVER 自注册。
+ *   契约：表须 const 静态存储期（可整体驻 ROM）；注册表对象须比其派生的
+ *   任何句柄活得久；v2 无运行期注册 API（ADR-0024）。
  */

@@ -3,6 +3,11 @@
 #include "core/om_interrupt.h"
 #include "core/om_init.h"
 
+#ifndef OM_BOARD_VECT_TAB_OFFSET
+/** @brief 向量表相对 FLASH 基址的偏移（槽链接基址 - FLASH_BASE；引导器为 0） */
+#define OM_BOARD_VECT_TAB_OFFSET 0u
+#endif
+
 /**
  * @brief  This function is executed in case of error occurrence.
  * @retval None
@@ -85,6 +90,8 @@ static OmBoardInterface g_om_board_interface = {
 
 void om_board_init(void)
 {
+    // 按槽设置向量表基址：引导器偏移 0；app 槽为槽内负载偏移。
+    SCB->VTOR = FLASH_BASE | OM_BOARD_VECT_TAB_OFFSET;
     // 开发板初始化，对于STM32来说，在CubeMX上配置时钟树，然后直接复制过来用就好
     // 仅保留 HAL 自举核（时钟/CPU 注册/DWT）；外设注册由 OM_INIT_BOARD 自注册
     // （见 bsp_selfreg.c），在 BOARD 级 om_board_init 之后执行。
