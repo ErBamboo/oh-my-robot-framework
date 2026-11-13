@@ -19,6 +19,11 @@ rule("oh_my_robot.context")
         config.load()
         oh_my_robot.sync_context_from_config()
         local context = oh_my_robot.get_context()
+        -- release 模式默认 strip 会移除 ELF 符号，构建后 link guard 无法校验强符号；
+        -- OM binary 保留符号（hex/bin 由 objcopy 生成，不含符号表，不受影响）。
+        if target:kind() == "binary" then
+            target:set("strip", "none")
+        end
         local arch_flags = context.arch_flags
         local toolchain_flags = context.toolchain_flags
         local framework_version = om_version.resolve_framework_version()
@@ -26,7 +31,12 @@ rule("oh_my_robot.context")
         local include_arch_ldflags = toolchain_lib.should_include_arch_ldflags(toolchain_config, context.toolchain_name)
         local semihosting_mode = toolchain_lib.resolve_semihosting_mode(config.get("semihosting"))
         local lto_mode = toolchain_lib.resolve_lto_mode(nil)
-        local lto_plan = toolchain_lib.resolve_lto_plan(context.toolchain_name, lto_mode)
+        local lto_plan = toolchain_lib.resolve_lto_plan(
+            context.toolchain_name,
+            lto_mode,
+            target:name(),
+            target:kind()
+        )
         target:add("defines", string.format("FRAMEWORK_VERSION=\"%s\"", framework_version), {public = true})
         -- 注入架构参数与工具链参数
         toolchain_lib.add_target_flag_set(target, arch_flags, {

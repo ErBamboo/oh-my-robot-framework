@@ -30,15 +30,19 @@ oh-my-robot/
 │   ├── sync/          # 同步语义层：纯同步信号抽象（协调执行顺序），无数据载荷
 │   ├── async/         # 异步执行基座：通用执行调度能力（工作队列、延时执行等）
 │   ├── ipc/           # 跨上下文数据传输层：原始数据传输（无结构字节流、类型化离散消息）
-│   ├── drivers/       # 驱动与 PAL：设备模型、外设驱动、可移植硬件抽象
+│   ├── drivers/       # 驱动框架与 PAL：设备模型、总线/设备类框架、可移植硬件抽象
 │   ├── services/      # 通用服务层：可复用的通用服务组件（日志、配置、通信、诊断等）
 │   └── systems/       # 业务子系统层：机器人系统级模块（chassis、gimbal、arm、robot 等）
 ├── platform/          # 平台适配：bsp · OSAL端口 · sync加速 · 工具链/ABI · RTOS绑定
+├── third_party/       # 第三方代码：FreeRTOS/CMSIS/HAL 等（仅供适配与移植）
+├── xmake/             # 构建系统源码（XMake）
 ├── tools/             # 工具与脚本
 ├── samples/           # 示例代码
 ├── docs/              # 项目文档
-└── build/             # 构建系统（XMake）
+└── build/             # 构建输出（生成目录，不入库）
 ```
+
+具体器件实现位于独立仓库 `oh-my-robot-devices`，只依赖驱动框架公开契约与 kernel/sync，不进入本仓库；器件清单与用法以该仓库文档为准。
 
 ## 文档
 
@@ -49,11 +53,11 @@ oh-my-robot/
 | [构建系统参考手册](docs/build/reference_manual.md) | OM 构建体系完整参考 |
 | [构建任务手册](docs/build/build_tasks_manual.md) | 常用构建任务与工作流 |
 
-模块设计文档随代码分布在各 `lib/*/docs/` 目录下，包括 async、sync、ipc、drivers、motor 等模块。
+模块设计文档随代码分布在各 `lib/*/docs/` 目录下，包括 async、sync、ipc、drivers 等模块；器件文档位于独立仓库 `oh-my-robot-devices/docs/`。
 
 ## 贡献
 
-提交 PR 前请阅读 [Git 协作规范](docs/process/git_collaboration_spec.md)（分支职责、提交纪律、PR 流程）和 [发布与版本规范](docs/process/git_version_release_spec.md)。
+提交 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。工程流程见 [Git 协作规范](docs/process/git_collaboration_spec.md)（分支职责、提交纪律、PR 流程）和 [发布与版本规范](docs/process/git_version_release_spec.md)；项目管理规则见 Confluence [OM 项目管理原则](https://bamboolab.atlassian.net/wiki/spaces/OMR/pages/589827)。
 
 ## 反馈与讨论
 
