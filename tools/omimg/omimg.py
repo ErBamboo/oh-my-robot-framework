@@ -2,7 +2,7 @@
 """镜像打包与检查——镜像格式契约的主机侧实现。
 
 契约的事实源是 C 头文件 lib/boot/include/boot/image.h；本文件的常量与之镜像，
-字节布局必须逐字段一致。`selftest` 会解析该头文件核对常量，避免两侧漂移。
+字节布局必须逐字段一致。selftest 会解析该头文件核对常量，避免两侧漂移。
 
 用法：
     python omimg.py pack --input app.bin --output app_a.bin --version 1.2.3 --slot a
