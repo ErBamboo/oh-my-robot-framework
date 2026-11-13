@@ -301,3 +301,23 @@ option("om_framework_main")
     set_values("on", "off")
 option_end()
 
+--- @option om_link_variant
+--- @brief 选择板级链接变体
+--- @details default = 单镜像；bootloader / app_a / app_b = 双槽构建的链接脚本与向量表偏移。
+option("om_link_variant")
+    set_default("default")
+    set_showmenu(true)
+    set_description("select board link variant")
+    set_values("default", "bootloader", "app_a", "app_b")
+option_end()
+
+--- @option om_selfreg_profile
+--- @brief 选择自注册源注入形态
+--- @details full = 全量服务/系统源与 SEGGER RTT；boot = 只注入板级启动必需源。
+option("om_selfreg_profile")
+    set_default("full")
+    set_showmenu(true)
+    set_description("select selfreg source profile")
+    set_values("full", "boot")
+option_end()
+

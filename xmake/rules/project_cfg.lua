@@ -26,6 +26,8 @@ rule("oh_my_robot.project_cfg")
     --- 配置阶段检测并注入工程配置片段 + 写入配置状态标记
     ---@param target target 目标对象
     on_config(function(target)
+        local config = import("core.project.config")
+        config.load()
         local oh_my_robot = import("oh-my-robot", {rootdir = modules_root})
         local context = oh_my_robot.get_context()
         local project_dir = os.projectdir()
@@ -36,15 +38,17 @@ rule("oh_my_robot.project_cfg")
         local has_boardcfg = boardcfg and os.isfile(boardcfg) or false
         local bootcfg = board_name and path.join(project_dir, "cfg", "boards", board_name, "om_bootcfg.h") or nil
         local has_bootcfg = bootcfg and os.isfile(bootcfg) or false
+        local link_variant = config.get("om_link_variant") or "default"
+        local selfreg_profile = config.get("om_selfreg_profile") or "full"
 
         -- 配置状态摘要：内容 = 注入决定性状态（含片段文件原文——值变更即感知）；
         -- 仅当内容变化时重写（mtime 变化→depfile 触发重编）
         local function cfg_content(p)
             return os.isfile(p) and io.readfile(p) or ""
         end
-        local state = string.format("board=%s\n== appcfg ==\n%s\n== boardcfg ==\n%s\n== bootcfg ==\n%s",
-                                    tostring(board_name), cfg_content(appcfg), cfg_content(boardcfg),
-                                    cfg_content(bootcfg))
+        local state = string.format("board=%s\nvariant=%s\nselfreg=%s\n== appcfg ==\n%s\n== boardcfg ==\n%s\n== bootcfg ==\n%s",
+                                    tostring(board_name), link_variant, selfreg_profile,
+                                    cfg_content(appcfg), cfg_content(boardcfg), cfg_content(bootcfg))
         local marker = cfg_state_file()
         local cur = os.isfile(marker) and io.readfile(marker) or nil
         if cur ~= state then

@@ -26,12 +26,11 @@ local SELFREG_DIRS = {
     "lib/services/src",
 }
 
---- 框架自带自注册源文件（相对框架根），逐一注入 binary。
-local SELFREG_FILES = {
-    "lib/source/core/om_main.c",
-    -- 第三方库（BSD 许可——保留 LICENSE 于同目录）；services 后端引用
-    "third_party/segger-rtt/SEGGER_RTT.c",
-}
+--- 框架默认 main（弱符号）源文件；om_framework_main=off 时不注入。
+local FRAMEWORK_MAIN = "lib/source/core/om_main.c"
+
+--- 第三方 RTT 源文件；boot 形态不注入。
+local SEGGER_RTT = "third_party/segger-rtt/SEGGER_RTT.c"
 
 rule("oh_my_robot.selfreg")
     --- 配置阶段把自注册模块源直接挂到 binary
@@ -42,25 +41,30 @@ rule("oh_my_robot.selfreg")
         end
         local config = import("core.project.config")
         config.load()
+        local profile = config.get("om_selfreg_profile") or "full"
+        local is_boot = profile == "boot"
         local includedirs = {
             path.join(om_root, "lib/include"),
-            path.join(om_root, "lib/systems/include"),
-            path.join(om_root, "lib/services/include"),
-            path.join(om_root, "third_party/segger-rtt"), -- SEGGER_RTT 头（服务后端引用；第三方库目录）
         }
-        for _, dir in ipairs(SELFREG_DIRS) do
-            local files = os.files(path.join(om_root, dir, "**.c"))
-            if files then
-                for _, f in ipairs(files) do
-                    target:add("files", f, { includedirs = includedirs })
+        if not is_boot then
+            includedirs[#includedirs + 1] = path.join(om_root, "lib/systems/include")
+            includedirs[#includedirs + 1] = path.join(om_root, "lib/services/include")
+            includedirs[#includedirs + 1] = path.join(om_root, "third_party/segger-rtt")
+            for _, dir in ipairs(SELFREG_DIRS) do
+                local files = os.files(path.join(om_root, dir, "**.c"))
+                if files then
+                    for _, f in ipairs(files) do
+                        target:add("files", f, { includedirs = includedirs })
+                    end
                 end
             end
         end
         -- 框架默认 main 注入（开关见 xmake/config/options.lua）
         if config.get("om_framework_main") ~= "off" then
-            for _, file in ipairs(SELFREG_FILES) do
-                target:add("files", path.join(om_root, file), { includedirs = includedirs })
-            end
+            target:add("files", path.join(om_root, FRAMEWORK_MAIN), { includedirs = includedirs })
+        end
+        if not is_boot then
+            target:add("files", path.join(om_root, SEGGER_RTT), { includedirs = includedirs })
         end
     end)
 rule_end()

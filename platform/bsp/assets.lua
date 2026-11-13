@@ -34,8 +34,9 @@ end
 --- 获取板级构建资源（启动文件与链接脚本）
 ---@param board_name string 板级名称
 ---@param toolchain_name string 工具链名称
+---@param variant_name string|nil 链接变体名称（缺省 default）
 ---@return table assets 资源信息
-function get_board_build_assets(board_name, toolchain_name)
+function get_board_build_assets(board_name, toolchain_name, variant_name)
     utils.require_string(toolchain_name, "toolchain")
     local profile = data_loader.get_profile(board_name)
 
@@ -69,8 +70,24 @@ function get_board_build_assets(board_name, toolchain_name)
         return abs
     end
 
+    --- 解析变体链接脚本：变体存在时优先，否则回退板级默认映射
+    ---@return string path_abs 绝对路径
+    local function resolve_variant_linkerscript()
+        local variants = profile.board.link_variants or {}
+        local variant = variants[variant_name or "default"]
+        local raw = resolve_asset(variant, "linkerscript")
+        if not raw then
+            return resolve_asset_path("linkerscript", "linkerscript")
+        end
+        local abs = path.is_absolute(raw) and raw or path.join(bsp_root, raw)
+        if not os.isfile(abs) then
+            raise("linkerscript file not found: " .. abs)
+        end
+        return abs
+    end
+
     return {
         startup = resolve_asset_path("startup", "startup"),
-        linkerscript = resolve_asset_path("linkerscript", "linkerscript"),
+        linkerscript = resolve_variant_linkerscript(),
     }
 end

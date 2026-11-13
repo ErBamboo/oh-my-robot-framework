@@ -14,16 +14,20 @@ rule("oh_my_robot.board_assets")
         if target:kind() ~= "binary" then
             return
         end
+        local config = import("core.project.config")
+        config.load()
+        local variant_name = config.get("om_link_variant") or "default"
+        local selfreg_profile = config.get("om_selfreg_profile") or "full"
         -- 读取板级构建资源
         local oh_my_robot = import("oh-my-robot", {rootdir = modules_root})
         local context = oh_my_robot.get_context()
         local bsp_root = path.join(om_root, "platform", "bsp")
         local bsp = import("bsp", {rootdir = bsp_root})
-        local assets = bsp.get_board_build_assets(context.board_name, context.toolchain_name)
+        local assets = bsp.get_board_build_assets(context.board_name, context.toolchain_name, variant_name)
         if assets.startup then
             target:add("files", assets.startup)
         end
-        local override_sources = bsp.get_board_override_sources(context.board_name)
+        local override_sources = bsp.get_board_override_sources(context.board_name, selfreg_profile)
         if override_sources and #override_sources > 0 then
             local inputs = bsp.get_board_build_inputs(context.board_name)
             target:add("files", override_sources, {
@@ -31,7 +35,7 @@ rule("oh_my_robot.board_assets")
                 defines = inputs.defines,
             })
         end
-        local selfreg_sources = bsp.get_board_selfreg_sources(context.board_name)
+        local selfreg_sources = bsp.get_board_selfreg_sources(context.board_name, selfreg_profile)
         if selfreg_sources and #selfreg_sources > 0 then
             local inputs = bsp.get_board_build_inputs(context.board_name)
             target:add("files", selfreg_sources, {
@@ -40,7 +44,6 @@ rule("oh_my_robot.board_assets")
             })
         end
         if assets.linkerscript then
-            local config = import("core.project.config")
             local linker_flag = config.get("toolchain_linker_flag")
             if not linker_flag or linker_flag == "" then
                 raise("toolchain linker flag not set: " .. context.toolchain_name)
