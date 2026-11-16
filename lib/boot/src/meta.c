@@ -88,7 +88,8 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
 
     memset(meta, 0, sizeof(*meta));
     meta->partition = *partition;
-    meta->copyCount = count;
+    /* 已校验与编译期契约一致；这里用契约值保持数组尺寸与运行期计数同源。 */
+    meta->copyCount = OM_BOOT_META_COPIES;
 
     for (i = 0u; i < count; i++)
     {
@@ -112,7 +113,7 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
 
 OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t *copy_index)
 {
-    OmBootMetaEntry best;
+    OmBootMetaEntry best = {0};
     OmBool found = OM_FALSE;
     uint32_t best_index = 0u;
     uint32_t i;
@@ -133,11 +134,14 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
         {
             return ret;
         }
-        if (valid == OM_TRUE && (found == OM_FALSE || candidate.seq > best.seq))
+        if (valid == OM_TRUE)
         {
-            best = candidate;
-            best_index = i;
-            found = OM_TRUE;
+            if (found == OM_FALSE || candidate.seq > best.seq)
+            {
+                best = candidate;
+                best_index = i;
+                found = OM_TRUE;
+            }
         }
     }
 
