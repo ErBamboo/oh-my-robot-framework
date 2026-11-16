@@ -48,23 +48,23 @@ extern "C" {
 
 /** 启动状态。EMPTY 只用于描述空白 entry，正常写入从 PENDING 开始。 */
 typedef enum OmBootMetaState {
-    OM_BOOT_META_STATE_EMPTY   = 0,
-    OM_BOOT_META_STATE_PENDING = 1,
-    OM_BOOT_META_STATE_VALID   = 2,
-    OM_BOOT_META_STATE_ABORTED = 3,
+    OM_BOOT_META_STATE_EMPTY   = 0, /**< 空白，无有效决策 */
+    OM_BOOT_META_STATE_PENDING = 1, /**< 待启动，启动计数推进 */
+    OM_BOOT_META_STATE_VALID   = 2, /**< 已确认，稳态不再写 */
+    OM_BOOT_META_STATE_ABORTED = 3, /**< 已回退或放弃 */
 } OmBootMetaState;
 
 /** 失败原因。枚举与失败模式矩阵一一对应。 */
 typedef enum OmBootMetaReason {
-    OM_BOOT_META_REASON_NONE                 = 0,
-    OM_BOOT_META_REASON_DOWNLOAD_INTERRUPTED = 1,
-    OM_BOOT_META_REASON_HEADER_INVALID       = 2,
-    OM_BOOT_META_REASON_DIGEST_FAILED        = 3,
-    OM_BOOT_META_REASON_COMMIT_FAILED        = 4,
-    OM_BOOT_META_REASON_ROLLBACK_LIMIT       = 5,
-    OM_BOOT_META_REASON_NO_VALID_IMAGE       = 6,
-    OM_BOOT_META_REASON_GEOMETRY_MISMATCH    = 7,
-    OM_BOOT_META_REASON_SIGNATURE_FAILED     = 8,
+    OM_BOOT_META_REASON_NONE                 = 0, /**< 无失败 */
+    OM_BOOT_META_REASON_DOWNLOAD_INTERRUPTED = 1, /**< 下载中断 */
+    OM_BOOT_META_REASON_HEADER_INVALID       = 2, /**< 镜像头无效 */
+    OM_BOOT_META_REASON_DIGEST_FAILED        = 3, /**< 摘要校验失败 */
+    OM_BOOT_META_REASON_COMMIT_FAILED        = 4, /**< 提交擦写失败 */
+    OM_BOOT_META_REASON_ROLLBACK_LIMIT       = 5, /**< 达启动次数上限回退 */
+    OM_BOOT_META_REASON_NO_VALID_IMAGE       = 6, /**< 两槽均无有效镜像 */
+    OM_BOOT_META_REASON_GEOMETRY_MISMATCH    = 7, /**< 布局或几何不匹配 */
+    OM_BOOT_META_REASON_SIGNATURE_FAILED     = 8, /**< 签名校验失败 */
 } OmBootMetaReason;
 
 /**
