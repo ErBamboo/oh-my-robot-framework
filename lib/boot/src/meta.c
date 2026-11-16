@@ -17,11 +17,13 @@ typedef enum OmBootMetaCopyState
     OM_BOOT_META_COPY_INVALID = 2, /**< 半写或损坏，写前须擦除 */
 } OmBootMetaCopyState;
 
+/** 计算 entry 决策字段的 CRC；crc32 字段自身不参与。 */
 static uint32_t meta_crc32(const OmBootMetaEntry *entry)
 {
     return om_crc32_iso_hdlc(OM_CRC32_INIT, entry, offsetof(OmBootMetaEntry, crc32));
 }
 
+/** 判断 entry 是否保持擦除态（32 字节全 0xFF）。 */
 static OmBool entry_is_erased(const OmBootMetaEntry *entry)
 {
     const uint8_t *bytes = (const uint8_t *)entry;
@@ -37,6 +39,7 @@ static OmBool entry_is_erased(const OmBootMetaEntry *entry)
     return OM_TRUE;
 }
 
+/** 校验 seq、状态、槽号与 CRC；任一项不符即无效。 */
 OmBool om_boot_meta_entry_valid(const OmBootMetaEntry *entry)
 {
     if (entry == NULL)
@@ -82,6 +85,7 @@ static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry)
     return OM_BOOT_META_COPY_INVALID;
 }
 
+/** 绑定决策分区并缓存前 N 个副本的偏移与大小。 */
 OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
 {
     uint32_t count;
@@ -123,8 +127,10 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
     return OM_OK;
 }
 
+/** 读取最新有效 entry；没有有效 entry 时返回 OM_ERR_NOT_FOUND。 */
 OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t *copy_index)
 {
+    /* 遍历副本，取 seq 最大的有效 entry；全部无效时返回擦除态。 */
     OmBootMetaEntry best = {0};
     OmBool found = OM_FALSE;
     uint32_t best_index = 0u;
@@ -171,6 +177,7 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
     return OM_OK;
 }
 
+/** 选择写入目标：优先空白副本，其次损坏副本，最后擦除较旧的有效副本。 */
 static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaCopyState *states,
                               uint32_t latest_index)
 {
@@ -195,6 +202,7 @@ static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaCopyState 
     return (latest_index + 1u) % meta->copyCount;
 }
 
+/** 写一条新 entry；必要时擦除非最新副本，CRC 最后写。 */
 OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 {
     OmBootMetaEntry copies[OM_BOOT_META_COPIES];
@@ -216,6 +224,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         return OM_ERR_INVALID_ARG;
     }
 
+    /* 读取全部副本，确定最新有效 seq 与写入目标。 */
     for (i = 0u; i < meta->copyCount; i++)
     {
         ret = read_copy_raw(meta, i, &copies[i]);
@@ -233,6 +242,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         }
     }
 
+    /* seq 从 1 起步；0xFFFFFFFF 是无效哨兵，耗尽后报溢出。 */
     next_seq = (has_latest == OM_TRUE) ? (latest_seq + 1u) : 1u;
     if (next_seq == OM_BOOT_META_SEQ_INVALID)
     {
@@ -245,6 +255,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         return OM_ERR_INVALID_ARG;
     }
 
+    /* 只有目标不是空白副本时才擦除；最新有效副本永远不擦。 */
     if (states[target] != OM_BOOT_META_COPY_ERASED)
     {
         ret = om_partition_erase_range(&meta->partition, meta->copyOffset[target],
@@ -255,6 +266,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         }
     }
 
+    /* 先写决策字段，最后写 CRC；CRC 未写完的副本会被读侧忽略。 */
     entry->seq = next_seq;
     entry->crc32 = meta_crc32(entry);
 
@@ -275,6 +287,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
     return OM_OK;
 }
 
+/** 保留最新有效副本，擦除其余副本。 */
 OmRet om_boot_meta_cleanup(OmBootMeta *meta)
 {
     OmBootMetaCopyState states[OM_BOOT_META_COPIES];
@@ -288,6 +301,7 @@ OmRet om_boot_meta_cleanup(OmBootMeta *meta)
         return OM_ERR_INVALID_ARG;
     }
 
+    /* 保留最新有效副本；没有有效副本时清空全部副本。 */
     for (i = 0u; i < meta->copyCount; i++)
     {
         OmBootMetaEntry candidate;
@@ -307,6 +321,7 @@ OmRet om_boot_meta_cleanup(OmBootMeta *meta)
         }
     }
 
+    /* 只擦非最新副本；已是空白态的副本跳过。 */
     for (i = 0u; i < meta->copyCount; i++)
     {
         if (found == OM_TRUE && i == latest_index)
