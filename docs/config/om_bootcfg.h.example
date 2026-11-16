@@ -86,7 +86,7 @@
  *       om_partition_open(&s_boot_registry, "app_a", &h);
  *
  *   bootloader 裁剪形态（无 initcall）：启动流开头显式校验一次——
- *       om_partition_registry_validate(&s_boot_registry);   /* 几何 fail-fast */
+ *       om_partition_registry_validate(&s_boot_registry);   // 几何 fail-fast
  *   OS 形态可把同一调用挂 OM_INIT_DRIVER 自注册。
  *   契约：表须 const 静态存储期（可整体驻 ROM）；注册表对象须比其派生的
  *   任何句柄活得久；v2 无运行期注册 API（ADR-0024）。

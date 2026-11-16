@@ -130,13 +130,16 @@ target("tar_awalgo")
 target_end()
 
 --- @target tar_awboot
---- @brief 启动域目标（镜像格式契约；决策核随步骤 ② 落地）
---- @details 当前为纯定义头（headeronly）：契约零依赖、不产生代码。
----          决策核落地时本目标转 static 并补依赖清单。
+--- @brief 启动域目标（镜像格式契约与决策数据读写）
+--- @details 静态库：镜像契约头不产生代码；决策数据模块依赖算法 CRC 与分区层。
 target("tar_awboot")
     add_rules("oh_my_robot.project_cfg")
-    set_kind("headeronly")
+    set_kind("static")
+    add_rules("oh_my_robot.context")
     add_includedirs("boot/include", {public = true})
+    add_deps("tar_awalgo", {public = true})
+    add_deps("tar_awdrivers", {public = true})
+    add_files("boot/src/**.c")
 target_end()
 
 --- @target tar_awdrivers

@@ -31,13 +31,13 @@
 | 6 | **bootloader 版板级初始化** | `bsp_cpu.c:86-98` 把时钟配置 + `om_cpu_register` + `DWT_Init` 绑在一起（`OM_INIT_BOARD` 注册） | 提供裁剪版（至少时钟 + `SystemCoreClock`——osal-none 的 arch 时基依赖它先就绪），或确认整体复用 |
 | 7 | **启动流形态** | `om_system_startup()` 在 os=none 下**不可用**：post 段建 init 线程 → 直调占位 → `om_init_thread` 末尾 `osal_thread_exit()` 死循环（`osal_thread_none.c:84-95`） | 三选一：bootloader 写强 `main` / 构建期 `om_framework_main=off` / 只调 `om_startup_pre_scheduler()`；选定后写进 bootloader 工程模板 |
 | 8 | **决策核本体** | `lib/boot/` 只有 `image.h`；`tar_awboot` 为 headeronly（`lib/xmake.lua:132-140`，注释已预告转 static） | 解析/摘要校验/槽位判定/提交动作实现；`tar_awboot` 转 static 并补依赖（partition / algorithm） |
-| 9 | **决策数据读写模块** | 无（`boot_ota_requirements.md` 原列"entry 布局未定"） | 按 ADR-0025 的 32B 定长 entry 实现读（CRC 有效 + seq 最大）/写（擦另一份 → 写字段 → CRC 最后） |
+| 9 | **决策数据读写模块** | **2026-11-16 已落地** `lib/boot/src/meta.c` + `lib/boot/include/boot/meta.h`：读（CRC 有效 + seq 最大）、写（有已擦副本直接写，否则擦非最新副本）、清理；host `boot_meta_test` 48/48 | 后续接入决策核与真机 flash 分区 |
 | 10 | **跳转模块** | 全仓无 VTOR 写入、无跳转代码 | 按 K-32 清单 + Q-13 方案 A 实现（含 `HAL_DeInit()`、停 SysTick 并清 pending、ICER/ICPR 全清、放开中断） |
 | 11 | **bootloader 日志接入点** | 无 `om_log_init` 公开 API；接入 = `OM_LOG_MODULE` + 后端实例 + 注册（`OM_INIT_DRIVER` 链路） | 单执行流下不依赖 initcall 的接入写法（手写注册）；早期滞留容量按 bootloader 重估（默认环 16 槽 ≈ 1.2KB） |
 | 12 | **分区表实例数据文件** | `OM_BOOT_PARTITIONS`（`docs/config/om_bootcfg.h.example:35-40`）**全仓零消费点** | 新增 `boot_partition_data.c`（展开 X-macro → const 表 → `OM_PARTITION_REGISTRY`），两工程各编一份 |
 | 13 | **bootcfg 工程片段** | 仓库内无 `<project>/cfg/boards/rm-a-board/om_bootcfg.h`；模板刚修正为 v2 API | 建片段（存在方触发 `-DOM_USE_BOOTCFG` 注入） |
 | 14 | **后门命令组 v0** | 无实现（K-21/Q-08 记为演进项；帧与编号未定） | **独立批次**：协议帧（K-26 已给方向）、命令组编号、进入窗口/触发条件（Q-16 非凭证门槛） |
-| 15 | **决策核 host 语料** | 现有 `boot_image_test` 只跑内存缓冲；`partition_test` 的 `flash_sim` 是 256KB 均匀 4KB 扇区 | 新建决策核 host target：非均匀几何 + 多分区（bootloader/app_a/meta/app_b）夹具；端到端用例 = 写镜像 → 经分区句柄读回 → 校验摘要；CI 挂载照 `ci.yml:147-154` |
+| 15 | **决策核 host 语料** | 现有 `boot_image_test` 只跑内存缓冲；`partition_test` 的 `flash_sim` 是 256KB 均匀 4KB 扇区；**2026-11-16 已新增 `samples/host/boot_meta_test`（双份轮转/擦除/掉电破坏，48/48）** | 决策核端到端 host target：非均匀几何 + 多分区（bootloader/app_a/meta/app_b）夹具；端到端用例 = 写镜像 → 经分区句柄读回 → 校验摘要；CI 挂载照 `ci.yml` |
 | 16 | **armclang ELF 后处理硬编码** | `xmake/rules/image_convert.lua:55,66,69` 写死 `0x20000000` 与 `0x08000000 + (rw_off - 0x40)` | 参数化 flash/RAM 基址——槽链接基址下 LMA 修正会错位 |
 | 17 | **linkguard 对裁剪 binary 的适用性** | 守卫要求 7 级边界符号 + 强符号（`toolchain_linkguard.lua`），GCC 侧边界符号由 `PROVIDE` 定义（未被引用可能不落地） | 确认/调整守卫对 bootloader binary 的策略，避免误报 |
 | 18 | **面积门禁** | 报告只打印不 fail | 可选：bootloader 目标加 64K 阈值断言 |
