@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "board": "rm-a-board",
+  "device": "flash0",
+  "flash": {
+    "base": 134217728,
+    "size": 2097152,
+    "eraseRegions": [
+      { "offset": 0, "size": 16384, "count": 4 },
+      { "offset": 65536, "size": 65536, "count": 1 },
+      { "offset": 131072, "size": 131072, "count": 7 },
+      { "offset": 1048576, "size": 16384, "count": 4 },
+      { "offset": 1114112, "size": 65536, "count": 1 },
+      { "offset": 1179648, "size": 131072, "count": 7 }
+    ]
+  },
+  "payloadOffset": 512,
+  "metaCopies": 2,
+  "rollbackLimit": 3,
+  "partitions": [
+    {
+      "name": "bootloader",
+      "offset": 0,
+      "size": 65536,
+      "role": "bootloader"
+    },
+    {
+      "name": "app_a",
+      "offset": 65536,
+      "size": 983040,
+      "role": "app",
+      "slot": "a"
+    },
+    {
+      "name": "meta",
+      "offset": 1048576,
+      "size": 32768,
+      "role": "meta"
+    },
+    {
+      "name": "meta_resv",
+      "offset": 1081344,
+      "size": 16384,
+      "role": "meta_resv"
+    },
+    {
+      "name": "app_b",
+      "offset": 1114112,
+      "size": 983040,
+      "role": "app",
+      "slot": "b"
+    }
+  ],
+  "reserved": [
+    {
+      "name": "reserved",
+      "offset": 1097728,
+      "size": 16384
+    }
+  ]
+}

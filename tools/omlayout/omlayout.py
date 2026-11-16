@@ -4,19 +4,19 @@
 The declarative layout file is the single source for:
 - generated om_bootcfg.h / OM_BOOT_PARTITIONS
 - generated boot_partition_data.c / boot_partition_data.h
-- generated om_layout.json
+- generated om_layout.generated.json
 - layout fingerprint
 
-The tool deliberately reads TOML, not C headers. Host tools and linker scripts
+The tool deliberately reads JSON, not C headers. Host tools and linker scripts
 must consume generated JSON or generated linker fragments, never parse C macros.
 
 Usage:
-    python tools/omlayout/omlayout.py generate --spec samples/boot/layout/rm-a-board.toml --out build/layout
-    python tools/omlayout/omlayout.py check --spec samples/boot/layout/rm-a-board.toml \
+    python tools/omlayout/omlayout.py generate --spec samples/boot/layout/rm-a-board.json --out build/layout
+    python tools/omlayout/omlayout.py check --spec samples/boot/layout/rm-a-board.json \
         --linker-root platform/bsp/boards/rm-a-board/linker \
         --contract lib/boot/include/boot/image.h
 
-Python 3.11+ is required for tomllib.
+Python 3.10+ is required.
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ import hashlib
 import json
 import re
 import sys
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -113,13 +112,13 @@ def _required(data: dict, key: str, label: str) -> object:
 
 def _parse_erase_regions(raw: object, flash_size: int) -> tuple[EraseRegion, ...]:
     if not isinstance(raw, list) or not raw:
-        raise LayoutError("flash.erase_regions must be a non-empty array")
+        raise LayoutError("flash.eraseRegions must be a non-empty array")
     regions: list[EraseRegion] = []
     expected = 0
     for index, item in enumerate(raw):
-        label = f"flash.erase_regions[{index}]"
+        label = f"flash.eraseRegions[{index}]"
         if not isinstance(item, dict):
-            raise LayoutError(f"{label} must be a table")
+            raise LayoutError(f"{label} must be an object")
         offset = _as_int(_required(item, "offset", label), f"{label}.offset")
         size = _as_int(_required(item, "size", label), f"{label}.size")
         count = _as_int(_required(item, "count", label), f"{label}.count")
@@ -189,7 +188,7 @@ def _check_non_overlap(ranges: list[tuple[int, int, str]]) -> None:
 
 
 def parse_layout(data: dict, source: str = "<layout>") -> Layout:
-    """Validate a parsed TOML object and return the normalized layout."""
+    """Validate a parsed JSON object and return the normalized layout."""
     schema = _as_int(_required(data, "schema", source), f"{source}.schema")
     if schema != SCHEMA_VERSION:
         raise LayoutError(f"unsupported schema {schema}, expected {SCHEMA_VERSION}")
@@ -197,24 +196,24 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
     board = _as_str(_required(data, "board", source), f"{source}.board")
     device = _as_str(_required(data, "device", source), f"{source}.device")
     payload_offset = _as_int(
-        _required(data, "payload_offset", source), f"{source}.payload_offset"
+        _required(data, "payloadOffset", source), f"{source}.payloadOffset"
     )
     meta_copies = _as_int(
-        _required(data, "meta_copies", source), f"{source}.meta_copies"
+        _required(data, "metaCopies", source), f"{source}.metaCopies"
     )
     rollback_limit = _as_int(
-        _required(data, "rollback_limit", source), f"{source}.rollback_limit"
+        _required(data, "rollbackLimit", source), f"{source}.rollbackLimit"
     )
     if payload_offset == 0 or payload_offset % 0x200:
-        raise LayoutError("payload_offset must be non-zero and 0x200 aligned")
+        raise LayoutError("payloadOffset must be non-zero and 0x200 aligned")
     if meta_copies != 2:
-        raise LayoutError("meta_copies must be 2 for the current boot design")
+        raise LayoutError("metaCopies must be 2 for the current boot design")
     if rollback_limit == 0:
-        raise LayoutError("rollback_limit must be non-zero")
+        raise LayoutError("rollbackLimit must be non-zero")
 
     flash = _required(data, "flash", source)
     if not isinstance(flash, dict):
-        raise LayoutError(f"{source}.flash must be a table")
+        raise LayoutError(f"{source}.flash must be an object")
     flash_base = _as_int(_required(flash, "base", f"{source}.flash"), "flash.base")
     flash_size = _as_int(_required(flash, "size", f"{source}.flash"), "flash.size")
     if flash_size == 0:
@@ -222,7 +221,7 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
     if flash_base + flash_size > 0x1_0000_0000:
         raise LayoutError("flash range exceeds 32-bit address space")
     erase_regions = _parse_erase_regions(
-        _required(flash, "erase_regions", f"{source}.flash"), flash_size
+        _required(flash, "eraseRegions", f"{source}.flash"), flash_size
     )
 
     raw_partitions = _required(data, "partitions", source)
@@ -234,7 +233,7 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
     for index, item in enumerate(raw_partitions):
         label = f"{source}.partitions[{index}]"
         if not isinstance(item, dict):
-            raise LayoutError(f"{label} must be a table")
+            raise LayoutError(f"{label} must be an object")
         name = _as_str(_required(item, "name", label), f"{label}.name")
         if name in names:
             raise LayoutError(f"duplicate partition name: {name}")
@@ -260,22 +259,22 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
             if slot not in VALID_SLOTS:
                 raise LayoutError(f"{label}.slot must be 'a' or 'b'")
             expected_id = VALID_SLOTS[slot]
-            if "slot_id" in item:
-                slot_id = _as_int(item["slot_id"], f"{label}.slot_id")
+            if "slotId" in item:
+                slot_id = _as_int(item["slotId"], f"{label}.slotId")
                 if slot_id != expected_id:
                     raise LayoutError(
-                        f"{label}.slot_id {slot_id} does not match slot {slot}"
+                        f"{label}.slotId {slot_id} does not match slot {slot}"
                     )
             else:
                 slot_id = expected_id
             if offset % 0x200:
                 raise LayoutError(f"{label}.offset must be 0x200 aligned")
             if payload_offset >= size:
-                raise LayoutError(f"{label}.size is too small for payload_offset")
+                raise LayoutError(f"{label}.size is too small for payloadOffset")
             link_base = flash_base + offset + payload_offset
             vtor_offset = offset + payload_offset
         else:
-            if "slot" in item or "slot_id" in item:
+            if "slot" in item or "slotId" in item:
                 raise LayoutError(f"{label}.slot is only valid for role app")
             link_base = flash_base + offset
             vtor_offset = 0
@@ -324,7 +323,7 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
     for index, item in enumerate(raw_reserved):
         label = f"{source}.reserved[{index}]"
         if not isinstance(item, dict):
-            raise LayoutError(f"{label} must be a table")
+            raise LayoutError(f"{label} must be an object")
         r_offset = _as_int(_required(item, "offset", label), f"{label}.offset")
         r_size = _as_int(_required(item, "size", label), f"{label}.size")
         r_name = _as_str(item.get("name", f"reserved{index}"), f"{label}.name")
@@ -348,14 +347,14 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
         "flash": {
             "base": flash_base,
             "size": flash_size,
-            "erase_regions": [
+            "eraseRegions": [
                 {"offset": r.offset, "size": r.size, "count": r.count}
                 for r in erase_regions
             ],
         },
-        "payload_offset": payload_offset,
-        "meta_copies": meta_copies,
-        "rollback_limit": rollback_limit,
+        "payloadOffset": payload_offset,
+        "metaCopies": meta_copies,
+        "rollbackLimit": rollback_limit,
         "partitions": [
             {
                 "name": p.name,
@@ -364,7 +363,7 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
                 "size": p.size,
                 "role": p.role,
                 "slot": p.slot,
-                "slot_id": p.slot_id,
+                "slotId": p.slot_id,
             }
             for p in sorted(partitions, key=lambda item: item.offset)
         ],
@@ -399,13 +398,13 @@ def parse_layout(data: dict, source: str = "<layout>") -> Layout:
 def load_layout(path: Path) -> Layout:
     try:
         with path.open("rb") as stream:
-            data = tomllib.load(stream)
+            data = json.load(stream)
     except OSError as exc:
         raise LayoutError(f"cannot read {path}: {exc}") from exc
-    except tomllib.TOMLDecodeError as exc:
-        raise LayoutError(f"invalid TOML in {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise LayoutError(f"invalid JSON in {path}: {exc}") from exc
     if not isinstance(data, dict):
-        raise LayoutError(f"{path}: top-level value must be a table")
+        raise LayoutError(f"{path}: top-level value must be an object")
     return parse_layout(data, str(path))
 
 
@@ -420,11 +419,11 @@ def _manifest(layout: Layout) -> dict:
             continue
         slots[part.slot] = {
             "partition": part.name,
-            "slot_id": part.slot_id,
+            "slotId": part.slot_id,
             "offset": part.offset,
             "size": part.size,
-            "link_base": part.link_base,
-            "vtor_offset": part.vtor_offset,
+            "linkBase": part.link_base,
+            "vtorOffset": part.vtor_offset,
         }
     meta = next(p for p in layout.partitions if p.role == ROLE_META)
     boot = next(p for p in layout.partitions if p.role == ROLE_BOOTLOADER)
@@ -435,16 +434,16 @@ def _manifest(layout: Layout) -> dict:
         "flash": {
             "base": layout.flash_base,
             "size": layout.flash_size,
-            "erase_regions": [
+            "eraseRegions": [
                 {"offset": r.offset, "size": r.size, "count": r.count}
                 for r in layout.erase_regions
             ],
         },
-        "payload_offset": layout.payload_offset,
-        "meta_copies": layout.meta_copies,
-        "rollback_limit": layout.rollback_limit,
+        "payloadOffset": layout.payload_offset,
+        "metaCopies": layout.meta_copies,
+        "rollbackLimit": layout.rollback_limit,
         "fingerprint": layout.fingerprint,
-        "layout_sha256": layout.layout_sha256,
+        "layoutSha256": layout.layout_sha256,
         "partitions": [
             {
                 "name": p.name,
@@ -453,9 +452,9 @@ def _manifest(layout: Layout) -> dict:
                 "size": p.size,
                 "role": p.role,
                 "slot": p.slot,
-                "slot_id": p.slot_id,
-                "link_base": p.link_base,
-                "vtor_offset": p.vtor_offset,
+                "slotId": p.slot_id,
+                "linkBase": p.link_base,
+                "vtorOffset": p.vtor_offset,
             }
             for p in layout.partitions
         ],
@@ -470,7 +469,7 @@ def _manifest(layout: Layout) -> dict:
             "offset": meta.offset,
             "size": meta.size,
             "copies": layout.meta_copies,
-            "erase_unit_count": len(
+            "eraseUnitCount": len(
                 _erase_units_within(meta.offset, meta.size, layout.erase_regions)
                 or []
             ),
@@ -578,7 +577,7 @@ def write_outputs(layout: Layout, out_dir: Path) -> list[Path]:
         "om_bootcfg.h": render_bootcfg_header(layout),
         "boot_partition_data.c": render_partition_data_c(layout),
         "boot_partition_data.h": render_partition_data_h(),
-        "om_layout.json": json.dumps(
+        "om_layout.generated.json": json.dumps(
             _manifest(layout), indent=2, sort_keys=True, ensure_ascii=False
         )
         + "\n",

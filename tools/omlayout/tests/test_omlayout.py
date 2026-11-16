@@ -4,7 +4,6 @@ import copy
 import json
 import sys
 import tempfile
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -18,15 +17,22 @@ import omlayout  # noqa: E402
 class LayoutToolTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.spec_path = REPO_ROOT / "samples" / "boot" / "layout" / "rm-a-board.toml"
+        cls.spec_path = REPO_ROOT / "samples" / "boot" / "layout" / "rm-a-board.json"
         with cls.spec_path.open("rb") as stream:
-            cls.raw = tomllib.load(stream)
+            cls.raw = json.load(stream)
         cls.layout = omlayout.load_layout(cls.spec_path)
 
     def assert_layout_error(self, raw: dict, needle: str) -> None:
         with self.assertRaises(omlayout.LayoutError) as caught:
             omlayout.parse_layout(raw, "<test>")
         self.assertIn(needle, str(caught.exception))
+
+    def test_schema_file_is_valid_json(self) -> None:
+        schema_path = TOOL_DIR / "om_layout.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
+        self.assertEqual(schema["properties"]["schema"]["const"], 1)
+        self.assertEqual(schema["properties"]["metaCopies"]["const"], 2)
 
     def test_sample_is_valid(self) -> None:
         layout = self.layout
@@ -56,7 +62,7 @@ class LayoutToolTest(unittest.TestCase):
                     "om_bootcfg.h",
                     "boot_partition_data.c",
                     "boot_partition_data.h",
-                    "om_layout.json",
+                    "om_layout.generated.json",
                 ],
             )
             for path_a, path_b in zip(outputs_a, outputs_b):
@@ -70,12 +76,12 @@ class LayoutToolTest(unittest.TestCase):
             self.assertIn("#define OM_BOOT_SLOT_B_VTOR_OFFSET 0x00110200u", header)
 
             manifest = json.loads(
-                (Path(first) / "om_layout.json").read_text(encoding="utf-8")
+                (Path(first) / "om_layout.generated.json").read_text(encoding="utf-8")
             )
             self.assertEqual(manifest["board"], "rm-a-board")
             self.assertEqual(manifest["slots"]["a"]["partition"], "app_a")
             self.assertEqual(manifest["slots"]["a"]["size"], 0xF0000)
-            self.assertEqual(manifest["meta"]["erase_unit_count"], 2)
+            self.assertEqual(manifest["meta"]["eraseUnitCount"], 2)
             self.assertEqual(manifest["fingerprint"], self.layout.fingerprint)
 
     def test_linker_scripts_match_layout(self) -> None:
@@ -105,8 +111,8 @@ class LayoutToolTest(unittest.TestCase):
 
     def test_meta_copies_must_be_two(self) -> None:
         raw = copy.deepcopy(self.raw)
-        raw["meta_copies"] = 1
-        self.assert_layout_error(raw, "meta_copies")
+        raw["metaCopies"] = 1
+        self.assert_layout_error(raw, "metaCopies")
 
     def test_app_slot_sizes_must_match(self) -> None:
         raw = copy.deepcopy(self.raw)
@@ -120,7 +126,7 @@ class LayoutToolTest(unittest.TestCase):
 
     def test_payload_offset_is_aligned(self) -> None:
         raw = copy.deepcopy(self.raw)
-        raw["payload_offset"] = 0x100
+        raw["payloadOffset"] = 0x100
         self.assert_layout_error(raw, "0x200")
 
 
