@@ -4,15 +4,15 @@
 The declarative layout file is the single source for:
 - generated om_bootcfg.h / OM_BOOT_PARTITIONS
 - generated boot_partition_data.c / boot_partition_data.h
-- generated om_layout.generated.json
+- generated om_bootcfg.generated.json
 - layout fingerprint
 
 The tool deliberately reads JSON, not C headers. Host tools and linker scripts
 must consume generated JSON or generated linker fragments, never parse C macros.
 
 Usage:
-    python tools/omlayout/omlayout.py generate --spec samples/boot/layout/rm-a-board.json --out build/layout
-    python tools/omlayout/omlayout.py check --spec samples/boot/layout/rm-a-board.json \
+    python tools/omlayout/omlayout.py generate --spec samples/boot/layout/rm-a-board/om_bootcfg.json --out build/layout
+    python tools/omlayout/omlayout.py check --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
         --linker-root platform/bsp/boards/rm-a-board/linker \
         --contract lib/boot/include/boot/image.h
 
@@ -577,7 +577,7 @@ def write_outputs(layout: Layout, out_dir: Path) -> list[Path]:
         "om_bootcfg.h": render_bootcfg_header(layout),
         "boot_partition_data.c": render_partition_data_c(layout),
         "boot_partition_data.h": render_partition_data_h(),
-        "om_layout.generated.json": json.dumps(
+        "om_bootcfg.generated.json": json.dumps(
             _manifest(layout), indent=2, sort_keys=True, ensure_ascii=False
         )
         + "\n",

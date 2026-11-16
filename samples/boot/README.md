@@ -26,8 +26,8 @@ xmake f -c --board=rm-a-board --os=freertos --toolchain=gnu-rm -m debug \
 xmake build app_b
 ```
 
-- 槽基址与容量由工程 `cfg/boards/<board>/om_bootcfg.h` 的分区表给出；链接脚本与 `OM_IMAGE_PAYLOAD_OFFSET` 必须与之同源。
-- 布局单一源示例见 `samples/boot/layout/rm-a-board.json`；`tools/omlayout` 可生成 C 头/分区表/上位机 JSON，并校验现有链接脚本。当前工程壳仍用手写 bootcfg，接入生成器后改为生成物。
+- 当前工程壳的槽基址与容量仍由手写 `cfg/boards/<board>/om_bootcfg.h` 给出；目标源为同目录的 `om_bootcfg.json`，生成的 `om_bootcfg.h` 放 build 目录。
+- 布局单一源示例见 `samples/boot/layout/rm-a-board/om_bootcfg.json`；`tools/omlayout` 可生成 C 头/分区表/上位机 JSON，并校验现有链接脚本。
 - 决策数据为 2 份 meta（`meta` 32K）+ `meta_resv` 16K 提交进度区；`0x10C000` 16K 保留不用。app 侧在无已擦副本时擦除非最新副本（2026-11-16 决定）。
 - bootloader 形态不注入 `lib/services/src`、`lib/systems/src` 与 SEGGER RTT；需要日志时在 boot 自注册子集中显式加入最小后端。
 - app_a/app_b 的向量表偏移由 `OM_BOARD_VECT_TAB_OFFSET` 注入 `bsp_cpu.c`，启动时写入 `SCB->VTOR`。

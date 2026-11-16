@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "om_layout.schema.json",
+  "$id": "om_bootcfg.schema.json",
   "title": "OM boot layout source",
   "type": "object",
   "additionalProperties": false,

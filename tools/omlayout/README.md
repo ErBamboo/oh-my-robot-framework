@@ -10,12 +10,12 @@ JSON 布局声明是唯一事实源；生成的 C 头、分区表与 JSON 不得
 ```sh
 # 生成
 python tools/omlayout/omlayout.py generate \
-    --spec samples/boot/layout/rm-a-board.json \
+    --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
     --out build/layout
 
 # 校验布局、现有链接脚本和镜像契约
 python tools/omlayout/omlayout.py check \
-    --spec samples/boot/layout/rm-a-board.json \
+    --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
     --linker-root platform/bsp/boards/rm-a-board/linker \
     --contract lib/boot/include/boot/image.h
 
@@ -28,7 +28,7 @@ python -m unittest discover -s tools/omlayout/tests -v
 - `om_bootcfg.h`：`OM_BOOT_PARTITIONS`、槽位链接/VTOR 常量、payload offset、
   meta 份数、布局指纹
 - `boot_partition_data.c` / `.h`：const 分区表与 `om_boot_partition_registry()`
-- `om_layout.generated.json`：供 `omimg` / `omhost` 消费的布局清单
+- `om_bootcfg.generated.json`：供 `omimg` / `omhost` 消费的布局清单
 
 ## 源文件格式
 
@@ -39,7 +39,7 @@ python -m unittest discover -s tools/omlayout/tests -v
 `payloadOffset` 属于镜像契约，GUI 中应作为只读派生值展示；`check` 会与
 `image.h` 的 `OM_IMAGE_PAYLOAD_OFFSET` 对拍。
 
-JSON Schema 见 `tools/omlayout/om_layout.schema.json`，供编辑器和上位机表单使用。
+JSON Schema 见 `tools/omlayout/om_bootcfg.schema.json`，供编辑器和上位机表单使用。
 CLI 与未来的上位机使用同一套校验逻辑；GUI 保存同一个 JSON 源文件，不直接生成
 C 头。
 
@@ -54,9 +54,9 @@ C 头。
 ## 文件位置
 
 ```text
-框架示例：       samples/boot/layout/rm-a-board.json
-用户项目源：     cfg/boards/<board>/om_layout.json
-构建生成物：     build/.../gen/om_layout/
+框架示例：       samples/boot/layout/rm-a-board/om_bootcfg.json
+用户项目源：     cfg/boards/<board>/om_bootcfg.json
+构建生成物：     build/.../gen/om_bootcfg/
 ```
 
 ## 边界

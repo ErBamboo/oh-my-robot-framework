@@ -17,7 +17,7 @@ import omlayout  # noqa: E402
 class LayoutToolTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.spec_path = REPO_ROOT / "samples" / "boot" / "layout" / "rm-a-board.json"
+        cls.spec_path = REPO_ROOT / "samples" / "boot" / "layout" / "rm-a-board" / "om_bootcfg.json"
         with cls.spec_path.open("rb") as stream:
             cls.raw = json.load(stream)
         cls.layout = omlayout.load_layout(cls.spec_path)
@@ -28,7 +28,7 @@ class LayoutToolTest(unittest.TestCase):
         self.assertIn(needle, str(caught.exception))
 
     def test_schema_file_is_valid_json(self) -> None:
-        schema_path = TOOL_DIR / "om_layout.schema.json"
+        schema_path = TOOL_DIR / "om_bootcfg.schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertEqual(schema["properties"]["schema"]["const"], 1)
@@ -62,7 +62,7 @@ class LayoutToolTest(unittest.TestCase):
                     "om_bootcfg.h",
                     "boot_partition_data.c",
                     "boot_partition_data.h",
-                    "om_layout.generated.json",
+                    "om_bootcfg.generated.json",
                 ],
             )
             for path_a, path_b in zip(outputs_a, outputs_b):
@@ -76,7 +76,7 @@ class LayoutToolTest(unittest.TestCase):
             self.assertIn("#define OM_BOOT_SLOT_B_VTOR_OFFSET 0x00110200u", header)
 
             manifest = json.loads(
-                (Path(first) / "om_layout.generated.json").read_text(encoding="utf-8")
+                (Path(first) / "om_bootcfg.generated.json").read_text(encoding="utf-8")
             )
             self.assertEqual(manifest["board"], "rm-a-board")
             self.assertEqual(manifest["slots"]["a"]["partition"], "app_a")
