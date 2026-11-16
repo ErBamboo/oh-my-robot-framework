@@ -62,30 +62,24 @@ OmBool om_boot_meta_entry_valid(const OmBootMetaEntry *entry)
     return OM_TRUE;
 }
 
-static OmRet read_copy(const OmBootMeta *meta, uint32_t index, OmBootMetaEntry *entry,
-                       OmBootMetaCopyState *state)
+/** 只读原始 32 字节，不做字段或 CRC 判定。 */
+static OmRet read_copy_raw(const OmBootMeta *meta, uint32_t index, OmBootMetaEntry *entry)
 {
-    OmRet ret;
+    return om_partition_read(&meta->partition, meta->copyOffset[index], entry, sizeof(*entry));
+}
 
-    ret = om_partition_read(&meta->partition, meta->copyOffset[index], entry, sizeof(*entry));
-    if (ret != OM_OK)
-    {
-        return ret;
-    }
-
+/** 对已读出的 entry 做空白/有效/损坏分类。 */
+static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry)
+{
     if (entry_is_erased(entry) == OM_TRUE)
     {
-        *state = OM_BOOT_META_COPY_ERASED;
+        return OM_BOOT_META_COPY_ERASED;
     }
-    else if (om_boot_meta_entry_valid(entry) == OM_TRUE)
+    if (om_boot_meta_entry_valid(entry) == OM_TRUE)
     {
-        *state = OM_BOOT_META_COPY_VALID;
+        return OM_BOOT_META_COPY_VALID;
     }
-    else
-    {
-        *state = OM_BOOT_META_COPY_INVALID;
-    }
-    return OM_OK;
+    return OM_BOOT_META_COPY_INVALID;
 }
 
 OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
@@ -106,7 +100,7 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
 
     memset(meta, 0, sizeof(*meta));
     meta->partition = *partition;
-    /* 分区可以大于副本集合；模块只使用前 N 个独立的擦除单位。 */
+    /* 分区可以大于副本集合；模块只使用前 N 个独立单位，多余单位不读、不擦、不校验。 */
     meta->copyCount = OM_BOOT_META_COPIES;
 
     for (i = 0u; i < OM_BOOT_META_COPIES; i++)
@@ -145,12 +139,13 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
     {
         OmBootMetaEntry candidate;
         OmBootMetaCopyState state;
-        OmRet ret = read_copy(meta, i, &candidate, &state);
+        OmRet ret = read_copy_raw(meta, i, &candidate);
 
         if (ret != OM_OK)
         {
             return ret;
         }
+        state = classify_copy(&candidate);
         if (state == OM_BOOT_META_COPY_VALID)
         {
             if (found == OM_FALSE || candidate.seq > best.seq)
@@ -223,11 +218,12 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 
     for (i = 0u; i < meta->copyCount; i++)
     {
-        ret = read_copy(meta, i, &copies[i], &states[i]);
+        ret = read_copy_raw(meta, i, &copies[i]);
         if (ret != OM_OK)
         {
             return ret;
         }
+        states[i] = classify_copy(&copies[i]);
         if (states[i] == OM_BOOT_META_COPY_VALID &&
             (has_latest == OM_FALSE || copies[i].seq > latest_seq))
         {
@@ -295,12 +291,13 @@ OmRet om_boot_meta_cleanup(OmBootMeta *meta)
     for (i = 0u; i < meta->copyCount; i++)
     {
         OmBootMetaEntry candidate;
-        OmRet ret = read_copy(meta, i, &candidate, &states[i]);
+        OmRet ret = read_copy_raw(meta, i, &candidate);
 
         if (ret != OM_OK)
         {
             return ret;
         }
+        states[i] = classify_copy(&candidate);
         if (states[i] == OM_BOOT_META_COPY_VALID &&
             (found == OM_FALSE || candidate.seq > latest_seq))
         {

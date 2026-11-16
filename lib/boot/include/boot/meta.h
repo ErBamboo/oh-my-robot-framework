@@ -113,7 +113,8 @@ typedef struct OmBootMeta {
  * @return OM_OK / OM_ERR_INVALID_ARG（参数为空、擦除单位数少于 OM_BOOT_META_COPIES、
  *         单位容不下 entry）
  * @note 模块使用分区的前 OM_BOOT_META_COPIES 个擦除单位；分区可以更大，多余单位
- *       由工程保留。每个擦除单位是一份副本，entry 放在单位头部；分区层负责扇区对齐。
+ *       由工程保留，不参与读写与校验。每个擦除单位是一份副本，entry 放在单位头部；
+ *       分区层负责扇区对齐。
  */
 OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition);
 
