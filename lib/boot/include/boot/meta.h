@@ -7,8 +7,9 @@
  * 最后写。
  *
  * 决策区由若干个独立的擦除单位组成，每个单位头部放一条 entry。写新 entry
- * 前，若有已擦单位则直接写；否则擦除非最新单位，保留最新有效 entry。擦除后
- * 立即写入，掉电时只可能损坏目标单位，最新有效 entry 仍然可读。
+ * 前，若有已擦单位则直接写；否则优先回收损坏单位，最后擦除最旧的非最新有效
+ * 单位，保留最新有效 entry。擦除后立即写入，掉电时只可能损坏目标单位，最新
+ * 有效 entry 仍然可读。
  *
  * 本模块不解释布局地址：擦除单位由分区层给出，entry 只认分区内偏移。
  */
@@ -30,12 +31,12 @@
 extern "C" {
 #endif
 
-/** 决策副本数。默认两份，工程可在 bootcfg 中覆写。 */
+/** 决策副本数。当前固定两份；其他值在编译期拒绝。 */
 #ifndef OM_BOOT_META_COPIES
 #define OM_BOOT_META_COPIES 2u
 #endif
 
-_Static_assert(OM_BOOT_META_COPIES >= 2u, "决策数据至少需要两份副本");
+_Static_assert(OM_BOOT_META_COPIES == 2u, "决策数据当前只支持两份副本");
 
 /** seq 的擦除/无效哨兵，永不写入。 */
 #define OM_BOOT_META_SEQ_INVALID 0xFFFFFFFFu
@@ -135,8 +136,9 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
  * @param entry 输入字段；seq 与 crc32 由本函数填写
  * @return OM_OK / OM_ERR_INVALID_ARG / OM_ERR_OVERFLOW（seq 耗尽）/ 分区错误
  *
- * 写入前选择目标副本：优先已擦副本；否则擦除非最新副本。永不擦最新有效副本。
- * 写入顺序为前 28 字节、再写 CRC；CRC 未写完时该 entry 无效。
+ * 写入前选择目标副本：优先已擦副本，其次损坏副本，最后擦除最旧的非最新有效
+ * 副本。永不擦最新有效副本。写入顺序为前 28 字节、再写 CRC；CRC 未写完时该
+ * entry 无效。
  */
 OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry);
 

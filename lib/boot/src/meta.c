@@ -199,11 +199,17 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
     return OM_OK;
 }
 
-/** 选择写入目标：优先空白副本，其次损坏副本，最后擦除较旧的有效副本。 */
-static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaCopyState *states,
-                              uint32_t latest_index)
+/** 选择写入目标：优先空白副本，其次损坏副本，最后选最旧的非最新有效副本。 */
+static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaEntry *copies,
+                              const OmBootMetaCopyState *states, uint32_t latest_index)
 {
     uint32_t i;
+    uint32_t oldest;
+
+    if (latest_index >= meta->copyCount)
+    {
+        return meta->copyCount;
+    }
 
     for (i = 0u; i < meta->copyCount; i++)
     {
@@ -220,11 +226,24 @@ static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaCopyState 
         }
     }
 
-    /* 所有副本都有效：取 latest 的下一个索引；副本数不少于 2 时它必不是 latest。 */
-    return (latest_index + 1u) % meta->copyCount;
+    /* 所有副本都有效：排除最新项，按 seq 选最旧；两份时就是另一份。 */
+    oldest = meta->copyCount;
+    for (i = 0u; i < meta->copyCount; i++)
+    {
+        if (i == latest_index || states[i] != OM_BOOT_META_COPY_VALID)
+        {
+            continue;
+        }
+        if (oldest == meta->copyCount || copies[i].seq < copies[oldest].seq)
+        {
+            oldest = i;
+        }
+    }
+
+    return oldest;
 }
 
-/** 写一条新 entry；必要时擦除非最新副本，CRC 最后写。 */
+/** 写一条新 entry；必要时擦除目标副本，CRC 最后写。 */
 OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 {
     OmBootMetaEntry copies[OM_BOOT_META_COPIES];
@@ -259,7 +278,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         return OM_ERR_OVERFLOW;
     }
 
-    target = choose_target(meta, states, latest_index);
+    target = choose_target(meta, copies, states, latest_index);
     if (target >= meta->copyCount)
     {
         return OM_ERR_INVALID_ARG;
