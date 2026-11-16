@@ -54,6 +54,26 @@ jobs:
       - name: Test compatibility tools
         run: python3 -m unittest discover -s tools/omcheck/tests -v
 
+      - name: Test boot layout tools
+        run: python3 -m unittest discover -s tools/omlayout/tests -v
+
+      - name: Check boot layout and linkers
+        run: |
+          python3 tools/omlayout/omlayout.py generate \
+            --spec samples/boot/layout/rm-a-board.toml \
+            --out "$RUNNER_TEMP/om_layout"
+          test -s "$RUNNER_TEMP/om_layout/om_bootcfg.h"
+          test -s "$RUNNER_TEMP/om_layout/boot_partition_data.c"
+          test -s "$RUNNER_TEMP/om_layout/om_layout.json"
+          gcc -std=c11 -fsyntax-only \
+            -I lib/include -I lib/drivers/include -I lib/data_struct/include \
+            -I lib/osal/include -I platform/osal/none -I "$RUNNER_TEMP/om_layout" \
+            "$RUNNER_TEMP/om_layout/boot_partition_data.c"
+          python3 tools/omlayout/omlayout.py check \
+            --spec samples/boot/layout/rm-a-board.toml \
+            --linker-root platform/bsp/boards/rm-a-board/linker \
+            --contract lib/boot/include/boot/image.h
+
       - name: Render compatibility views
         run: |
           python3 tools/omcheck/compat_render.py --compat tools/omcheck/compat.yaml \

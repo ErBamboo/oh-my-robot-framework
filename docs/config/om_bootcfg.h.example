@@ -16,6 +16,9 @@
  *   om_partition_table[] / om_partition_count；本模板用 X-macro 列表定义之，
  *   由随附数据文件（见文件尾注释）实例化。条目须满足器件几何（扇区对齐、
  *   不越器件容量）——配置错误在操作期显式报错，不静默扩擦。
+ *
+ * 过渡说明：布局单一源改为项目布局声明（见 samples/boot/layout/），由
+ * tools/omlayout 生成本头和分区表；新工程不要手写本文件的内容。
  */
 
 #ifndef OM_BOOTCFG_H
