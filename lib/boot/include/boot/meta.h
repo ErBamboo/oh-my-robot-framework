@@ -100,10 +100,10 @@ _Static_assert(offsetof(OmBootMetaEntry, crc32) == 28u, "字段偏移与契约�
  * 持有一个分区句柄和每个副本的偏移与大小。分区句柄与注册表须比上下文活得久。
  */
 typedef struct OmBootMeta {
-    OmPartitionHandle partition;
-    uint32_t copyCount;
-    uint32_t copyOffset[OM_BOOT_META_COPIES];
-    uint32_t copySize[OM_BOOT_META_COPIES];
+    OmPartitionHandle partition;              /**< 决策分区句柄，须比上下文活得久 */
+    uint32_t copyCount;                       /**< 副本数，等于分区擦除单位数 */
+    uint32_t copyOffset[OM_BOOT_META_COPIES]; /**< 每个副本的分区内偏移 */
+    uint32_t copySize[OM_BOOT_META_COPIES];   /**< 每个副本的擦除单位大小 */
 } OmBootMeta;
 
 /**
