@@ -35,6 +35,8 @@ extern "C" {
 #define OM_BOOT_META_COPIES 2u
 #endif
 
+_Static_assert(OM_BOOT_META_COPIES >= 2u, "决策数据至少需要两份副本");
+
 /** seq 的擦除/无效哨兵，永不写入。 */
 #define OM_BOOT_META_SEQ_INVALID 0xFFFFFFFFu
 
