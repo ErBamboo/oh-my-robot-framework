@@ -2,9 +2,9 @@
  * @file   boot_meta_test.c
  * @brief  启动决策数据读写 host 测试（双份轮转、擦除与掉电破坏）
  *
- * 夹具：16K 均匀扇区的模拟 flash，meta 分区 = 2 个擦除单位。测试按 Plan A
- * 的写纪律覆盖：空分区、单份写入、双份都有效、写者擦除非最新副本、boot 清理、
- * 半写 entry、擦除失败、写入失败与 seq 推进。
+ * 夹具：16K 均匀扇区的模拟 flash，meta 分区 = 3 个擦除单位，模块只使用前 2 个。
+ * 测试按 Plan A 的写纪律覆盖：空分区、单份写入、双份都有效、写者擦除非最新副本、
+ * boot 清理、半写 entry、擦除失败、写入失败与 seq 推进；额外擦除单位必须保持不动。
  *
  * 退出码 0=全绿；非 0=有 FAIL。
  */
@@ -22,7 +22,7 @@
 #include "flash_sim.h"
 
 #define SECT_SIZE 0x4000u
-#define META_CAP (SECT_SIZE * 2u)
+#define META_CAP (SECT_SIZE * 3u)
 
 static int g_pass;
 static int g_fail;
@@ -107,13 +107,13 @@ static void write_raw_entry(uint32_t copy, OmBootMetaEntry *entry)
     (void)raw_write(g_meta.copyOffset[copy], entry, sizeof(*entry));
 }
 
-static int copy_is_erased(uint32_t copy)
+static int offset_is_erased(uint32_t offset)
 {
     OmBootMetaEntry entry;
     const uint8_t *bytes = (const uint8_t *)&entry;
     size_t i;
 
-    if (raw_read(g_meta.copyOffset[copy], &entry, sizeof(entry)) != OM_OK)
+    if (raw_read(offset, &entry, sizeof(entry)) != OM_OK)
     {
         return 0;
     }
@@ -127,6 +127,11 @@ static int copy_is_erased(uint32_t copy)
     return 1;
 }
 
+static int copy_is_erased(uint32_t copy)
+{
+    return offset_is_erased(g_meta.copyOffset[copy]);
+}
+
 static void test_init_and_empty(void)
 {
     OmBootMetaEntry entry;
@@ -137,6 +142,7 @@ static void test_init_and_empty(void)
           "copies start at erase-unit boundaries");
     CHECK(g_meta.copySize[0] == SECT_SIZE && g_meta.copySize[1] == SECT_SIZE,
           "each copy owns one erase unit");
+    CHECK(offset_is_erased(SECT_SIZE * 2u) == 1, "extra erase unit remains untouched");
     CHECK(om_boot_meta_read(&g_meta, &entry, NULL) == OM_ERR_NOT_FOUND,
           "blank partition has no valid entry");
 }

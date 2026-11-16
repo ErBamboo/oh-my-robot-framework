@@ -9,6 +9,14 @@
 
 #include "algorithm/checksum/crc32.h"
 
+/** 单个副本的读取分类。 */
+typedef enum OmBootMetaCopyState
+{
+    OM_BOOT_META_COPY_ERASED = 0,  /**< 全 0xFF，可直接写 */
+    OM_BOOT_META_COPY_VALID = 1,   /**< CRC 与字段校验通过 */
+    OM_BOOT_META_COPY_INVALID = 2, /**< 半写或损坏，写前须擦除 */
+} OmBootMetaCopyState;
+
 static uint32_t meta_crc32(const OmBootMetaEntry *entry)
 {
     return om_crc32_iso_hdlc(OM_CRC32_INIT, entry, offsetof(OmBootMetaEntry, crc32));
@@ -54,8 +62,8 @@ OmBool om_boot_meta_entry_valid(const OmBootMetaEntry *entry)
     return OM_TRUE;
 }
 
-static OmRet read_copy(const OmBootMeta *meta, uint32_t index, OmBootMetaEntry *entry, OmBool *valid,
-                       OmBool *erased)
+static OmRet read_copy(const OmBootMeta *meta, uint32_t index, OmBootMetaEntry *entry,
+                       OmBootMetaCopyState *state)
 {
     OmRet ret;
 
@@ -65,8 +73,18 @@ static OmRet read_copy(const OmBootMeta *meta, uint32_t index, OmBootMetaEntry *
         return ret;
     }
 
-    *erased = entry_is_erased(entry);
-    *valid = (*erased == OM_FALSE) && om_boot_meta_entry_valid(entry);
+    if (entry_is_erased(entry) == OM_TRUE)
+    {
+        *state = OM_BOOT_META_COPY_ERASED;
+    }
+    else if (om_boot_meta_entry_valid(entry) == OM_TRUE)
+    {
+        *state = OM_BOOT_META_COPY_VALID;
+    }
+    else
+    {
+        *state = OM_BOOT_META_COPY_INVALID;
+    }
     return OM_OK;
 }
 
@@ -81,17 +99,17 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
     }
 
     count = om_partition_erase_unit_count(partition);
-    if (count != OM_BOOT_META_COPIES)
+    if (count < OM_BOOT_META_COPIES)
     {
         return OM_ERR_INVALID_ARG;
     }
 
     memset(meta, 0, sizeof(*meta));
     meta->partition = *partition;
-    /* 已校验与编译期契约一致；这里用契约值保持数组尺寸与运行期计数同源。 */
+    /* 分区可以大于副本集合；模块只使用前 N 个独立的擦除单位。 */
     meta->copyCount = OM_BOOT_META_COPIES;
 
-    for (i = 0u; i < count; i++)
+    for (i = 0u; i < OM_BOOT_META_COPIES; i++)
     {
         OmPartitionEraseUnit unit;
         OmRet ret = om_partition_erase_unit_at(partition, i, &unit);
@@ -126,15 +144,14 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
     for (i = 0u; i < meta->copyCount; i++)
     {
         OmBootMetaEntry candidate;
-        OmBool valid;
-        OmBool erased;
-        OmRet ret = read_copy(meta, i, &candidate, &valid, &erased);
+        OmBootMetaCopyState state;
+        OmRet ret = read_copy(meta, i, &candidate, &state);
 
         if (ret != OM_OK)
         {
             return ret;
         }
-        if (valid == OM_TRUE)
+        if (state == OM_BOOT_META_COPY_VALID)
         {
             if (found == OM_FALSE || candidate.seq > best.seq)
             {
@@ -159,36 +176,34 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t
     return OM_OK;
 }
 
-static uint32_t choose_target(const OmBootMeta *meta, const OmBool *valid, const OmBool *erased,
-                              uint32_t latest_index, OmBool has_latest)
+static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaCopyState *states,
+                              uint32_t latest_index)
 {
     uint32_t i;
 
     for (i = 0u; i < meta->copyCount; i++)
     {
-        if (erased[i] == OM_TRUE)
+        if (states[i] == OM_BOOT_META_COPY_ERASED)
         {
             return i;
         }
     }
     for (i = 0u; i < meta->copyCount; i++)
     {
-        if (valid[i] == OM_FALSE)
+        if (states[i] == OM_BOOT_META_COPY_INVALID)
         {
             return i;
         }
     }
 
     /* 所有副本都有效：选一个不是最新的副本；双副本时即另一个。 */
-    (void)has_latest;
     return (latest_index + 1u) % meta->copyCount;
 }
 
 OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 {
     OmBootMetaEntry copies[OM_BOOT_META_COPIES];
-    OmBool valid[OM_BOOT_META_COPIES];
-    OmBool erased[OM_BOOT_META_COPIES];
+    OmBootMetaCopyState states[OM_BOOT_META_COPIES];
     OmBool has_latest = OM_FALSE;
     uint32_t latest_index = 0u;
     uint32_t latest_seq = 0u;
@@ -208,12 +223,13 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 
     for (i = 0u; i < meta->copyCount; i++)
     {
-        ret = read_copy(meta, i, &copies[i], &valid[i], &erased[i]);
+        ret = read_copy(meta, i, &copies[i], &states[i]);
         if (ret != OM_OK)
         {
             return ret;
         }
-        if (valid[i] == OM_TRUE && (has_latest == OM_FALSE || copies[i].seq > latest_seq))
+        if (states[i] == OM_BOOT_META_COPY_VALID &&
+            (has_latest == OM_FALSE || copies[i].seq > latest_seq))
         {
             latest_index = i;
             latest_seq = copies[i].seq;
@@ -227,13 +243,13 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
         return OM_ERR_OVERFLOW;
     }
 
-    target = choose_target(meta, valid, erased, latest_index, has_latest);
+    target = choose_target(meta, states, latest_index);
     if (target >= meta->copyCount)
     {
         return OM_ERR_INVALID_ARG;
     }
 
-    if (erased[target] == OM_FALSE)
+    if (states[target] != OM_BOOT_META_COPY_ERASED)
     {
         ret = om_partition_erase_range(&meta->partition, meta->copyOffset[target],
                                        meta->copySize[target]);
@@ -265,7 +281,7 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
 
 OmRet om_boot_meta_cleanup(OmBootMeta *meta)
 {
-    OmBool erased[OM_BOOT_META_COPIES];
+    OmBootMetaCopyState states[OM_BOOT_META_COPIES];
     OmBool found = OM_FALSE;
     uint32_t latest_index = 0u;
     uint32_t latest_seq = 0u;
@@ -279,14 +295,14 @@ OmRet om_boot_meta_cleanup(OmBootMeta *meta)
     for (i = 0u; i < meta->copyCount; i++)
     {
         OmBootMetaEntry candidate;
-        OmBool valid;
-        OmRet ret = read_copy(meta, i, &candidate, &valid, &erased[i]);
+        OmRet ret = read_copy(meta, i, &candidate, &states[i]);
 
         if (ret != OM_OK)
         {
             return ret;
         }
-        if (valid == OM_TRUE && (found == OM_FALSE || candidate.seq > latest_seq))
+        if (states[i] == OM_BOOT_META_COPY_VALID &&
+            (found == OM_FALSE || candidate.seq > latest_seq))
         {
             latest_index = i;
             latest_seq = candidate.seq;
@@ -300,7 +316,7 @@ OmRet om_boot_meta_cleanup(OmBootMeta *meta)
         {
             continue;
         }
-        if (erased[i] == OM_FALSE)
+        if (states[i] != OM_BOOT_META_COPY_ERASED)
         {
             OmRet ret = om_partition_erase_range(&meta->partition, meta->copyOffset[i],
                                                  meta->copySize[i]);

@@ -101,7 +101,7 @@ _Static_assert(offsetof(OmBootMetaEntry, crc32) == 28u, "字段偏移与契约�
  */
 typedef struct OmBootMeta {
     OmPartitionHandle partition;              /**< 决策分区句柄，须比上下文活得久 */
-    uint32_t copyCount;                       /**< 副本数，等于分区擦除单位数 */
+    uint32_t copyCount;                       /**< 逻辑副本数，等于 OM_BOOT_META_COPIES */
     uint32_t copyOffset[OM_BOOT_META_COPIES]; /**< 每个副本的分区内偏移 */
     uint32_t copySize[OM_BOOT_META_COPIES];   /**< 每个副本的擦除单位大小 */
 } OmBootMeta;
@@ -110,9 +110,10 @@ typedef struct OmBootMeta {
  * @brief 绑定决策分区
  * @param meta      上下文
  * @param partition 已打开的决策分区句柄（meta 或 meta0 等，由工程布局给出）
- * @return OM_OK / OM_ERR_INVALID_ARG（参数为空、擦除单位数不是 OM_BOOT_META_COPIES、
+ * @return OM_OK / OM_ERR_INVALID_ARG（参数为空、擦除单位数少于 OM_BOOT_META_COPIES、
  *         单位容不下 entry）
- * @note 每个擦除单位是一份副本，entry 放在单位头部；分区层负责扇区对齐。
+ * @note 模块使用分区的前 OM_BOOT_META_COPIES 个擦除单位；分区可以更大，多余单位
+ *       由工程保留。每个擦除单位是一份副本，entry 放在单位头部；分区层负责扇区对齐。
  */
 OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition);
 
