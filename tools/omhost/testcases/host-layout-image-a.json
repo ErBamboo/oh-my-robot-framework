@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "id": "host-layout-image-a",
+  "name": "布局校验 + A 槽镜像打包/检查",
+  "description": "不接硬件：校验布局源，生成 A 槽样例镜像并用同一布局复检。",
+  "steps": [
+    {
+      "type": "layout_validate",
+      "layout": "samples/boot/layout/rm-a-board/om_bootcfg.json"
+    },
+    {
+      "type": "image_pack",
+      "layout": "samples/boot/layout/rm-a-board/om_bootcfg.json",
+      "slot": "a",
+      "version": "1.0.0",
+      "algo": "crc32",
+      "payloadText": "OMR boot image sample A",
+      "output": "sample_a.img.bin"
+    },
+    {
+      "type": "image_inspect",
+      "layout": "samples/boot/layout/rm-a-board/om_bootcfg.json",
+      "image": "sample_a.img.bin"
+    }
+  ]
+}

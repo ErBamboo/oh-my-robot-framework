@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "ota-resume-b",
+  "name": "B 槽下载中断后续传（待协议）",
+  "description": "冷启动进入后门，下载中断后重新握手并从擦除单元边界续传。串口下载与续传协议由 OMR-49 定义后启用。",
+  "blocked": "OMR-49",
+  "steps": [
+    {
+      "type": "image_pack",
+      "layout": "samples/boot/layout/rm-a-board/om_bootcfg.json",
+      "slot": "b",
+      "version": "1.0.1",
+      "payloadText": "OMR resume sample B",
+      "output": "resume_b.img.bin"
+    },
+    { "type": "relay_cycle", "channel": 2, "offMs": 1000, "onMs": 500 },
+    { "type": "delay", "ms": 500 },
+    { "type": "serial_download", "slot": "b", "image": "resume_b.img.bin" },
+    { "type": "delay", "ms": 500 },
+    { "type": "serial_download", "slot": "b", "image": "resume_b.img.bin" }
+  ]
+}

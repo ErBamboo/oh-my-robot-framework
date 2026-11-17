@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "id": "bench-jlink-reset",
+  "name": "J-Link 软复位",
+  "description": "通过 SWD 发 SYSRESETREQ 复位并恢复运行；不改变 flash。",
+  "steps": [
+    { "type": "jlink_reset", "run": true },
+    { "type": "delay", "ms": 300 }
+  ]
+}

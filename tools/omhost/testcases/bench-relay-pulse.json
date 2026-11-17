@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "bench-relay-pulse",
+  "name": "继电器复位脉冲（CH1）",
+  "description": "先释放 CH1，吸合 150 ms 后释放，再确认 CH1 已释放。CH1 接 NRST-GND 时即一次复位；未接线时仅作继电器自检。",
+  "steps": [
+    { "type": "relay_set", "channel": 1, "state": "off" },
+    { "type": "relay_pulse", "channel": 1, "ms": 150 },
+    { "type": "delay", "ms": 500 },
+    { "type": "relay_query", "channel": 1, "expect": "off" }
+  ]
+}

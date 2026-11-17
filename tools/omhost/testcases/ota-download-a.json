@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "ota-download-a",
+  "name": "串口下载到 A 槽（待协议）",
+  "description": "生成 A 槽镜像，复位进入后门窗口并通过串口下载。串口下载协议由 OMR-49 定义后启用。",
+  "blocked": "OMR-49",
+  "steps": [
+    {
+      "type": "image_pack",
+      "layout": "samples/boot/layout/rm-a-board/om_bootcfg.json",
+      "slot": "a",
+      "version": "1.0.1",
+      "payloadText": "OMR download sample A",
+      "output": "download_a.img.bin"
+    },
+    { "type": "relay_pulse", "channel": 1, "ms": 150 },
+    { "type": "serial_download", "slot": "a", "image": "download_a.img.bin" }
+  ]
+}

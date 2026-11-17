@@ -44,49 +44,133 @@
       repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
   }
 
-  .shell {
-    max-width: 1180px;
+  /* ---------- 控制台骨架 ---------- */
+  .app {
+    max-width: 1320px;
+    min-height: 100vh;
     margin: 0 auto;
-    padding: 22px 26px 60px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+    display: grid;
+    grid-template-columns: 208px minmax(0, 1fr);
   }
-
-  /* ---------- 顶栏 ---------- */
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
-    animation: rise .5s cubic-bezier(.2,.7,.2,1) both;
+  .rail {
+    position: sticky; top: 0; align-self: start;
+    height: 100vh; overflow-y: auto;
+    padding: 22px 14px 18px;
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 22px;
+    background:
+      linear-gradient(180deg, rgba(255,180,84,.055), transparent 42%),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.012) 0 1px, transparent 1px 4px),
+      #0b0f10;
   }
-  .brand {
-    font-family: var(--sans);
-    font-weight: 700;
-    font-size: 25px;
-    letter-spacing: .22em;
-    color: var(--fg);
-    text-transform: uppercase;
+  .rail-brand {
+    font-family: var(--sans); font-weight: 700; font-size: 27px;
+    letter-spacing: .18em; color: var(--fg); text-transform: uppercase;
   }
-  .brand em { color: var(--amber); font-style: normal; }
-  .tagline { color: var(--dim-2); font-size: 11.5px; letter-spacing: .06em; }
+  .rail-brand em { color: var(--amber); font-style: normal; }
+  .rail-sub {
+    margin-top: 2px; font-size: 9.5px; letter-spacing: .2em;
+    color: var(--dim-2); text-transform: uppercase;
+  }
+  .rail-nav { display: flex; flex-direction: column; gap: 5px; }
+  .rail-nav button {
+    display: grid; grid-template-columns: 24px 1fr; grid-template-rows: auto auto;
+    column-gap: 8px; text-align: left;
+    padding: 9px 10px 9px 11px;
+    background: transparent; cursor: pointer;
+    border: 1px solid transparent; border-left: 2px solid transparent;
+    border-radius: 0 var(--r) var(--r) 0;
+    transition: background .18s, border-color .18s;
+  }
+  .rail-nav .idx {
+    grid-row: 1 / span 2; padding-top: 3px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--dim-2);
+  }
+  .rail-nav .lbl {
+    font-family: var(--sans); font-size: 15px; letter-spacing: .14em; color: var(--dim);
+  }
+  .rail-nav .hint { font-size: 10px; color: var(--dim-2); letter-spacing: .02em; }
+  .rail-nav button:hover { background: var(--panel); border-left-color: var(--line-2); }
+  .rail-nav button.active {
+    background: linear-gradient(90deg, rgba(255,180,84,.13), transparent 88%);
+    border-left-color: var(--amber);
+  }
+  .rail-nav button.active .idx { color: var(--amber); }
+  .rail-nav button.active .lbl { color: var(--amber); }
+  .rail-nav button.active .hint { color: var(--dim); }
+  .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
   .contract {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11.5px;
-    color: var(--dim);
-    border: 1px solid var(--line-2);
-    border-radius: var(--r);
-    padding: 4px 9px;
-    background: var(--panel);
+    display: flex; align-items: flex-start; gap: 7px;
+    font-size: 10.5px; line-height: 1.5; color: var(--dim);
+    border: 1px solid var(--line-2); border-radius: var(--r);
+    padding: 7px 8px; background: var(--panel);
   }
+  .contract .dot { margin-top: 4px; }
+  #ctext { overflow-wrap: anywhere; }
+  .rail-local {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 9.5px; letter-spacing: .12em; color: var(--dim-2); text-transform: uppercase;
+  }
+  .rail-local::before { content: ""; width: 16px; height: 1px; background: var(--line-2); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dim-2); flex: none; }
   .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(95,211,154,.55); }
   .dot.off { background: var(--fail); box-shadow: 0 0 8px rgba(255,107,107,.5); }
+
+  .stage {
+    min-width: 0; padding: 22px 26px 64px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .topbar {
+    display: flex; align-items: baseline; gap: 16px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+  .crumb {
+    font-family: var(--sans); font-size: 12px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--amber);
+  }
+  .top-note {
+    margin-left: auto; font-size: 10px; letter-spacing: .1em;
+    color: var(--dim-2); text-transform: uppercase;
+  }
+  .view { display: none; flex-direction: column; gap: 18px; min-width: 0; }
+  .view.active { display: flex; animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+  .view-head { position: relative; padding: 2px 0 0; }
+  .view-head .eyebrow {
+    font-size: 10px; letter-spacing: .22em; color: var(--amber); text-transform: uppercase;
+  }
+  .view-head h1 {
+    margin: 5px 0; font-family: var(--sans); font-weight: 700;
+    font-size: 30px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg);
+  }
+  .view-head p { margin: 0; max-width: 760px; color: var(--dim); font-size: 12.5px; line-height: 1.7; }
+  .view-head::after {
+    content: attr(data-index); position: absolute; right: 4px; top: -18px;
+    font-family: var(--sans); font-weight: 700; font-size: 92px; line-height: 1;
+    color: rgba(255,180,84,.045); pointer-events: none;
+  }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .rail {
+      position: static; height: auto; border-right: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 18px 12px; gap: 12px;
+    }
+    .rail-nav { flex-direction: row; overflow-x: auto; gap: 4px; }
+    .rail-nav button {
+      min-width: 154px; border-left: 0; border-bottom: 2px solid transparent;
+      border-radius: var(--r) var(--r) 0 0;
+    }
+    .rail-nav button.active {
+      border-left-color: transparent; border-bottom-color: var(--amber);
+      background: linear-gradient(0deg, rgba(255,180,84,.12), transparent 85%);
+    }
+    .rail-foot { margin-top: 0; flex-direction: row; align-items: center; }
+    .rail-foot .contract { flex: 1; }
+    .rail-local { display: none; }
+    .stage { padding: 18px 16px 52px; }
+    .top-note { display: none; }
+    .view-head::after { font-size: 66px; top: -10px; }
+  }
 
   /* ---------- 布局条 ---------- */
   .map {
@@ -152,6 +236,7 @@
     animation: rise .5s .12s cubic-bezier(.2,.7,.2,1) both;
   }
   .card > h2 {
+    display: flex; align-items: baseline; gap: 8px;
     margin: 0;
     padding: 10px 14px;
     font-family: var(--sans); font-weight: 600;
@@ -243,6 +328,89 @@
 
   .placeholder { color: var(--dim-2); padding: 26px 4px; text-align: center; font-size: 12.5px; }
 
+  /* ---------- 布局源编辑 ---------- */
+  .card > h2 .src-path {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0; text-transform: none; color: var(--dim-2);
+    max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .lgrid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px 14px; margin-bottom: 16px;
+  }
+  .fld label {
+    display: block; font-family: var(--sans); font-size: 11px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px;
+  }
+  .lhead {
+    display: flex; align-items: baseline; gap: 10px;
+    margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid var(--line);
+    font-family: var(--sans); letter-spacing: .12em; text-transform: uppercase;
+    font-size: 11.5px; color: var(--dim);
+  }
+  .lhead b { color: var(--fg); font-weight: 600; }
+  .lhead span { letter-spacing: 0; text-transform: none; font-size: 11px; color: var(--dim-2); }
+  .lhead .mini { margin-left: auto; }
+  .mini {
+    font-family: var(--mono); font-size: 11px; padding: 3px 8px;
+    background: var(--panel-2); color: var(--dim); border: 1px solid var(--line-2);
+    border-radius: var(--r); cursor: pointer; transition: all .15s;
+    white-space: nowrap;
+  }
+  .mini:hover { border-color: var(--amber-2); color: var(--amber); }
+  #testPanel table.ltable td:last-child { width: 68px; text-align: right; white-space: nowrap; }
+  #testPanel .run-test { min-width: 52px; }
+  #testPanel .dim { font-size: 10.8px; line-height: 1.45; }
+  table.ltable td { padding: 5px 6px; }
+  table.ltable th { font-size: 10.5px; }
+  table.ltable td.del { width: 58px; text-align: right; }
+  .lstatus {
+    margin-top: 12px; padding: 8px 11px; border-radius: var(--r);
+    border: 1px solid var(--line-2); background: var(--panel-2);
+    font-size: 12px; color: var(--dim); word-break: break-word;
+  }
+  .lstatus.ok  { border-color: rgba(95,211,154,.4); background: rgba(95,211,154,.07); color: var(--ok); }
+  .lstatus.bad { border-color: rgba(255,107,107,.42); background: rgba(255,107,107,.07); color: var(--fail); }
+
+  /* ---------- 测试台 ---------- */
+  .bench-grid {
+    display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 16px; align-items: start;
+  }
+  @media (max-width: 980px) { .bench-grid { grid-template-columns: 1fr; } }
+  .subcard {
+    border: 1px solid var(--line); border-radius: var(--r);
+    background: #0d1112; padding: 12px;
+  }
+  .subcard .lhead { margin-top: 0; border-top: 0; padding-top: 0; }
+  .pill {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px; letter-spacing: .02em; white-space: nowrap;
+  }
+  .pill.ok      { background: rgba(95,211,154,.12); color: var(--ok); border: 1px solid rgba(95,211,154,.35); }
+  .pill.bad     { background: rgba(255,107,107,.12); color: var(--fail); border: 1px solid rgba(255,107,107,.35); }
+  .pill.blocked { background: rgba(255,180,84,.10); color: var(--amber); border: 1px solid rgba(255,180,84,.35); }
+  .pill.running { background: rgba(90,200,255,.10); color: var(--info); border: 1px solid rgba(90,200,255,.35); }
+  .pill.pending { background: var(--panel-2); color: var(--dim); border: 1px solid var(--line-2); }
+  .dim { color: var(--dim); font-size: 11.5px; }
+  .run-head {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .run-head b { font-family: var(--sans); letter-spacing: .06em; font-size: 14px; }
+  .runsteps { margin-bottom: 10px; }
+  .runstep { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 12px; }
+  .runstep .idx { color: var(--dim-2); width: 20px; flex: none; }
+  .runstep .tp { color: var(--dim); width: 118px; flex: none; }
+  .runlog {
+    background: #070a0b; border: 1px solid var(--line); border-radius: var(--r);
+    padding: 8px 10px; max-height: 280px; overflow: auto;
+    font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  }
+  .runlog .t { color: var(--dim-2); margin-right: 6px; }
+  .runlog .err { color: var(--fail); }
+  .run-artifacts { margin-top: 8px; word-break: break-all; }
+
   /* ---------- 结论条 ---------- */
   .verdict {
     display: flex; align-items: center; gap: 10px;
@@ -284,68 +452,143 @@
 </style>
 </head>
 <body>
-<div class="shell">
-
-  <header>
-    <div class="brand">OM<em>HOST</em></div>
-    <div class="tagline">固件打包 · 镜像检查</div>
-    <div class="contract" id="contract">
-      <span class="dot" id="cdot"></span>
-      <span id="ctext">正在读取契约…</span>
+<div class="app">
+  <aside class="rail">
+    <div>
+      <div class="rail-brand">OM<em>HOST</em></div>
+      <div class="rail-sub">BOOT / OTA CONSOLE</div>
     </div>
-  </header>
-
-  <section class="map">
-    <div class="map-head">
-      <b>槽内布局</b><span>· 头 → 填充 → 负载 → 摘要区</span>
-      <span class="map-total" id="mapTotal">—</span>
+    <nav class="rail-nav" aria-label="模块">
+      <button type="button" data-view="image" class="active" aria-current="page">
+        <span class="idx">01</span><span class="lbl">镜像</span><span class="hint">打包 / 检查</span>
+      </button>
+      <button type="button" data-view="layout">
+        <span class="idx">02</span><span class="lbl">布局</span><span class="hint">源编辑 / 校验</span>
+      </button>
+      <button type="button" data-view="bench">
+        <span class="idx">03</span><span class="lbl">测试台</span><span class="hint">资源 / 用例</span>
+      </button>
+    </nav>
+    <div class="rail-foot">
+      <div class="contract" id="contract">
+        <span class="dot" id="cdot"></span>
+        <span id="ctext">正在读取契约…</span>
+      </div>
+      <div class="rail-local" id="serverInfo">LOCAL · 127.0.0.1</div>
     </div>
-    <div class="strip" id="strip">
-      <div class="seg empty" style="flex:1"><span>等待镜像</span></div>
-    </div>
-    <div class="ruler"><span>槽基址 + 0</span><span id="rulerEnd">—</span></div>
-  </section>
+  </aside>
 
-  <div class="cols">
+  <main class="stage">
+    <header class="topbar">
+      <span class="crumb" id="viewCrumb">镜像工位</span>
+      <span class="top-note">OMR V0.3.0 · BOOTLOADER / OTA</span>
+    </header>
 
-    <section class="card">
-      <h2>输入</h2>
-      <div class="body">
-        <div class="drop" id="drop">
-          <div class="big">拖入文件</div>
-          <div class="sub">裸固件 .bin 打包 · 已有镜像自动识别为检查</div>
+    <section class="view active" data-view="image">
+      <div class="view-head" data-index="01">
+        <div class="eyebrow">01 / IMAGE PIPELINE</div>
+        <h1>镜像工位</h1>
+        <p>把裸固件装进镜像头，或直接解析已有镜像；槽位容量与负载偏移来自同一份布局。</p>
+      </div>
+
+      <section class="map">
+        <div class="map-head">
+          <b>槽内布局</b><span>· 头 → 填充 → 负载 → 摘要区</span>
+          <span class="map-total" id="mapTotal">—</span>
         </div>
-        <input type="file" id="picker" hidden>
-        <div class="file" id="fileBox" style="display:none">
-          <span class="kind" id="fileKind">—</span>
-          <span class="nm" id="fileName">—</span>
-          <span class="sz" id="fileSize">—</span>
+        <div class="strip" id="strip">
+          <div class="seg empty" style="flex:1"><span>等待镜像</span></div>
         </div>
+        <div class="ruler"><span>槽基址 + 0</span><span id="rulerEnd">—</span></div>
+      </section>
 
-        <div class="form">
-          <div class="row"><label>版本</label><input type="text" id="version" placeholder="1.2.3" value="1.0.0"></div>
-          <div class="row"><label>槽位</label>
-            <div class="seg-pick" id="slot"><button data-slot="a" class="on">A</button><button data-slot="b">B</button></div>
+      <div class="cols">
+        <section class="card">
+          <h2>输入</h2>
+          <div class="body">
+            <div class="drop" id="drop">
+              <div class="big">拖入文件</div>
+              <div class="sub">裸固件 .bin 打包 · 已有镜像自动识别为检查</div>
+            </div>
+            <input type="file" id="picker" hidden>
+            <div class="file" id="fileBox" style="display:none">
+              <span class="kind" id="fileKind">—</span>
+              <span class="nm" id="fileName">—</span>
+              <span class="sz" id="fileSize">—</span>
+            </div>
+
+            <div class="form">
+              <div class="row"><label>版本</label><input type="text" id="version" placeholder="1.2.3" value="1.0.0"></div>
+              <div class="row"><label>槽位</label>
+                <div class="seg-pick" id="slot"><button data-slot="a" class="on">A</button><button data-slot="b">B</button></div>
+              </div>
+              <div class="row"><label>摘要</label><select id="algo"></select></div>
+              <div class="row"><label>负载偏移</label><input type="text" id="offset"></div>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary" id="pack" disabled>打包</button>
+              <button class="btn" id="save" disabled>下载</button>
+            </div>
           </div>
-          <div class="row"><label>摘要</label><select id="algo"></select></div>
-          <div class="row"><label>负载偏移</label><input type="text" id="offset"></div>
-        </div>
+        </section>
 
-        <div class="actions">
-          <button class="btn primary" id="pack" disabled>打包</button>
-          <button class="btn" id="save" disabled>下载</button>
-        </div>
+        <section class="card">
+          <h2>镜像头字段</h2>
+          <div class="body" id="result">
+            <div class="placeholder">拖入固件后点打包，或拖入一个已有镜像直接查看。</div>
+          </div>
+        </section>
       </div>
     </section>
 
-    <section class="card">
-      <h2>镜像头字段</h2>
-      <div class="body" id="result">
-        <div class="placeholder">拖入固件后点打包，或拖入一个已有镜像直接查看。</div>
+    <section class="view" data-view="layout">
+      <div class="view-head" data-index="02">
+        <div class="eyebrow">02 / LAYOUT SOURCE</div>
+        <h1>布局工位</h1>
+        <p>编辑布局源并就地校验；保存只写源文件，构建后生成头、分区表与链接脚本。</p>
       </div>
+
+      <section class="card">
+        <h2>布局源 <span class="src-path" id="lsrcPath">—</span></h2>
+        <div class="body">
+          <div id="layoutEditor"><div class="placeholder">正在读取布局源…</div></div>
+        </div>
+      </section>
     </section>
 
-  </div>
+    <section class="view" data-view="bench">
+      <div class="view-head" data-index="03">
+        <div class="eyebrow">03 / TEST BENCH</div>
+        <h1>测试台</h1>
+        <p>后端探测串口与 J-Link，用户分配角色；用例按 JSON 累积，逐步执行并留痕。</p>
+      </div>
+
+      <section class="card">
+        <h2>资源与用例 <span class="src-path" id="benchHint">资源探测 · 测试矩阵</span></h2>
+        <div class="body">
+          <div class="bench-grid">
+            <div class="subcard">
+              <div class="lhead"><b>资源</b><span>后端探测，用户分配</span>
+                <button class="mini" id="resRefresh">刷新探测</button>
+                <button class="mini" id="resSave">保存分配</button>
+              </div>
+              <div id="resourcePanel"><div class="placeholder">正在探测…</div></div>
+              <div class="lstatus" id="resStatus"></div>
+            </div>
+            <div class="subcard">
+              <div class="lhead"><b>测试矩阵</b><span id="testSource">testcases/*.json</span>
+                <button class="mini" id="testsRefresh">刷新</button>
+              </div>
+              <div id="testPanel"><div class="placeholder">正在加载…</div></div>
+            </div>
+          </div>
+          <div class="lhead"><b>运行</b><span>步骤与日志</span></div>
+          <div id="runPanel"><div class="placeholder">选择右侧测试后点「运行」。</div></div>
+        </div>
+      </section>
+    </section>
+  </main>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -364,11 +607,18 @@
     try {
       const c = await (await fetch("/api/contract")).json();
       state.contract = c;
+      $("serverInfo").textContent =
+        "LOCAL · 127.0.0.1" + (c.server ? ` · PID ${c.server.pid}` : "");
+      $("serverInfo").title = c.server ? `后端启动：${c.server.startedAt}` : "";
       $("cdot").className = "dot " + (c.ok ? "on" : "off");
-      $("ctext").textContent = c.ok
-        ? `契约头已加载 · 魔数 ${HEX(c.magic, 8)} · 头长 ${c.hdrSize}B`
-        : "契约头未加载（使用内置兜底值）";
-      $("ctext").title = c.headerPath + (c.message ? "\n" + c.message : "");
+      const layoutText = c.layout
+        ? ` · ${c.layout.board} @${HEX(c.layout.fingerprint, 4)}`
+        : "";
+      $("ctext").textContent = (c.ok ? `契约就绪 · ${HEX(c.magic, 8)}` : "契约未加载") + layoutText;
+      $("ctext").title =
+        `魔数 ${HEX(c.magic, 8)} · 头长 ${c.hdrSize}B\n契约头：${c.headerPath}` +
+        (c.message ? "\n" + c.message : "") +
+        (c.layoutPath ? "\n布局：" + c.layoutPath : "");
 
       $("offset").value = HEX(c.payloadOffset);
       $("offset").title = `默认取契约头约定值 ${HEX(c.payloadOffset)}；须 0x200 对齐且等于 app 链接偏移`;
@@ -384,6 +634,591 @@
       $("ctext").textContent = "后端不可达";
     }
   }
+
+  // ---------------------------------------------------------------- 布局源
+  const layoutState = { source: null, draft: null, path: null };
+  const LAYOUT_ROLES = ["bootloader", "app", "meta", "meta_resv"];
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const rows = (id) => [...$(id).children];
+
+  async function loadLayoutEditor() {
+    try {
+      const r = await (await fetch("/api/layout")).json();
+      if (!r.source) {
+        $("layoutEditor").innerHTML =
+          `<div class="placeholder">${escapeHtml(r.error || "布局源未加载")}</div>`;
+        $("lsrcPath").textContent = "未加载";
+        return;
+      }
+      layoutState.source = r.source;
+      layoutState.draft = clone(r.source);
+      layoutState.path = r.path;
+      $("lsrcPath").textContent = r.path;
+      $("lsrcPath").title = r.path;
+      renderLayoutEditor();
+      if (r.ok) {
+        layoutStatus(true, `已加载 · 指纹 ${HEX(r.layout.fingerprint, 4)} · ` + slotSummary(r.layout));
+      } else {
+        layoutStatus(false, "布局源当前无效：" + (r.error || "未知错误") + "；修正后可保存");
+      }
+    } catch (e) {
+      $("layoutEditor").innerHTML =
+        `<div class="placeholder">后端不可达：${escapeHtml(String(e))}</div>`;
+    }
+  }
+
+  function renderLayoutEditor() {
+    const d = layoutState.draft;
+    $("layoutEditor").innerHTML = `
+      <div class="lgrid">
+        <div class="fld"><label>板名</label><input type="text" id="lboard"></div>
+        <div class="fld"><label>器件</label><input type="text" id="ldevice"></div>
+        <div class="fld"><label>Flash 基址</label><input type="text" id="lflashBase"></div>
+        <div class="fld"><label>Flash 大小</label><input type="text" id="lflashSize"></div>
+        <div class="fld"><label>负载偏移</label><input type="text" id="lpayloadOffset"></div>
+        <div class="fld"><label>Meta 份数</label><input type="text" id="lmetaCopies"></div>
+        <div class="fld"><label>回退上限</label><input type="text" id="lrollbackLimit"></div>
+      </div>
+      <div class="lhead"><b>擦除区域</b><span>自偏移 0 起连续覆盖整个 Flash</span>
+        <button class="mini" id="laddErase">+ 区域</button></div>
+      <table class="ltable"><thead><tr><th>偏移</th><th>大小</th><th>数量</th><th></th></tr></thead>
+        <tbody id="leraseRows"></tbody></table>
+      <div class="lhead"><b>分区</b><span>角色 / 名称 / 偏移 / 大小 / 槽</span>
+        <button class="mini" id="laddPart">+ 分区</button></div>
+      <table class="ltable"><thead><tr><th>名称</th><th>角色</th><th>槽</th><th>偏移</th><th>大小</th><th></th></tr></thead>
+        <tbody id="lpartRows"></tbody></table>
+      <div class="lhead"><b>保留区</b><span>不分配给任何角色</span>
+        <button class="mini" id="laddResv">+ 保留区</button></div>
+      <table class="ltable"><thead><tr><th>名称</th><th>偏移</th><th>大小</th><th></th></tr></thead>
+        <tbody id="lresvRows"></tbody></table>
+      <div class="actions">
+        <button class="btn" id="lvalidate">校验</button>
+        <button class="btn primary" id="lsave">保存布局源</button>
+      </div>
+      <div class="lstatus" id="lstatus">修改后先校验；保存只写源文件，生成物与链接地址在下一次构建时更新。</div>`;
+
+    const flash = d.flash || {};
+    $("lboard").value = d.board ?? "";
+    $("ldevice").value = d.device ?? "";
+    $("lflashBase").value = flash.base ?? "";
+    $("lflashSize").value = flash.size ?? "";
+    $("lpayloadOffset").value = d.payloadOffset ?? "";
+    $("lmetaCopies").value = d.metaCopies ?? "";
+    $("lrollbackLimit").value = d.rollbackLimit ?? "";
+    renderLayoutRows();
+  }
+
+  function renderLayoutRows() {
+    const d = layoutState.draft;
+    const erase = $("leraseRows");
+    const parts = $("lpartRows");
+    const resv = $("lresvRows");
+    erase.innerHTML = "";
+    parts.innerHTML = "";
+    resv.innerHTML = "";
+
+    ((d.flash && d.flash.eraseRegions) || []).forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input type="text" class="l-erase-offset" value="${item.offset}"></td>
+        <td><input type="text" class="l-erase-size" value="${item.size}"></td>
+        <td><input type="text" class="l-erase-count" value="${item.count}"></td>
+        <td class="del"><button class="mini l-del" data-kind="erase">删除</button></td>`;
+      tr._src = item;
+      erase.appendChild(tr);
+    });
+
+    (d.partitions || []).forEach((item) => {
+      const tr = document.createElement("tr");
+      const roleOpts = LAYOUT_ROLES.map((r) =>
+        `<option value="${r}"${r === item.role ? " selected" : ""}>${r}</option>`).join("");
+      tr.innerHTML = `
+        <td><input type="text" class="l-part-name" value="${escapeHtml(item.name)}"></td>
+        <td><select class="l-part-role">${roleOpts}</select></td>
+        <td><select class="l-part-slot"${item.role === "app" ? "" : " disabled"}>
+          <option value="a"${item.slot === "b" ? "" : " selected"}>A</option>
+          <option value="b"${item.slot === "b" ? " selected" : ""}>B</option></select></td>
+        <td><input type="text" class="l-part-offset" value="${item.offset}"></td>
+        <td><input type="text" class="l-part-size" value="${item.size}"></td>
+        <td class="del"><button class="mini l-del" data-kind="part">删除</button></td>`;
+      tr._src = item;
+      parts.appendChild(tr);
+    });
+
+    (d.reserved || []).forEach((item, index) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input type="text" class="l-resv-name" value="${escapeHtml(item.name ?? "reserved" + index)}"></td>
+        <td><input type="text" class="l-resv-offset" value="${item.offset}"></td>
+        <td><input type="text" class="l-resv-size" value="${item.size}"></td>
+        <td class="del"><button class="mini l-del" data-kind="resv">删除</button></td>`;
+      tr._src = item;
+      resv.appendChild(tr);
+    });
+  }
+
+  function num(text, label) {
+    const m = String(text).trim().match(/^(0x[0-9a-f]+|\d+)([km]?)$/i);
+    if (!m) throw new Error(`无法解析${label}：${text}`);
+    let v = Number(m[1]);
+    const suffix = m[2].toLowerCase();
+    if (suffix === "k") v *= 1024;
+    else if (suffix === "m") v *= 1024 * 1024;
+    return v;
+  }
+
+  function readNum(id, label) { return num($(id).value, label); }
+
+  function collectLayout() {
+    const src = layoutState.draft || {};
+    const out = Object.assign({}, src);
+    out.schema = 1;
+    out.board = $("lboard").value.trim();
+    out.device = $("ldevice").value.trim();
+    out.flash = Object.assign({}, src.flash || {}, {
+      base: readNum("lflashBase", "Flash 基址"),
+      size: readNum("lflashSize", "Flash 大小"),
+      eraseRegions: rows("leraseRows").map((tr) => {
+        const base = Object.assign({}, tr._src || {});
+        base.offset = num(tr.querySelector(".l-erase-offset").value, "擦除区域偏移");
+        base.size = num(tr.querySelector(".l-erase-size").value, "擦除区域大小");
+        base.count = num(tr.querySelector(".l-erase-count").value, "擦除区域数量");
+        return base;
+      }),
+    });
+    out.payloadOffset = readNum("lpayloadOffset", "负载偏移");
+    out.metaCopies = readNum("lmetaCopies", "Meta 份数");
+    out.rollbackLimit = readNum("lrollbackLimit", "回退上限");
+    out.partitions = rows("lpartRows").map((tr) => {
+      const base = Object.assign({}, tr._src || {});
+      const role = tr.querySelector(".l-part-role").value;
+      base.name = tr.querySelector(".l-part-name").value.trim();
+      base.role = role;
+      base.offset = num(tr.querySelector(".l-part-offset").value, "分区偏移");
+      base.size = num(tr.querySelector(".l-part-size").value, "分区大小");
+      if (role === "app") base.slot = tr.querySelector(".l-part-slot").value;
+      else { delete base.slot; delete base.slotId; }
+      return base;
+    });
+    out.reserved = rows("lresvRows").map((tr) => {
+      const base = Object.assign({}, tr._src || {});
+      base.name = tr.querySelector(".l-resv-name").value.trim();
+      base.offset = num(tr.querySelector(".l-resv-offset").value, "保留区偏移");
+      base.size = num(tr.querySelector(".l-resv-size").value, "保留区大小");
+      return base;
+    });
+    return out;
+  }
+
+  function layoutStatus(ok, text) {
+    const el = $("lstatus");
+    if (!el) return;
+    el.className = "lstatus " + (ok ? "ok" : "bad");
+    el.textContent = text;
+  }
+
+  function slotSummary(info) {
+    const slots = info.slots || {};
+    return Object.keys(slots).sort().map((k) =>
+      `槽 ${k.toUpperCase()} 链接 @${HEX(slots[k].linkBase)}`).join(" · ");
+  }
+
+  async function postJson(url, obj) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(obj),
+    });
+    return await res.json();
+  }
+
+  async function validateLayoutSource() {
+    let src;
+    try { src = collectLayout(); } catch (e) { layoutStatus(false, e.message); return false; }
+    try {
+      const r = await postJson("/api/layout/validate", src);
+      if (!r.ok) { layoutStatus(false, r.error || "校验失败"); return false; }
+      layoutState.draft = src;
+      layoutStatus(true, `校验通过 · 指纹 ${HEX(r.layout.fingerprint, 4)} · ` + slotSummary(r.layout));
+      return true;
+    } catch (e) {
+      layoutStatus(false, String(e));
+      return false;
+    }
+  }
+
+  async function saveLayoutSource() {
+    let src;
+    try { src = collectLayout(); } catch (e) { layoutStatus(false, e.message); return; }
+    if (!confirm("写回布局源？\n" + (layoutState.path || ""))) return;
+    try {
+      const r = await postJson("/api/layout", src);
+      if (!r.ok) { layoutStatus(false, r.error || "保存失败"); return; }
+      layoutState.source = src;
+      layoutState.draft = clone(src);
+      layoutStatus(true, `已保存 · 指纹 ${HEX(r.layout.fingerprint, 4)} · ` +
+        "重新构建后生成物与链接地址才会更新");
+      toast("布局源已保存：" + r.path);
+    } catch (e) {
+      layoutStatus(false, String(e));
+    }
+  }
+
+  function addLayoutRow(kind) {
+    let working;
+    try { working = collectLayout(); } catch (e) { layoutStatus(false, e.message); return; }
+    if (kind === "erase") {
+      working.flash.eraseRegions.push({ offset: 0, size: 0, count: 0 });
+    } else if (kind === "part") {
+      working.partitions.push({ name: "partition", role: "app", slot: "a", offset: 0, size: 0 });
+    } else {
+      working.reserved.push({ name: "reserved", offset: 0, size: 0 });
+    }
+    layoutState.draft = working;
+    renderLayoutEditor();
+    layoutStatus(false, "已添加行，填写数值后先校验");
+  }
+
+  function deleteLayoutRow(btn) {
+    let working;
+    try { working = collectLayout(); } catch (e) { layoutStatus(false, e.message); return; }
+    const tr = btn.closest("tr");
+    const index = [...tr.parentElement.children].indexOf(tr);
+    if (btn.dataset.kind === "erase") working.flash.eraseRegions.splice(index, 1);
+    else if (btn.dataset.kind === "part") working.partitions.splice(index, 1);
+    else working.reserved.splice(index, 1);
+    layoutState.draft = working;
+    renderLayoutEditor();
+    layoutStatus(false, "已删除行，注意分区/保留区需连续且不重叠");
+  }
+
+  // 事件委托只绑定一次：#layoutEditor 容器在重绘中保持不变
+  $("layoutEditor").addEventListener("click", (e) => {
+    if (e.target.id === "lvalidate") { validateLayoutSource(); return; }
+    if (e.target.id === "lsave") { saveLayoutSource(); return; }
+    if (e.target.id === "laddErase") { addLayoutRow("erase"); return; }
+    if (e.target.id === "laddPart") { addLayoutRow("part"); return; }
+    if (e.target.id === "laddResv") { addLayoutRow("resv"); return; }
+    const del = e.target.closest(".l-del");
+    if (del) deleteLayoutRow(del);
+  });
+  $("layoutEditor").addEventListener("change", (e) => {
+    if (e.target.classList.contains("l-part-role")) {
+      const tr = e.target.closest("tr");
+      tr.querySelector(".l-part-slot").disabled = e.target.value !== "app";
+    }
+  });
+
+  // ---------------------------------------------------------------- 测试台
+  const benchState = { resources: null, tests: [], run: null, poll: null };
+  const ROLE_LABELS = { relay: "继电器", serial: "被测板串口", jlink: "J-Link" };
+  const STEP_LABELS = {
+    relay_pulse: "继电器脉冲", relay_cycle: "继电器断电重启", relay_set: "继电器开关",
+    relay_query: "继电器查询", jlink_reset: "J-Link 复位", delay: "延时",
+    layout_validate: "布局校验", image_pack: "镜像打包", image_inspect: "镜像检查",
+    serial_download: "串口下载",
+  };
+  const STATUS_LABELS = {
+    running: "运行中", passed: "通过", failed: "失败", blocked: "阻塞", pending: "待执行",
+  };
+
+  function setBenchStatus(id, cls, text) {
+    const el = $(id);
+    if (!el) return;
+    el.className = "lstatus " + (cls || "");
+    el.textContent = text;
+  }
+
+  async function loadResources() {
+    $("resourcePanel").innerHTML = '<div class="placeholder">正在探测串口与 J-Link…</div>';
+    setBenchStatus("resStatus", "", "探测中…");
+    try {
+      const r = await (await fetch("/api/resources")).json();
+      if (!r.ok) {
+        $("resourcePanel").innerHTML = `<div class="placeholder">${escapeHtml(r.error || "探测失败")}</div>`;
+        setBenchStatus("resStatus", "bad", r.error || "探测失败");
+        return;
+      }
+      benchState.resources = r;
+      renderResources(r);
+      const missing = Object.entries(r.present || {})
+        .filter(([, value]) => !value.present)
+        .map(([role, value]) => `${ROLE_LABELS[role] || role} ${value.value} 未探测到`);
+      const errors = [...(r.errors || []), ...missing];
+      setBenchStatus(
+        "resStatus",
+        errors.length ? "bad" : "ok",
+        errors.length ? errors.join("；") : `串口 ${r.serial.length} 个 · J-Link ${r.jlink.length} 个`
+      );
+    } catch (e) {
+      $("resourcePanel").innerHTML = `<div class="placeholder">后端不可达：${escapeHtml(String(e))}</div>`;
+      setBenchStatus("resStatus", "bad", String(e));
+    }
+  }
+
+  function roleOptions(selected, roles) {
+    return '<option value="">未分配</option>' + roles.map(([value, label]) =>
+      `<option value="${value}"${selected === value ? " selected" : ""}>${label}</option>`).join("");
+  }
+
+  function renderResources(r) {
+    const relayRole = r.roles.relay || "";
+    const serialRole = r.roles.serial || "";
+    const jlinkRole = r.roles.jlink || "";
+
+    const serialRows = (r.serial || []).map((port) => {
+      const selected = port.device === relayRole ? "relay" : port.device === serialRole ? "serial" : "";
+      const vid = port.vid == null || port.pid == null ? "—" : HEX(port.vid, 4) + ":" + HEX(port.pid, 4);
+      return `<tr>
+        <td class="k">${escapeHtml(port.device)}${port.isCh340 ? ' <span class="pill ok">CH340</span>' : ""}</td>
+        <td class="dim">${escapeHtml(vid)}</td>
+        <td class="dim">${escapeHtml(port.description || "")}</td>
+        <td><select class="res-role-serial" data-device="${escapeHtml(port.device)}">${
+          roleOptions(selected, [["relay", "继电器"], ["serial", "被测板串口"]])
+        }</select></td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="4" class="placeholder">未发现串口</td></tr>';
+
+    const jlinkRows = (r.jlink || []).map((probe) => {
+      const selected = probe.serial === jlinkRole ? "jlink" : "";
+      const model = [probe.product, probe.nickname].filter(Boolean).join(" · ");
+      return `<tr>
+        <td class="k">${escapeHtml(probe.serial)}</td>
+        <td class="dim">${escapeHtml(model)}</td>
+        <td><select class="res-role-jlink" data-serial="${escapeHtml(probe.serial)}">${
+          roleOptions(selected, [["jlink", "调试器"]])
+        }</select></td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="3" class="placeholder">未发现 J-Link</td></tr>';
+
+    $("resourcePanel").innerHTML = `
+      <div class="lhead"><b>串口</b><span>同一端口只能分配一个角色</span></div>
+      <table class="ltable"><thead><tr><th>端口</th><th>VID:PID</th><th>描述</th><th>角色</th></tr></thead>
+        <tbody>${serialRows}</tbody></table>
+      <div class="lhead"><b>J-Link</b><span>按序列号选择</span></div>
+      <table class="ltable"><thead><tr><th>序列号</th><th>型号</th><th>角色</th></tr></thead>
+        <tbody>${jlinkRows}</tbody></table>
+      <div class="lgrid" style="margin-top:12px">
+        <div class="fld"><label>J-Link 器件</label><input type="text" id="resJlinkDevice" value="${escapeHtml(r.settings.jlinkDevice)}"></div>
+        <div class="fld"><label>J-Link 速度 (kHz)</label><input type="text" id="resJlinkSpeed" value="${r.settings.jlinkSpeed}"></div>
+        <div class="fld"><label>继电器波特率</label><input type="text" id="resRelayBaud" value="${r.settings.relayBaud}"></div>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn" id="relayProbeBtn">查询继电器状态</button>
+      </div>`;
+  }
+
+  async function saveResources() {
+    if (!$("resJlinkSpeed") || !$("resRelayBaud")) {
+      setBenchStatus("resStatus", "bad", "资源尚未探测完成，先点「刷新探测」");
+      return;
+    }
+    const roles = { relay: "", serial: "", jlink: "" };
+    document.querySelectorAll(".res-role-serial").forEach((sel) => {
+      if (sel.value) roles[sel.value] = sel.dataset.device;
+    });
+    const jlink = document.querySelector(".res-role-jlink");
+    if (jlink && jlink.value) roles.jlink = jlink.dataset.serial;
+
+    const speed = Number($("resJlinkSpeed").value);
+    const baud = Number($("resRelayBaud").value);
+    if (!Number.isFinite(speed) || speed <= 0 || !Number.isFinite(baud) || baud <= 0) {
+      setBenchStatus("resStatus", "bad", "J-Link 速度与继电器波特率必须是正整数");
+      return;
+    }
+    try {
+      const r = await postJson("/api/resources", {
+        roles,
+        settings: {
+          jlinkDevice: $("resJlinkDevice").value.trim(),
+          jlinkSpeed: speed,
+          relayBaud: baud,
+        },
+      });
+      if (!r.ok) { setBenchStatus("resStatus", "bad", r.error || "保存失败"); return; }
+      setBenchStatus("resStatus", "ok", "资源分配已保存");
+      await loadTests();
+    } catch (e) {
+      setBenchStatus("resStatus", "bad", String(e));
+    }
+  }
+
+  async function probeRelayFromForm() {
+    if (!$("resRelayBaud")) {
+      setBenchStatus("resStatus", "bad", "资源尚未探测完成，先点「刷新探测」");
+      return;
+    }
+    const selected = [...document.querySelectorAll(".res-role-serial")].find((sel) => sel.value === "relay");
+    if (!selected) {
+      setBenchStatus("resStatus", "bad", "先把某个串口分配为「继电器」");
+      return;
+    }
+    const port = selected.dataset.device;
+    const baud = Number($("resRelayBaud").value) || 9600;
+    setBenchStatus("resStatus", "", `查询 ${port}…`);
+    try {
+      const r = await postJson("/api/resources/relay-probe", { port, baud });
+      if (!r.ok) { setBenchStatus("resStatus", "bad", r.error || "查询失败"); return; }
+      const states = Object.entries(r.status || {})
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map(([channel, on]) => `CH${channel}=${on ? "ON" : "OFF"}`)
+        .join(" ");
+      setBenchStatus("resStatus", "ok", `${r.port} @${r.baud}：${states}`);
+    } catch (e) {
+      setBenchStatus("resStatus", "bad", String(e));
+    }
+  }
+
+  async function loadTests() {
+    try {
+      const r = await (await fetch("/api/tests")).json();
+      if (!r.ok) {
+        $("testPanel").innerHTML = `<div class="placeholder">${escapeHtml(r.error || "加载失败")}</div>`;
+        return;
+      }
+      benchState.tests = r.tests || [];
+      $("testSource").textContent = `${benchState.tests.length} 个用例 · testcases/*.json`;
+      renderTests(benchState.tests);
+      if (r.active && r.active.status === "running") {
+        benchState.run = r.active;
+        renderRun(r.active);
+        pollRun(r.active.id);
+      }
+    } catch (e) {
+      $("testPanel").innerHTML = `<div class="placeholder">后端不可达：${escapeHtml(String(e))}</div>`;
+    }
+  }
+
+  function renderTests(tests) {
+    const rows = tests.map((test) => {
+      const blocked = !!test.blocked;
+      const missing = test.missingRoles || [];
+      let pill;
+      let reason = "";
+      if (blocked) {
+        pill = `<span class="pill blocked">待 ${escapeHtml(test.blocked)}</span>`;
+        reason = "协议未就绪";
+      } else if (missing.length) {
+        pill = '<span class="pill bad">缺资源</span>';
+        reason = missing.map((role) => ROLE_LABELS[role] || role).join("、");
+      } else {
+        pill = '<span class="pill ok">可运行</span>';
+      }
+      const roles = (test.roles || []).map((role) => ROLE_LABELS[role] || role).join("、") || "无需硬件";
+      const steps = (test.steps || []).map((step) => STEP_LABELS[step] || step).join(" → ");
+      const disabled = blocked || missing.length ? "disabled" : "";
+      return `<tr>
+        <td class="k" title="${escapeHtml(steps)}">${escapeHtml(test.name)}
+          <div class="dim">${escapeHtml(test.description || "")}</div></td>
+        <td class="dim">${escapeHtml(roles)}</td>
+        <td>${pill}${reason ? `<div class="dim">${escapeHtml(reason)}</div>` : ""}</td>
+        <td><button class="mini run-test" data-id="${escapeHtml(test.id)}" ${disabled}>运行</button></td>
+      </tr>`;
+    }).join("");
+    $("testPanel").innerHTML =
+      `<table class="ltable"><thead><tr><th>用例</th><th>资源</th><th>状态</th><th></th></tr></thead>
+       <tbody>${rows || '<tr><td colspan="4" class="placeholder">未找到测试用例</td></tr>'}</tbody></table>`;
+  }
+
+  async function startTest(id) {
+    $("runPanel").innerHTML = '<div class="placeholder">启动中…</div>';
+    try {
+      const r = await postJson("/api/tests/run", { id });
+      if (!r.ok) { renderRunError(r.error || "启动失败"); return; }
+      benchState.run = r.run;
+      renderRun(r.run);
+      pollRun(r.run.id);
+      $("runPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      renderRunError(String(e));
+    }
+  }
+
+  function pollRun(id) {
+    clearTimeout(benchState.poll);
+    const tick = async () => {
+      try {
+        const r = await (await fetch("/api/tests/run?id=" + encodeURIComponent(id))).json();
+        if (!r.ok) { renderRunError(r.error || "查询失败"); return; }
+        benchState.run = r.run;
+        renderRun(r.run);
+        if (r.run.status === "running") benchState.poll = setTimeout(tick, 500);
+      } catch (e) {
+        renderRunError(String(e));
+      }
+    };
+    tick();
+  }
+
+  function renderRun(run) {
+    const cls = { running: "running", passed: "ok", failed: "bad", blocked: "blocked" }[run.status] || "pending";
+    const steps = (run.steps || []).map((step) => {
+      const stepCls = {
+        passed: "ok", failed: "bad", blocked: "blocked", running: "running", pending: "pending",
+      }[step.status] || "pending";
+      const message = escapeHtml(step.message || "").replace(/\n/g, "<br>");
+      return `<div class="runstep">
+        <span class="idx">${step.index + 1}</span>
+        <span class="tp">${escapeHtml(STEP_LABELS[step.type] || step.type)}</span>
+        <span class="pill ${stepCls}">${escapeHtml(STATUS_LABELS[step.status] || step.status)}</span>
+        <span class="dim">${message}</span></div>`;
+    }).join("");
+    const logs = (run.logs || []).map((entry) =>
+      `<div class="${entry.level === "error" ? "err" : ""}"><span class="t">${escapeHtml(entry.time)}</span>${
+        escapeHtml(entry.message).replace(/\n/g, "<br>")
+      }</div>`
+    ).join("");
+    const error = run.error
+      ? `<div class="lstatus bad" style="margin-top:8px">${escapeHtml(run.error)}</div>` : "";
+    const artifacts = (run.artifacts || []).length
+      ? `<div class="dim run-artifacts">产物：${run.artifacts.map((path) => escapeHtml(path)).join("<br>")}</div>`
+      : "";
+
+    $("runPanel").innerHTML = `
+      <div class="run-head">
+        <span class="pill ${cls}">${escapeHtml(STATUS_LABELS[run.status] || run.status)}</span>
+        <b>${escapeHtml(run.name)}</b>
+        <span class="dim">${escapeHtml(run.startedAt || "")}${run.finishedAt ? " → " + escapeHtml(run.finishedAt) : ""}</span>
+      </div>
+      <div class="runsteps">${steps}</div>
+      <div class="runlog">${logs || '<div class="dim">暂无日志</div>'}</div>
+      ${error}${artifacts}`;
+    const log = $("runPanel").querySelector(".runlog");
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+
+  function renderRunError(message) {
+    $("runPanel").innerHTML =
+      `<div class="verdict bad"><span class="lbl">失败</span><ul><li>${escapeHtml(message)}</li></ul></div>`;
+  }
+
+  $("resRefresh").addEventListener("click", loadResources);
+  $("resSave").addEventListener("click", saveResources);
+  $("testsRefresh").addEventListener("click", loadTests);
+  $("resourcePanel").addEventListener("change", (e) => {
+    const target = e.target;
+    if (target.classList.contains("res-role-serial")) {
+      if (target.value) {
+        document.querySelectorAll(".res-role-serial").forEach((sel) => {
+          if (sel !== target && sel.value === target.value) sel.value = "";
+        });
+      }
+    } else if (target.classList.contains("res-role-jlink")) {
+      if (target.value) {
+        document.querySelectorAll(".res-role-jlink").forEach((sel) => {
+          if (sel !== target) sel.value = "";
+        });
+      }
+    }
+    setBenchStatus("resStatus", "", "资源分配有修改，点「保存分配」后生效");
+  });
+  $("resourcePanel").addEventListener("click", (e) => {
+    if (e.target.id === "relayProbeBtn") probeRelayFromForm();
+  });
+  $("testPanel").addEventListener("click", (e) => {
+    const button = e.target.closest(".run-test");
+    if (button && !button.disabled) startTest(button.dataset.id);
+  });
 
   // ---------------------------------------------------------------- 拖放
   const drop = $("drop");
@@ -576,7 +1411,44 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ---------------------------------------------------------------- 视图路由
+  const VIEW_META = { image: "镜像工位", layout: "布局工位", bench: "测试台" };
+  let layoutViewLoaded = false;
+  let benchViewLoaded = false;
+
+  function showView(name, updateHash = true) {
+    if (!VIEW_META[name]) name = "image";
+    document.querySelectorAll(".view").forEach((view) => {
+      view.classList.toggle("active", view.dataset.view === name);
+    });
+    document.querySelectorAll(".rail-nav button").forEach((button) => {
+      const active = button.dataset.view === name;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    $("viewCrumb").textContent = VIEW_META[name];
+    document.title = "OMHOST · " + VIEW_META[name];
+
+    if (name === "layout" && !layoutViewLoaded) {
+      layoutViewLoaded = true;
+      loadLayoutEditor();
+    }
+    if (name === "bench" && !benchViewLoaded) {
+      benchViewLoaded = true;
+      loadResources();
+      loadTests();
+    }
+    if (updateHash && location.hash !== "#" + name) location.hash = name;
+  }
+
+  document.querySelectorAll(".rail-nav button").forEach((button) => {
+    button.addEventListener("click", () => showView(button.dataset.view));
+  });
+  window.addEventListener("hashchange", () => showView(location.hash.slice(1), false));
+
   loadContract();
+  showView(location.hash.slice(1) || "image", false);
 })();
 </script>
 </body>

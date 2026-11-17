@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "bench-power-cycle",
+  "name": "继电器冷启动（CH2）",
+  "description": "CH2 串入直流电源：释放 1 s 后吸合并保持（上电），最后确认 CH2 处于吸合。测试结束时板子保持上电。",
+  "steps": [
+    { "type": "relay_cycle", "channel": 2, "offMs": 1000, "onMs": 500 },
+    { "type": "delay", "ms": 500 },
+    { "type": "relay_query", "channel": 2, "expect": "on" }
+  ]
+}
