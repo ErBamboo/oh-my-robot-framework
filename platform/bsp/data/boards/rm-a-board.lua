@@ -70,7 +70,9 @@ local board = {
         ["gnu-rm"] = "boards/rm-a-board/linker/gcc/stm32f427iihx.ld",
         ["armclang"] = "boards/rm-a-board/linker/arm/stm32f427iihx.sct",
     },
-    -- 链接变体：按构建目标选择链接脚本与向量表偏移；槽布局与 om_bootcfg.h 同源。
+    -- 链接变体：按构建目标选择回退链接脚本与向量表偏移。
+    -- 有 cfg/boards/<board>/om_bootcfg.json 时，链接脚本由布局源生成，向量表偏移
+    -- 由生成的 om_bootcfg.h 提供；本表的 vect_tab_offset 仅作无布局源时回退。
     -- default = 单镜像（旧行为）；bootloader / app_a / app_b 用于双槽构建。
     link_variants = {
         default = {
@@ -103,9 +105,11 @@ local board = {
         },
     },
     -- 引导器自注册子集：只直连启动必需源，避免全量外设适配器进入 64K 域。
+    -- flash 适配器负责注册 flash0，引导器读取分区表与 meta 依赖它。
     boot_selfreg_sources = {
         "boards/rm-a-board/source/core/bsp_cpu.c",
         "arch/cortex-m/om_hardfault.c",
+        "vendor/STM32/STM32F4/adapters/flash/bsp_flash_f4.c",
     },
     boot_override_sources = {},
     components = {
