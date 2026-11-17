@@ -5,19 +5,27 @@
 字节布局必须逐字段一致。selftest 会解析该头文件核对常量，避免两侧漂移。
 
 用法：
-    python omimg.py pack --input app.bin --output app_a.bin --version 1.2.3 --slot a
-    python omimg.py inspect app_a.bin
-    python omimg.py verify app_a.bin [--slot-capacity 0xF0000]
+    python omimg.py pack --input app.bin --output app_a.bin --version 1.2.3 --slot a \
+        [--layout build/gen/<board>/om_bootcfg/om_bootcfg.generated.json]
+    python omimg.py inspect app_a.bin [--layout ...]
+    python omimg.py verify app_a.bin [--slot-capacity 0xF0000] [--layout ...]
     python omimg.py selftest
 """
 
 import argparse
 import hashlib
+import json
 import re
 import struct
 import sys
 import zlib
 from pathlib import Path
+
+# 布局工具与镜像工具同属主机侧；复用同一套布局校验，避免第二份解析逻辑。
+_TOOLS_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_TOOLS_ROOT / "omlayout"))
+
+import omlayout  # noqa: E402  （路径注入须先于导入）
 
 # ---------------------------------------------------------------------------
 # 契约常量（镜像自 lib/boot/include/boot/image.h）
@@ -105,6 +113,42 @@ _HEADER_PATH = Path(__file__).resolve().parents[2] / "lib" / "boot" / "include" 
 
 class ImageError(Exception):
     """镜像不合法（判定顺序中任一步拒绝）。"""
+
+
+def load_layout(path):
+    """读取布局源或生成清单，复用 omlayout 的校验逻辑。"""
+    layout_path = Path(path)
+    try:
+        data = json.loads(layout_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ImageError("无法读取布局清单 %s：%s" % (layout_path, exc))
+    except json.JSONDecodeError as exc:
+        raise ImageError("布局清单 JSON 无效 %s：%s" % (layout_path, exc))
+    try:
+        layout = omlayout.parse_layout(data, str(layout_path))
+    except omlayout.LayoutError as exc:
+        raise ImageError("布局清单无效 %s：%s" % (layout_path, exc))
+    if "fingerprint" in data and int(data["fingerprint"]) != layout.fingerprint:
+        raise ImageError("布局指纹与清单内容不一致：%s" % layout_path)
+    if "layoutSha256" in data and str(data["layoutSha256"]) != layout.layout_sha256:
+        raise ImageError("布局摘要与清单内容不一致：%s" % layout_path)
+    return layout
+
+
+def layout_slot(layout, slot_id):
+    """按镜像 slotId 取布局中的 app 槽；未命中返回 None。"""
+    for part in layout.partitions:
+        if part.role == omlayout.ROLE_APP and part.slot_id == slot_id:
+            return part
+    return None
+
+
+def layout_slot_by_name(layout, slot_name):
+    """按槽名取布局中的 app 槽；未命中返回 None。"""
+    for part in layout.partitions:
+        if part.role == omlayout.ROLE_APP and part.slot == slot_name:
+            return part
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +247,11 @@ def parse_image(data):
     return dict(zip(_HDR_FIELDS, values))
 
 
-def verify_image(data, slot_capacity=None):
-    """按契约判定顺序校验镜像，返回（是否通过, 说明列表）。"""
+def verify_image(data, slot_capacity=None, layout=None):
+    """按契约判定顺序校验镜像，返回（是否通过, 说明列表）。
+
+    layout 可选：提供时校验负载偏移与该槽在布局中的容量/槽标识一致。
+    """
     notes = []
     try:
         h = parse_image(data)
@@ -234,6 +281,18 @@ def verify_image(data, slot_capacity=None):
     # 未知算法在此按"无需预留"处理，留给下面的算法校验步骤拒绝
     if h["digestRegionSize"] < DIGEST_LEN.get(h["digestAlgo"], 0):
         return False, ["摘要区预留不足"]
+
+    if layout is not None:
+        if payload_offset != layout.payload_offset:
+            return False, [
+                "负载偏移与布局不一致：镜像 0x%X，布局 0x%X"
+                % (payload_offset, layout.payload_offset)
+            ]
+        slot = layout_slot(layout, h["slotId"])
+        if slot is None:
+            return False, ["镜像 slotId=%d 不在布局中" % h["slotId"]]
+        if slot_capacity is None:
+            slot_capacity = slot.size
 
     total = h["imageTotalSize"]
     if slot_capacity is not None and total > slot_capacity:
@@ -450,19 +509,40 @@ def cmd_pack(args):
     algo = {"crc32": DIGEST_CRC32_ISO_HDLC, "sha256": DIGEST_SHA256, "none": DIGEST_NONE}[args.algo]
     version = parse_version(args.version) if args.version else 0
 
+    layout = load_layout(args.layout) if args.layout else None
+    if layout is not None:
+        slot = layout_slot_by_name(layout, args.slot)
+        if slot is None:
+            raise ImageError("布局中没有槽 %s" % args.slot)
+        if args.payload_offset is None:
+            payload_offset = layout.payload_offset
+        elif args.payload_offset != layout.payload_offset:
+            raise ImageError(
+                "负载偏移与布局不一致：参数 0x%X，布局 0x%X"
+                % (args.payload_offset, layout.payload_offset)
+            )
+        else:
+            payload_offset = args.payload_offset
+        slot_capacity = slot.size
+    else:
+        payload_offset = args.payload_offset if args.payload_offset is not None else PAYLOAD_OFFSET
+        slot_capacity = None
+
     image = build_image(
         payload,
         version=version,
         slot=SLOT_ID[args.slot],
         algo=algo,
         flags=flags,
-        payload_offset=args.payload_offset,
+        payload_offset=payload_offset,
     )
     path = Path(args.output)
     path.write_bytes(image)
 
     h = parse_image(image)
     print("已写出 %s" % path)
+    if layout is not None:
+        print("  布局      %s（指纹 0x%04X）" % (layout.board, layout.fingerprint))
     print("  负载偏移  0x%X（= app 链接偏移）" % h["payloadOffset"])
     print("  负载      %d 字节（补齐后 %d）" % (len(payload), h["imageSize"]))
     print("  镜像总长  %d 字节（含头/填充/摘要区）" % h["imageTotalSize"])
@@ -470,7 +550,7 @@ def cmd_pack(args):
     print("  槽        %s（slotId=%d）" % (args.slot, h["slotId"]))
     print("  摘要      %s" % ALGO_NAMES[h["digestAlgo"]])
 
-    ok, notes = verify_image(image)
+    ok, notes = verify_image(image, slot_capacity=slot_capacity, layout=layout)
     if not ok:
         print("内部错误：打包结果未通过自校验：%s" % notes, file=sys.stderr)
         return 1
@@ -479,12 +559,15 @@ def cmd_pack(args):
 
 def cmd_inspect(args):
     data = Path(args.image).read_bytes()
+    layout = load_layout(args.layout) if args.layout else None
     try:
         h = parse_image(data)
     except ImageError as exc:
         print("解析失败：%s" % exc, file=sys.stderr)
         return 1
 
+    if layout is not None:
+        print("布局 %s（指纹 0x%04X）" % (layout.board, layout.fingerprint))
     print("%-16s %-6s %-14s %s" % ("字段", "偏移", "值", "备注"))
     for row in header_rows(h):
         print("%-16s %-6d %-14s %s" % (row["name"], row["offset"], row["value"], row["note"]))
@@ -497,7 +580,8 @@ def cmd_inspect(args):
 def cmd_verify(args):
     data = Path(args.image).read_bytes()
     capacity = int(args.slot_capacity, 0) if args.slot_capacity else None
-    ok, notes = verify_image(data, slot_capacity=capacity)
+    layout = load_layout(args.layout) if args.layout else None
+    ok, notes = verify_image(data, slot_capacity=capacity, layout=layout)
     for note in notes:
         print(("通过： " if ok else "拒绝： ") + note)
     return 0 if ok else 1
@@ -538,18 +622,21 @@ def main(argv=None):
     p.add_argument(
         "--payload-offset",
         type=lambda v: int(v, 0),
-        default=PAYLOAD_OFFSET,
-        help="负载偏移，须 0x200 对齐且等于 app 链接偏移（默认 0x%X）" % PAYLOAD_OFFSET,
+        default=None,
+        help="负载偏移，须 0x200 对齐且等于 app 链接偏移（默认取布局清单或契约头）",
     )
+    p.add_argument("--layout", default=None, help="om_bootcfg.generated.json（校验偏移/槽容量）")
     p.set_defaults(func=cmd_pack)
 
     p = sub.add_parser("inspect", help="打印头部字段")
     p.add_argument("image")
+    p.add_argument("--layout", default=None, help="om_bootcfg.generated.json（显示布局指纹）")
     p.set_defaults(func=cmd_inspect)
 
     p = sub.add_parser("verify", help="按契约判定顺序校验镜像")
     p.add_argument("image")
     p.add_argument("--slot-capacity", default=None, help="槽容量（字节，可用 0x 前缀）")
+    p.add_argument("--layout", default=None, help="om_bootcfg.generated.json（校验偏移/槽容量）")
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("selftest", help="算法自检向量 + 契约常量一致性 + 往返校验")

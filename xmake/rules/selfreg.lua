@@ -8,9 +8,10 @@
 ---          重复符号。这是 Linux/Zephyr "全对象链接（obj-y）" 目标在 XMake 静态归档模型下的
 ---          等价实现（XMake 无干净的 per-dep --whole-archive 入口，见 ADR-0010）。
 ---
----          用法：binary 目标除 context/board_assets/image_convert 外，再加本规则：
----            add_rules("oh_my_robot.context", "oh_my_robot.board_assets",
----                      "oh_my_robot.image_convert", "oh_my_robot.selfreg")
+---          用法：binary 目标除 context/project_cfg/board_assets/image_convert 外，再加本规则：
+---            add_rules("oh_my_robot.context", "oh_my_robot.project_cfg",
+---                      "oh_my_robot.board_assets", "oh_my_robot.image_convert",
+---                      "oh_my_robot.selfreg")
 ---
 ---          约定：lib/systems/src 与 lib/services/src 视为"自注册模块目录"，其下所有 .c
 ---          自动注入；lib/source/core/om_main.c 为框架默认 main（弱符号），同样经本规则

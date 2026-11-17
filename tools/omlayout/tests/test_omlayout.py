@@ -84,10 +84,28 @@ class LayoutToolTest(unittest.TestCase):
             self.assertEqual(manifest["meta"]["eraseUnitCount"], 2)
             self.assertEqual(manifest["fingerprint"], self.layout.fingerprint)
 
-    def test_linker_scripts_match_layout(self) -> None:
-        linker_root = REPO_ROOT / "platform" / "bsp" / "boards" / "rm-a-board" / "linker"
-        messages = omlayout.check_linkers(self.layout, linker_root)
-        self.assertEqual(len(messages), 6)
+    def test_generate_linker_scripts(self) -> None:
+        template_root = REPO_ROOT / "platform" / "bsp" / "boards" / "rm-a-board" / "linker" / "templates"
+        with tempfile.TemporaryDirectory() as output:
+            out_dir = Path(output)
+            outputs = omlayout.write_outputs(self.layout, out_dir, template_root)
+            names = {path.relative_to(out_dir).as_posix() for path in outputs}
+            self.assertIn("linker/gcc/bootloader.ld", names)
+            self.assertIn("linker/gcc/app_a.ld", names)
+            self.assertIn("linker/gcc/app_b.ld", names)
+            self.assertIn("linker/arm/bootloader.sct", names)
+            self.assertIn("linker/arm/app_a.sct", names)
+            self.assertIn("linker/arm/app_b.sct", names)
+
+            gcc_app_a = (out_dir / "linker" / "gcc" / "app_a.ld").read_text(encoding="utf-8")
+            gcc_app_b = (out_dir / "linker" / "gcc" / "app_b.ld").read_text(encoding="utf-8")
+            arm_boot = (out_dir / "linker" / "arm" / "bootloader.sct").read_text(encoding="utf-8")
+            self.assertIn("ORIGIN = 0x08010200,   LENGTH = 0x000EFE00", gcc_app_a)
+            self.assertIn("ORIGIN = 0x08110200,   LENGTH = 0x000EFE00", gcc_app_b)
+            self.assertIn("LR_IROM1 0x08000000 0x00010000", arm_boot)
+
+            messages = omlayout.check_linkers(self.layout, out_dir / "linker")
+            self.assertEqual(len(messages), 6)
 
     def test_contract_payload_offset_matches_layout(self) -> None:
         contract = REPO_ROOT / "lib" / "boot" / "include" / "boot" / "image.h"

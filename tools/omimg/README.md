@@ -6,14 +6,18 @@
 ## 用法
 
 ```sh
-# 打包：裸 .bin → 镜像
-python tools/omimg/omimg.py pack --input app.bin --output app_a.img.bin --version 1.2.3 --slot a
+# 打包：裸 .bin → 镜像（--layout 从工程布局清单取负载偏移与槽容量）
+python tools/omimg/omimg.py pack --input app.bin --output app_a.img.bin \
+    --version 1.2.3 --slot a \
+    --layout build/gen/rm-a-board/om_bootcfg/om_bootcfg.generated.json
 
 # 解析：打印头部字段
-python tools/omimg/omimg.py inspect app_a.img.bin
+python tools/omimg/omimg.py inspect app_a.img.bin \
+    --layout build/gen/rm-a-board/om_bootcfg/om_bootcfg.generated.json
 
-# 校验：按契约判定顺序检查（可选给出槽容量以校验越界）
-python tools/omimg/omimg.py verify app_a.img.bin --slot-capacity 0xF0000
+# 校验：按契约判定顺序检查（可用布局清单或显式槽容量）
+python tools/omimg/omimg.py verify app_a.img.bin \
+    --layout build/gen/rm-a-board/om_bootcfg/om_bootcfg.generated.json
 
 # 自检：算法自检向量 + 契约常量一致性 + 往返与损坏检出
 python tools/omimg/omimg.py selftest
@@ -22,13 +26,17 @@ python tools/omimg/omimg.py selftest
 `pack` 的默认行为：摘要算法 CRC32、`flags = SLOT_BOUND`、负载尾部补齐到 4 字节
 倍数（补 `0xFF`）、摘要区其余部分填 `0xFF`。同一输入重复执行产出逐字节相同的文件。
 
-**负载偏移**（`--payload-offset`）默认取契约头的约定值（`0x200`），须 0x200 对齐。
-工程在 `om_bootcfg.h` 覆写该值时必须同步给本工具传参——它与 app 的链接偏移是
-同一个值，两者不一致时镜像仍能打包，但启动才会失败。
+**负载偏移**（`--payload-offset`）默认取 `--layout` 清单的 `payloadOffset`，未提供
+布局时取契约头的约定值（`0x200`），须 0x200 对齐。它与 app 的链接偏移是同一个值；
+指定布局时工具会拒绝与布局不一致的偏移。`verify --layout` 还会按镜像 `slotId`
+取槽容量并校验越界。
+
+布局清单由 `tools/omlayout` 从 `cfg/boards/<board>/om_bootcfg.json` 生成，路径通常为
+`build/gen/<board>/om_bootcfg/om_bootcfg.generated.json`。
 
 ## 两侧一致性
 
-契约要求主机侧与目标侧的摘要**逐字节一致**。本工具的保障有四层：
+契约要求主机侧与目标侧的摘要**逐字节一致**。本工具的保障有五层：
 
 1. **契约头是唯一事实源**：每次运行先解析 C 契约头加载魔数/版本/头长/负载偏移/
    摘要区尺寸，模块内的字面量只作"契约头不可读"时的兜底。C 侧改契约 → 工具下次
@@ -38,7 +46,9 @@ python tools/omimg/omimg.py selftest
    与 host 语料同一组值。契约改动会让两侧各自失败——改契约是有意识的动作，不是
    悄悄漂移；
 4. **host 语料**（`samples/host/boot_image_test/`）用 C 侧契约头与原语组装同一镜像
-   与基准比对，30 项含损坏检出与补齐边界。
+   与基准比对，30 项含损坏检出与补齐边界；
+5. **布局清单**（`--layout`）复用 `tools/omlayout` 的校验，校验负载偏移与槽容量；
+   清单由 JSON 源生成，工具不解析 C 宏。
 
 改动契约、字段布局或摘要算法后：跑 `selftest` + host 语料，并按需更新基准值。
 

@@ -1,10 +1,12 @@
 /**
- * @file   om_bootcfg.h.example —— boot 系统用户配置模板（按板复制到工程
- *        cfg/boards/<board>/om_bootcfg.h 后编辑）
+ * @file   om_bootcfg.h.example —— 旧版 boot 系统用户配置模板
+ *
+ * 本模板仅供仍使用手写 om_bootcfg.h 的工程过渡参考；新工程以
+ * cfg/boards/<board>/om_bootcfg.json 为布局源，由 tools/omlayout 生成头文件。
  *
  * boot 配置归属（bootcfg 体系）：布局数值与 boot 行为参数 = 工程侧用户自定义
  * （板片段目录机制，见 ADR-0017 (project_config_layering)）；bootloader 与 app
- * 两个工程对同一板构建时引用同一份 om_bootcfg.h——布局天然同源。
+ * 两个工程对同一板构建时引用同一份布局源——布局天然同源。
  *
  * 分工：
  * - 本文件 = 用户可配面：分区布局表 + 镜像**布局值**（负载偏移）+ boot 行为参数
@@ -17,8 +19,9 @@
  *   由随附数据文件（见文件尾注释）实例化。条目须满足器件几何（扇区对齐、
  *   不越器件容量）——配置错误在操作期显式报错，不静默扩擦。
  *
- * 过渡说明：布局单一源改为项目布局声明（见 samples/boot/layout/），由
- * tools/omlayout 生成本头和分区表；新工程不要手写本文件的内容。
+ * 过渡说明：布局单一源为 cfg/boards/<board>/om_bootcfg.json（示例见
+ * samples/boot/layout/），由 tools/omlayout 生成本头和分区表；新工程不要手写
+ * 本文件的内容。
  */
 
 #ifndef OM_BOOTCFG_H

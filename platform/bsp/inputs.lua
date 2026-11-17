@@ -32,6 +32,13 @@ local function resolve_link_variant(profile, variant_name)
     return variants[variant_name] or variants.default or {}
 end
 
+--- 链接变体对应的编译期槽标识
+local VARIANT_DEFINES = {
+    bootloader = "OM_BOOT_VARIANT_BOOTLOADER",
+    app_a = "OM_BOOT_VARIANT_APP_A",
+    app_b = "OM_BOOT_VARIANT_APP_B",
+}
+
 --- 收集 profile 中声明的强覆盖源文件
 ---@param profile table Profile 数据
 ---@return string[] sources 覆盖源文件列表
@@ -196,9 +203,14 @@ function get_board_build_inputs(board_name)
     utils.append_list(inputs.defines, profile.chip.defines)
     utils.append_list(inputs.defines, profile.board.defines)
 
-    -- 槽感知的向量表偏移：链接变体给出，编译期注入板级启动代码
+    -- 槽感知的向量表偏移：板级链接变体作为回退值；有布局源时启动代码从
+    -- 生成的 om_bootcfg.h 取槽偏移（见 bsp_cpu.c），构建期随源更新。
     local vect_tab_offset = variant.vect_tab_offset or 0
     inputs.defines[#inputs.defines + 1] = string.format("OM_BOARD_VECT_TAB_OFFSET=0x%X", vect_tab_offset)
+    local variant_define = VARIANT_DEFINES[variant_name]
+    if variant_define then
+        inputs.defines[#inputs.defines + 1] = variant_define
+    end
 
     utils.append_list(inputs.includedirs, profile.vendor.includedirs)
     utils.append_list(inputs.includedirs, profile.chip.includedirs)
