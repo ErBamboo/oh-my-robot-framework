@@ -4,7 +4,7 @@
  *
  * 夹具：16K 均匀扇区的模拟 flash，meta 分区 = 3 个擦除单位，模块只使用前 2 个。
  * 测试覆盖空分区、单份写入、双份都有效、写者擦除非最新副本、清理、半写记录、
- * 擦除失败、写入失败与 seq 推进；额外擦除单位必须保持不动。
+ * 擦除失败、写入失败、seq 推进与布局指纹兼容性；额外擦除单位必须保持不动。
  *
  * 退出码 0=全绿；非 0=有 FAIL。
  */
@@ -339,6 +339,49 @@ static void test_invalid_args(void)
     CHECK(om_boot_meta_read(NULL, &read) == OM_ERR_INVALID_ARG, "NULL context rejected");
 }
 
+static void test_layout_fingerprint(void)
+{
+    OmBootMetaData data = make_data(0u, OM_BOOT_META_STATE_VALID, 0u, 0u, OM_FALSE,
+                                    OM_BOOT_META_REASON_NONE);
+    OmBootMetaReadResult read;
+
+    printf("[T11] layout fingerprint compatibility\n");
+
+    g_meta.layoutFingerprint = 0x1234u;
+    CHECK(om_boot_meta_write(&g_meta, &data) == OM_OK, "write record with current fingerprint");
+    CHECK(om_boot_meta_read(&g_meta, &read) == OM_OK && read.status == OM_BOOT_META_READ_OK,
+          "matching fingerprint accepted");
+    CHECK(read.status == OM_BOOT_META_READ_OK &&
+              read.record.data.layoutFingerprint == 0x1234u,
+          "fingerprint round-trips");
+
+    g_meta.layoutFingerprint = 0x5678u;
+    CHECK(om_boot_meta_read(&g_meta, &read) == OM_OK &&
+              read.status == OM_BOOT_META_READ_INCOMPATIBLE,
+          "mismatched fingerprint reported");
+
+    data.layoutFingerprint = 0x9999u;
+    CHECK(om_boot_meta_write(&g_meta, &data) == OM_OK, "rewrite under new fingerprint");
+    CHECK(om_boot_meta_read(&g_meta, &read) == OM_OK && read.status == OM_BOOT_META_READ_OK,
+          "rewritten record accepted");
+    CHECK(read.status == OM_BOOT_META_READ_OK &&
+              read.record.data.layoutFingerprint == 0x5678u,
+          "writer stamps current fingerprint");
+
+    CHECK(om_boot_meta_cleanup(&g_meta) == OM_OK, "cleanup with incompatible copy");
+    CHECK(copy_is_erased(1u), "incompatible copy erased");
+    CHECK(!copy_is_erased(0u), "compatible latest kept");
+
+    g_meta.layoutFingerprint = OM_BOOT_META_FINGERPRINT_NONE;
+    data.layoutFingerprint = 0xBEEFu;
+    CHECK(om_boot_meta_write(&g_meta, &data) == OM_OK, "write without expected fingerprint");
+    CHECK(om_boot_meta_read(&g_meta, &read) == OM_OK && read.status == OM_BOOT_META_READ_OK,
+          "unconfigured build accepts record");
+    CHECK(read.status == OM_BOOT_META_READ_OK &&
+              read.record.data.layoutFingerprint == 0xBEEFu,
+          "caller fingerprint stored when unconfigured");
+}
+
 int main(void)
 {
     flash_sim_init(&g_sim, META_CAP, 0xFFu, 4u);
@@ -370,6 +413,7 @@ int main(void)
     test_erase_failure();
     test_write_failure();
     test_invalid_args();
+    test_layout_fingerprint();
 
     printf("\n结果：%d 通过 / %d 失败\n", g_pass, g_fail);
     flash_sim_deinit(&g_sim);
