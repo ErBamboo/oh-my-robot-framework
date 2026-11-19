@@ -51,6 +51,14 @@ void flash_sim_set_fail(FlashSim *sim, bool fail)
     }
 }
 
+void flash_sim_set_read_fail(FlashSim *sim, bool fail)
+{
+    if (sim)
+    {
+        sim->failRead = fail;
+    }
+}
+
 void flash_sim_set_silent_erase_fail(FlashSim *sim, bool fail)
 {
     if (sim)
@@ -79,20 +87,24 @@ static FlashSim *flash_sim_from_dev(FlashDev *dev)
 
 OmRet flash_sim_read(FlashDev *dev, uint32_t addr, void *buf, size_t len)
 {
-    FlashSim *sim = flash_sim_from_dev(dev);
+    FlashSim *sim = flash_sim_from_dev(dev); /* 器件背后的模拟器 */
     if (!sim || !sim->mem)
     {
         return OM_ERR_FLASH_IO;
     }
     sim->opCount++;
     flash_sim_poke_delay(sim);
+    if (sim->failRead)
+    {
+        return OM_ERR_FLASH_IO;
+    }
     memcpy(buf, sim->mem + addr, len);
     return OM_OK;
 }
 
 OmRet flash_sim_write(FlashDev *dev, uint32_t addr, const void *data, size_t len)
 {
-    FlashSim *sim = flash_sim_from_dev(dev);
+    FlashSim *sim = flash_sim_from_dev(dev); /* 器件背后的模拟器 */
     if (!sim || !sim->mem)
     {
         return OM_ERR_FLASH_IO;
@@ -104,14 +116,14 @@ OmRet flash_sim_write(FlashDev *dev, uint32_t addr, const void *data, size_t len
         return OM_ERR_FLASH_IO; /* 注入拒绝：未落位 */
     }
 
-    const uint8_t *src = (const uint8_t *)data;
-    uint8_t *dst = sim->mem + addr;
+    const uint8_t *src = (const uint8_t *)data; /* 待写入数据 */
+    uint8_t *dst = sim->mem + addr;             /* 介质内目标地址 */
 
     if (sim->strictProgram)
     {
         /* program 物理语义：结果 = dst AND src（只允许 1→0 与同值）；
          * 违规 = dst 中已为 0 的位被 src 置 1（写未擦区） */
-        for (size_t i = 0; i < len; i++)
+        for (size_t i = 0; i < len; i++) /* 逐字节检查是否试图把 0 写成 1 */
         {
             if (((uint8_t)~dst[i] & src[i]) != 0)
             {
@@ -129,7 +141,7 @@ OmRet flash_sim_write(FlashDev *dev, uint32_t addr, const void *data, size_t len
 
 OmRet flash_sim_erase(FlashDev *dev, uint32_t addr, size_t len)
 {
-    FlashSim *sim = flash_sim_from_dev(dev);
+    FlashSim *sim = flash_sim_from_dev(dev); /* 器件背后的模拟器 */
     if (!sim || !sim->mem)
     {
         return OM_ERR_FLASH_IO;

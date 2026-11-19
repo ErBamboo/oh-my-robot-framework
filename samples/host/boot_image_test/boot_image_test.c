@@ -14,7 +14,7 @@
 #include <string.h>
 
 #include "algorithm/checksum/crc32.h"
-#include "boot/image.h"
+#include "boot/contract/image.h"
 
 /* ===================================================================
  * 对拍基准（由主机侧打包工具对同一负载与元数据产出）
