@@ -1,6 +1,6 @@
 /**
  * @file   meta.c
- * @brief  启动决策数据 entry 的读写与轮转实现
+ * @brief  启动状态记录持久化对象实现
  */
 
 #include "boot/meta.h"
@@ -17,17 +17,17 @@ typedef enum OmBootMetaCopyState
     OM_BOOT_META_COPY_INVALID = 2, /**< 半写或损坏，写前须擦除 */
 } OmBootMetaCopyState;
 
-/** 计算 entry 决策字段的 CRC；crc32 字段自身不参与。 */
+/** 计算记录的 CRC；crc32 字段自身不参与。 */
 static uint32_t meta_crc32(const OmBootMetaEntry *entry)
 {
     return om_crc32_iso_hdlc(OM_CRC32_INIT, entry, offsetof(OmBootMetaEntry, crc32));
 }
 
-/** 判断 entry 是否保持擦除态（32 字节全 0xFF）。 */
+/** 判断记录是否保持擦除态（32 字节全 0xFF）。 */
 static OmBool entry_is_erased(const OmBootMetaEntry *entry)
 {
-    const uint8_t *bytes = (const uint8_t *)entry;
-    size_t i;
+    const uint8_t *bytes = (const uint8_t *)entry; /* 按字节检查擦除值 */
+    size_t i;                                      /* 记录字节序号 */
 
     for (i = 0u; i < sizeof(*entry); i++)
     {
@@ -39,22 +39,14 @@ static OmBool entry_is_erased(const OmBootMetaEntry *entry)
     return OM_TRUE;
 }
 
-/** 校验 seq、状态、槽号与 CRC；任一项不符即无效。 */
-OmBool om_boot_meta_entry_valid(const OmBootMetaEntry *entry)
+/** 判断记录能否作为有效副本参与比较。 */
+static OmBool entry_is_valid(const OmBootMetaEntry *entry)
 {
-    if (entry == NULL)
+    if (om_boot_meta_entry_schema_valid(entry) == OM_FALSE)
     {
         return OM_FALSE;
     }
     if (entry->seq == OM_BOOT_META_SEQ_INVALID)
-    {
-        return OM_FALSE;
-    }
-    if (entry->state > (uint32_t)OM_BOOT_META_STATE_ABORTED)
-    {
-        return OM_FALSE;
-    }
-    if (entry->activeSlot > 1u)
     {
         return OM_FALSE;
     }
@@ -71,14 +63,14 @@ static OmRet read_copy_raw(const OmBootMeta *meta, uint32_t index, OmBootMetaEnt
     return om_partition_read(&meta->partition, meta->copyOffset[index], entry, sizeof(*entry));
 }
 
-/** 对已读出的 entry 做空白/有效/损坏分类。 */
+/** 对已读出的记录做空白/有效/损坏分类。 */
 static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry)
 {
     if (entry_is_erased(entry) == OM_TRUE)
     {
         return OM_BOOT_META_COPY_ERASED;
     }
-    if (om_boot_meta_entry_valid(entry) == OM_TRUE)
+    if (entry_is_valid(entry) == OM_TRUE)
     {
         return OM_BOOT_META_COPY_VALID;
     }
@@ -86,17 +78,15 @@ static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry)
 }
 
 /**
- * @brief 读取全部副本，分类并定位最新有效 entry
+ * @brief 读取全部副本，分类并定位最新有效记录
  *
- * copies 与 states 按副本序号填充。没有有效 entry 时 has_latest 为 OM_FALSE，
- * latest_index 与 latest_seq 归零。读、写、清理共用本次扫描，避免重复实现
- * 分类与最新项选择。
+ * 读、写、清理共用本次扫描，避免重复实现分类与最新项选择。
  */
 static OmRet scan_copies(const OmBootMeta *meta, OmBootMetaEntry *copies,
                          OmBootMetaCopyState *states, uint32_t *latest_index,
                          uint32_t *latest_seq, OmBool *has_latest)
 {
-    uint32_t i;
+    uint32_t i; /* 副本序号 */
 
     *latest_index = 0u;
     *latest_seq = 0u;
@@ -104,7 +94,7 @@ static OmRet scan_copies(const OmBootMeta *meta, OmBootMetaEntry *copies,
 
     for (i = 0u; i < meta->copyCount; i++)
     {
-        OmRet ret = read_copy_raw(meta, i, &copies[i]);
+        OmRet ret = read_copy_raw(meta, i, &copies[i]); /* 当前副本读取结果 */
 
         if (ret != OM_OK)
         {
@@ -123,88 +113,12 @@ static OmRet scan_copies(const OmBootMeta *meta, OmBootMetaEntry *copies,
     return OM_OK;
 }
 
-/** 绑定决策分区并缓存前 N 个副本的偏移与大小。 */
-OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
-{
-    uint32_t count;
-    uint32_t i;
-
-    if (meta == NULL || partition == NULL)
-    {
-        return OM_ERR_INVALID_ARG;
-    }
-
-    count = om_partition_erase_unit_count(partition);
-    if (count < OM_BOOT_META_COPIES)
-    {
-        return OM_ERR_INVALID_ARG;
-    }
-
-    memset(meta, 0, sizeof(*meta));
-    meta->partition = *partition;
-    /* 分区可以大于副本集合；模块只使用前 N 个独立单位，多余单位不读、不擦、不校验。 */
-    meta->copyCount = OM_BOOT_META_COPIES;
-
-    for (i = 0u; i < OM_BOOT_META_COPIES; i++)
-    {
-        OmPartitionEraseUnit unit;
-        OmRet ret = om_partition_erase_unit_at(partition, i, &unit);
-
-        if (ret != OM_OK)
-        {
-            return ret;
-        }
-        if (unit.size < sizeof(OmBootMetaEntry))
-        {
-            return OM_ERR_INVALID_ARG;
-        }
-        meta->copyOffset[i] = unit.offset;
-        meta->copySize[i] = unit.size;
-    }
-
-    return OM_OK;
-}
-
-/** 读取最新有效 entry；没有有效 entry 时返回 OM_ERR_NOT_FOUND。 */
-OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaEntry *entry, uint32_t *copy_index)
-{
-    OmBootMetaEntry copies[OM_BOOT_META_COPIES];
-    OmBootMetaCopyState states[OM_BOOT_META_COPIES];
-    OmBool has_latest;
-    uint32_t latest_index;
-    uint32_t latest_seq;
-    OmRet ret;
-
-    if (meta == NULL || entry == NULL || meta->copyCount != OM_BOOT_META_COPIES)
-    {
-        return OM_ERR_INVALID_ARG;
-    }
-
-    ret = scan_copies(meta, copies, states, &latest_index, &latest_seq, &has_latest);
-    if (ret != OM_OK)
-    {
-        return ret;
-    }
-    if (has_latest == OM_FALSE)
-    {
-        memset(entry, 0xFF, sizeof(*entry));
-        return OM_ERR_NOT_FOUND;
-    }
-
-    *entry = copies[latest_index];
-    if (copy_index != NULL)
-    {
-        *copy_index = latest_index;
-    }
-    return OM_OK;
-}
-
 /** 选择写入目标：优先空白副本，其次损坏副本，最后选最旧的非最新有效副本。 */
 static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaEntry *copies,
                               const OmBootMetaCopyState *states, uint32_t latest_index)
 {
-    uint32_t i;
-    uint32_t oldest;
+    uint32_t i;      /* 副本序号 */
+    uint32_t oldest; /* 非最新有效副本中 seq 最小者 */
 
     if (latest_index >= meta->copyCount)
     {
@@ -243,28 +157,71 @@ static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaEntry *cop
     return oldest;
 }
 
-/** 写一条新 entry；必要时擦除目标副本，CRC 最后写。 */
-OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
+/** 把记录内容编码为 32 字节记录；seq 与 CRC 在写入时填写。 */
+static void encode_entry(const OmBootMetaData *data, OmBootMetaEntry *entry)
 {
-    OmBootMetaEntry copies[OM_BOOT_META_COPIES];
-    OmBootMetaCopyState states[OM_BOOT_META_COPIES];
-    OmBool has_latest;
-    uint32_t latest_index;
-    uint32_t latest_seq;
-    uint32_t target;
-    uint32_t next_seq;
-    OmRet ret;
+    uint32_t flags; /* 指纹与状态迁移位 */
 
-    if (meta == NULL || entry == NULL || meta->copyCount != OM_BOOT_META_COPIES)
-    {
-        return OM_ERR_INVALID_ARG;
-    }
-    if (entry->state > (uint32_t)OM_BOOT_META_STATE_ABORTED || entry->activeSlot > 1u)
-    {
-        return OM_ERR_INVALID_ARG;
-    }
+    memset(entry, 0, sizeof(*entry));
+    entry->activeSlot = data->activeSlot;
+    entry->state = (uint32_t)data->state;
+    entry->bootCount = data->bootCount;
+    entry->imageVersion = data->imageVersion;
+    entry->reason = (uint32_t)data->reason;
 
-    /* 读取全部副本，确定最新有效 seq 与写入目标。 */
+    flags = (data->layoutFingerprint & 0xFFFFu) << OM_BOOT_META_FLAG_FINGERPRINT_SHIFT;
+    if (data->confirmed[0] == OM_TRUE)
+    {
+        flags |= OM_BOOT_META_FLAG_SLOT_A_CONFIRMED;
+    }
+    if (data->confirmed[1] == OM_TRUE)
+    {
+        flags |= OM_BOOT_META_FLAG_SLOT_B_CONFIRMED;
+    }
+    if (data->trialFromRollback == OM_TRUE)
+    {
+        flags |= OM_BOOT_META_FLAG_TRIAL_FROM_ROLLBACK;
+    }
+    if (data->confirmedWrite == OM_TRUE)
+    {
+        flags |= OM_BOOT_META_FLAG_CONFIRMED;
+    }
+    entry->flags = flags;
+}
+
+/** 把 32 字节记录解码为记录内容。 */
+static void decode_entry(const OmBootMetaEntry *entry, OmBootMetaData *data)
+{
+    memset(data, 0, sizeof(*data));
+    data->state = (OmBootMetaState)entry->state;
+    data->activeSlot = entry->activeSlot;
+    data->bootCount = entry->bootCount;
+    data->imageVersion = entry->imageVersion;
+    data->confirmed[0] =
+        ((entry->flags & OM_BOOT_META_FLAG_SLOT_A_CONFIRMED) != 0u) ? OM_TRUE : OM_FALSE;
+    data->confirmed[1] =
+        ((entry->flags & OM_BOOT_META_FLAG_SLOT_B_CONFIRMED) != 0u) ? OM_TRUE : OM_FALSE;
+    data->trialFromRollback =
+        ((entry->flags & OM_BOOT_META_FLAG_TRIAL_FROM_ROLLBACK) != 0u) ? OM_TRUE : OM_FALSE;
+    data->confirmedWrite =
+        ((entry->flags & OM_BOOT_META_FLAG_CONFIRMED) != 0u) ? OM_TRUE : OM_FALSE;
+    data->layoutFingerprint =
+        (entry->flags & OM_BOOT_META_FLAG_FINGERPRINT_MASK) >> OM_BOOT_META_FLAG_FINGERPRINT_SHIFT;
+    data->reason = (OmBootMetaReason)entry->reason;
+}
+
+/** 写一条已编码的记录；必要时擦除目标副本，CRC 最后写。 */
+static OmRet write_entry(OmBootMeta *meta, OmBootMetaEntry *entry)
+{
+    OmBootMetaEntry copies[OM_BOOT_META_COPIES];     /* 各副本读出的原始记录 */
+    OmBootMetaCopyState states[OM_BOOT_META_COPIES]; /* 各副本的分类结果 */
+    OmBool has_latest;                               /* 是否存在有效记录 */
+    uint32_t latest_index;                           /* 最新有效记录的副本序号 */
+    uint32_t latest_seq;                             /* 最新有效记录的 seq */
+    uint32_t target;                                 /* 本次写入选中的副本序号 */
+    uint32_t next_seq;                               /* 新记录的序号 */
+    OmRet ret;                                       /* 分区读写结果 */
+
     ret = scan_copies(meta, copies, states, &latest_index, &latest_seq, &has_latest);
     if (ret != OM_OK)
     {
@@ -316,16 +273,118 @@ OmRet om_boot_meta_write(OmBootMeta *meta, OmBootMetaEntry *entry)
     return OM_OK;
 }
 
-/** 保留最新有效副本，擦除其余副本。 */
+OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
+{
+    uint32_t count; /* 分区内可用擦除单位数 */
+    uint32_t i;     /* 副本序号 */
+
+    if (meta == NULL || partition == NULL)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+
+    count = om_partition_erase_unit_count(partition);
+    if (count < OM_BOOT_META_COPIES)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+
+    memset(meta, 0, sizeof(*meta));
+    meta->partition = *partition;
+    /* 分区可以大于副本集合；模块只使用前 N 个独立单位，多余单位不读、不擦、不校验。 */
+    meta->copyCount = OM_BOOT_META_COPIES;
+
+    for (i = 0u; i < OM_BOOT_META_COPIES; i++)
+    {
+        OmPartitionEraseUnit unit; /* 第 i 个擦除单位的偏移与大小 */
+        OmRet ret = om_partition_erase_unit_at(partition, i, &unit);
+
+        if (ret != OM_OK)
+        {
+            return ret;
+        }
+        if (unit.size < sizeof(OmBootMetaEntry))
+        {
+            return OM_ERR_INVALID_ARG;
+        }
+        meta->copyOffset[i] = unit.offset;
+        meta->copySize[i] = unit.size;
+    }
+
+    return OM_OK;
+}
+
+OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaReadResult *out)
+{
+    OmBootMetaEntry copies[OM_BOOT_META_COPIES];     /* 各副本读出的原始记录 */
+    OmBootMetaCopyState states[OM_BOOT_META_COPIES]; /* 各副本的分类结果 */
+    OmBool has_latest;                               /* 是否存在有效记录 */
+    uint32_t latest_index;                           /* 最新有效记录的副本序号 */
+    uint32_t latest_seq;                             /* 最新有效记录的 seq */
+    uint32_t i;                                      /* 副本序号 */
+    OmRet ret;                                       /* 副本读取结果 */
+
+    if (meta == NULL || out == NULL || meta->copyCount != OM_BOOT_META_COPIES)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->status = OM_BOOT_META_READ_IO_ERROR;
+
+    ret = scan_copies(meta, copies, states, &latest_index, &latest_seq, &has_latest);
+    if (ret != OM_OK)
+    {
+        return OM_OK; /* 读取失败已折入 status */
+    }
+
+    if (has_latest == OM_FALSE)
+    {
+        out->status = OM_BOOT_META_READ_NO_RECORD;
+        for (i = 0u; i < meta->copyCount; i++)
+        {
+            if (states[i] == OM_BOOT_META_COPY_INVALID)
+            {
+                out->status = OM_BOOT_META_READ_DAMAGED;
+                break;
+            }
+        }
+        return OM_OK;
+    }
+
+    out->status = OM_BOOT_META_READ_OK;
+    out->record.copyIndex = latest_index;
+    out->record.seq = latest_seq;
+    decode_entry(&copies[latest_index], &out->record.data);
+    return OM_OK;
+}
+
+OmRet om_boot_meta_write(OmBootMeta *meta, const OmBootMetaData *data)
+{
+    OmBootMetaEntry entry; /* 编码后的记录 */
+
+    if (meta == NULL || data == NULL || meta->copyCount != OM_BOOT_META_COPIES)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+
+    encode_entry(data, &entry);
+    if (om_boot_meta_entry_schema_valid(&entry) == OM_FALSE)
+    {
+        return OM_ERR_INVALID_ARG;
+    }
+    return write_entry(meta, &entry);
+}
+
 OmRet om_boot_meta_cleanup(OmBootMeta *meta)
 {
-    OmBootMetaEntry copies[OM_BOOT_META_COPIES];
-    OmBootMetaCopyState states[OM_BOOT_META_COPIES];
-    OmBool has_latest;
-    uint32_t latest_index;
-    uint32_t latest_seq;
-    uint32_t i;
-    OmRet ret;
+    OmBootMetaEntry copies[OM_BOOT_META_COPIES];     /* 各副本读出的原始记录 */
+    OmBootMetaCopyState states[OM_BOOT_META_COPIES]; /* 各副本的分类结果 */
+    OmBool has_latest;                               /* 是否存在有效记录 */
+    uint32_t latest_index;                           /* 最新有效记录的副本序号 */
+    uint32_t latest_seq;                             /* 最新有效记录的 seq */
+    uint32_t i;                                      /* 副本序号 */
+    OmRet ret;                                       /* 分区擦除结果 */
 
     if (meta == NULL || meta->copyCount != OM_BOOT_META_COPIES)
     {
