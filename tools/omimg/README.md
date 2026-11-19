@@ -1,6 +1,6 @@
 # omimg — 镜像打包与检查
 
-镜像格式契约（`lib/boot/include/boot/image.h`）的**主机侧实现**：把裸负载打包成
+镜像格式契约（`lib/boot/include/boot/contract/image.h`）的**主机侧实现**：把裸负载打包成
 带头部与摘要区的完整镜像，或反向解析、校验一个镜像。只用标准库。
 
 ## 用法

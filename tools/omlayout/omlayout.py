@@ -15,7 +15,7 @@ Usage:
     python tools/omlayout/omlayout.py generate --spec samples/boot/layout/rm-a-board/om_bootcfg.json --out build/layout
     python tools/omlayout/omlayout.py check --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
         --linker-root platform/bsp/boards/rm-a-board/linker \
-        --contract lib/boot/include/boot/image.h
+        --contract lib/boot/include/boot/contract/image.h
 
 Python 3.10+ is required.
 """

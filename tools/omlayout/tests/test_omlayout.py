@@ -108,7 +108,7 @@ class LayoutToolTest(unittest.TestCase):
             self.assertEqual(len(messages), 6)
 
     def test_contract_payload_offset_matches_layout(self) -> None:
-        contract = REPO_ROOT / "lib" / "boot" / "include" / "boot" / "image.h"
+        contract = REPO_ROOT / "lib" / "boot" / "include" / "boot" / "contract" / "image.h"
         message = omlayout.check_contract(self.layout, contract)
         self.assertIn("payload offset", message)
 

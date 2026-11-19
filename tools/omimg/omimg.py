@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """镜像打包与检查——镜像格式契约的主机侧实现。
 
-契约的事实源是 C 头文件 lib/boot/include/boot/image.h；本文件的常量与之镜像，
+契约的事实源是 C 头文件 lib/boot/include/boot/contract/image.h；本文件的常量与之镜像，
 字节布局必须逐字段一致。selftest 会解析该头文件核对常量，避免两侧漂移。
 
 用法：
@@ -28,7 +28,7 @@ sys.path.insert(0, str(_TOOLS_ROOT / "omlayout"))
 import omlayout  # noqa: E402  （路径注入须先于导入）
 
 # ---------------------------------------------------------------------------
-# 契约常量（镜像自 lib/boot/include/boot/image.h）
+# 契约常量（镜像自 lib/boot/include/boot/contract/image.h）
 # ---------------------------------------------------------------------------
 
 MAGIC = 0x4F4D5249  # "OMRI"
@@ -108,7 +108,7 @@ _HDR_FIELDS = (
     "reserved",
 )
 
-_HEADER_PATH = Path(__file__).resolve().parents[2] / "lib" / "boot" / "include" / "boot" / "image.h"
+_HEADER_PATH = Path(__file__).resolve().parents[2] / "lib" / "boot" / "include" / "boot" / "contract" / "image.h"
 
 
 class ImageError(Exception):

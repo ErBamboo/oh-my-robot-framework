@@ -53,7 +53,7 @@ server.py（本地后端：路由与 JSON 编解码）
 omimg（契约的唯一 Python 实现：打包、解析、判定顺序、摘要）
     │  load_contract() 运行前解析
     ▼
-lib/boot/include/boot/image.h（C 契约头 = 事实源）
+lib/boot/include/boot/contract/image.h（C 契约头 = 事实源）
 
 --layout（可选）
     ▼

@@ -18,7 +18,7 @@ python tools/omlayout/omlayout.py generate \
 python tools/omlayout/omlayout.py check \
     --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
     --linker-root build/layout/linker \
-    --contract lib/boot/include/boot/image.h
+    --contract lib/boot/include/boot/contract/image.h
 
 # 单元测试
 python -m unittest discover -s tools/omlayout/tests -v
