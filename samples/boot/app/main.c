@@ -56,8 +56,8 @@ OM_INIT_DRIVER(log_port_init);
 /** @brief 心跳线程：确认 init 完成后的业务线程可运行 */
 static void heartbeat_task(void *arg)
 {
-    (void)arg;
-    uint32_t count = 0;
+    (void)arg;          /* 线程入口参数未使用 */
+    uint32_t count = 0; /* 心跳序号 */
     for (;;)
     {
         OM_LOG_INFO("APP_%s heartbeat %u", APP_SLOT_LETTER, (unsigned)count);
@@ -69,7 +69,7 @@ static void heartbeat_task(void *arg)
 /** @brief 应用启动设置（APPLICATION 级，init 线程上下文） */
 static OmRet app_setup(void)
 {
-    uint32_t vtor = SCB->VTOR;
+    uint32_t vtor = SCB->VTOR; /* 当前向量表地址，用于确认运行槽与链接槽一致 */
 
     OM_LOG_INFO("APP_%s start link=0x%08x vtor=0x%08x expected=0x%08x "
                 "layout=0x%04x build=%s %s",
@@ -86,9 +86,9 @@ static OmRet app_setup(void)
         .name = "boot_hb",
         .priority = OSAL_PRIO_LOW_BASE,
         .stackSize = 512u * OSAL_STACK_WORD_BYTES,
-    };
-    OsalThread *thread = NULL;
-    OsalStatus status = osal_thread_create(&thread, &attr, heartbeat_task, NULL);
+    }; /* 心跳线程属性：低优先级、512 字栈 */
+    OsalThread *thread = NULL;                                                    /* 线程句柄，本样例不回收 */
+    OsalStatus status = osal_thread_create(&thread, &attr, heartbeat_task, NULL); /* 创建结果 */
     if (status != OSAL_OK)
     {
         OM_LOG_ERROR("APP_%s heartbeat thread failed: %d",

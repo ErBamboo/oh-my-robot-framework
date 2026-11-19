@@ -7,14 +7,16 @@
 
 - **app_a / app_b**：注册 USART6 串口日志后端，启动时输出槽身份、链接基址、
   `SCB->VTOR`、布局指纹与构建时间；随后创建低优先级心跳线程，每秒输出
-  `APP_A/B heartbeat n`。VTOR 与期望值不符时输出 ERROR。
-- **bootloader**：执行调度器前初始化，校验生成的分区表，读取 meta 最新有效
-  entry，并读取 A/B 槽头 magic；结果写入固定符号 `g_boot_sample_state`
-  （只读，不写 meta、不跳转）。启动决策/跳转在 M2/M3 接入，样例不提前实现。
+  `APP_A/B heartbeat n`。
+- **bootloader**：执行调度器前初始化，校验生成的分区表，构造 Meta 与两个
+  Image 对象，读取 meta 记录并校验 A/B 槽镜像；结果写入固定符号
+  `g_boot_sample_state`。决策与跳转在后续阶段接入，样例在对象评估完成后
+  保持空闲。
 - 观测方式：
   - app 日志：USART6，115200；USB-TTL 只接 TX/RX/GND、3.3V，不接 VCC；
-  - bootloader：用 Ozone/GDB 加载 ELF 后观察 `g_boot_sample_state`，或用
-    `arm-none-eabi-nm` 取符号地址后 J-Link `mem32` 读取；
+  - bootloader：用 Ozone/GDB 加载 ELF 后观察 `g_boot_sample_state`（扫描状态、
+    两槽校验结果与决策字段），或用 `arm-none-eabi-nm` 取符号地址后 J-Link
+    `mem32` 读取；
   - 直接烧 app ELF 只写入链接地址（槽基址 + 0x200），不会写槽头 0x200；
     因此 bootloader 读到的槽头 magic 在未烧完整槽镜像前是空白（0xFFFFFFFF）。
   - armclang 产物烧写用 HEX/BIN：J-Link `loadfile` 直接烧 armlink ELF 时不会
@@ -57,6 +59,7 @@ xmake build app_b
 - 布局源可用 `tools/omhost` 界面编辑：校验复用 `tools/omlayout` 规则，保存只写源文件，重新构建后生成物与链接地址才更新。
 - 重复复位优先用 J-Link 软复位（SWD 发 `SYSRESETREQ`，无需焊接 NRST）；需要真正断电/冷启动时用 `tools/omrelay` 的 `cycle`（接电源回路）。
 - 上位机测试台（`tools/omhost`）可探测串口/J-Link、由用户分配资源，并运行 `tools/omhost/testcases/` 中的复位、镜像与布局用例。
-- 决策数据为 2 份 meta（`meta` 32K）+ `meta_resv` 16K 提交进度区；`0x10C000` 16K 保留不用。app 侧在无已擦副本时擦除非最新副本（2026-11-16 决定）。
+- 决策数据为 2 份 meta（`meta` 32K）；`meta_resv` 16K 保留，追加进度区随 swap 策略版本落地；`0x10C000` 16K 保留不用。
+- 镜像对象与校验器 host 测试在 `samples/host/boot_image_object_test/`；Meta 对象测试在 `samples/host/boot_meta_store_test/`；镜像契约测试在 `samples/host/boot_image_test/`。决策核与流程对象暂不在当前代码中。
 - bootloader 形态不注入 `lib/services/src`、`lib/systems/src` 与 SEGGER RTT；需要日志时在 boot 自注册子集中显式加入最小后端。
 - app_a/app_b 的向量表偏移由布局源中的槽偏移 + payload offset 解析，写入生成的 `om_bootcfg.h` 槽宏；`bsp_cpu.c` 按构建变体选择对应宏，启动时写入 `SCB->VTOR`。

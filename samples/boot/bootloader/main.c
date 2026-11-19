@@ -5,16 +5,17 @@
  * 职责：
  * - 执行调度器前的板级/驱动初始化；
  * - 校验生成的布局分区表；
- * - 读取 meta 的最新有效 entry；
- * - 读取 A/B 槽头部 magic，供调试器确认槽状态；
- * - 把结果放进固定符号 g_boot_sample_state，供 J-Link/Ozone 直接观察。
+ * - 构造 Meta 与两个 Image 对象，各执行一次读取/校验；
+ * - 把结果放进固定符号 g_boot_sample_state，供 J-Link/Ozone 观察。
  *
- * 本样例只读，不写 meta、不擦除、不跳转。启动决策与跳转属于 M2/M3，
- * 后续在 state 结构预留的阶段上接入，不在样例里提前实现。
+ * 决策与跳转属于后续阶段，本样例在对象评估完成后保持可观察的空闲状态。
  */
 
 #include <stdint.h>
+#include <string.h>
 
+#include "boot/image.h"
+#include "boot/image_verifier.h"
 #include "boot/meta.h"
 #include "core/om_def.h"
 #include "core/om_init.h"
@@ -31,67 +32,51 @@
 /** 状态结构魔数：小端内存字节为 "OMBS"。 */
 #define BOOT_SAMPLE_MAGIC 0x534D424Fu
 
-/** 读槽头的错误哨兵，与真实 magic 区分。 */
-#define BOOT_SAMPLE_OPEN_FAILED 0xFFFFFFFDu
-#define BOOT_SAMPLE_READ_FAILED 0xFFFFFFFEu
-#define BOOT_SAMPLE_BLANK 0xFFFFFFFFu
-
 /** 引导阶段；调试器按该字段判断样例执行到哪里。 */
 typedef enum OmBootSampleStage
 {
-    OM_BOOT_SAMPLE_STAGE_ENTRY = 0,     /**< main 入口 */
-    OM_BOOT_SAMPLE_STAGE_PRE_SCHED = 1, /**< 调度器前初始化完成 */
-    OM_BOOT_SAMPLE_STAGE_PARTITION = 2, /**< 分区表校验完成 */
-    OM_BOOT_SAMPLE_STAGE_META = 3,      /**< meta 读取完成 */
-    OM_BOOT_SAMPLE_STAGE_SLOTS = 4,     /**< 槽头读取完成 */
-    OM_BOOT_SAMPLE_STAGE_READY = 5,     /**< 样例就绪，等待 M2/M3 接入 */
-    OM_BOOT_SAMPLE_STAGE_ERROR = 6,     /**< 初始化失败 */
+    OM_BOOT_SAMPLE_STAGE_ENTRY = 0,       /**< main 入口 */
+    OM_BOOT_SAMPLE_STAGE_PRE_SCHED = 1,   /**< 调度器前初始化完成 */
+    OM_BOOT_SAMPLE_STAGE_PARTITION = 2,   /**< 分区表校验完成 */
+    OM_BOOT_SAMPLE_STAGE_OBJECT_INIT = 3, /**< Meta 与 Image 对象初始化完成 */
+    OM_BOOT_SAMPLE_STAGE_OBJECT_RUN = 4,  /**< 读取与评估完成 */
+    OM_BOOT_SAMPLE_STAGE_READY = 5,       /**< 样例就绪 */
+    OM_BOOT_SAMPLE_STAGE_ERROR = 6,       /**< 初始化失败 */
 } OmBootSampleStage;
 
-/** 固定布局的状态结构；只读诊断，不参与启动决策。 */
+/** 固定布局的状态结构；只读诊断。 */
 typedef struct OmBootSampleState
 {
-    uint32_t magic;         /**< BOOT_SAMPLE_MAGIC */
-    uint32_t stage;         /**< OmBootSampleStage */
-    uint32_t preScheduler;  /**< om_startup_pre_scheduler() 返回值 */
-    uint32_t vtor;          /**< SCB->VTOR */
-    uint32_t layout;        /**< OM_BOOT_LAYOUT_FINGERPRINT */
-    uint32_t registryCount; /**< 分区条目数 */
-    uint32_t registryValid; /**< om_partition_registry_validate() 返回值 */
-    uint32_t metaOpen;      /**< om_partition_open("meta") 返回值 */
-    uint32_t metaInit;      /**< om_boot_meta_init() 返回值 */
-    uint32_t metaRead;      /**< om_boot_meta_read() 返回值 */
-    uint32_t metaCopy;      /**< 最新有效 entry 所在副本 */
-    uint32_t metaSeq;       /**< entry.seq */
-    uint32_t metaSlot;      /**< entry.activeSlot */
-    uint32_t metaState;     /**< entry.state */
-    uint32_t metaBootCount; /**< entry.bootCount */
-    uint32_t metaVersion;   /**< entry.imageVersion */
-    uint32_t metaFlags;     /**< entry.flags（高 16 位为布局指纹） */
-    uint32_t metaReason;    /**< entry.reason */
-    uint32_t slotAMagic;    /**< app_a 槽头 magic；见 BOOT_SAMPLE_* 哨兵 */
-    uint32_t slotBMagic;    /**< app_b 槽头 magic；见 BOOT_SAMPLE_* 哨兵 */
+    uint32_t magic;                 /**< BOOT_SAMPLE_MAGIC */
+    uint32_t stage;                 /**< OmBootSampleStage */
+    uint32_t preScheduler;          /**< om_startup_pre_scheduler() 返回值 */
+    uint32_t vtor;                  /**< SCB->VTOR */
+    uint32_t layout;                /**< OM_BOOT_LAYOUT_FINGERPRINT */
+    uint32_t registryCount;         /**< 分区条目数 */
+    uint32_t registryValid;         /**< om_partition_registry_validate() 返回值 */
+    uint32_t verifierInit;          /**< om_boot_image_verifier_init() 返回值 */
+    uint32_t metaReady;             /**< meta 分区是否可用 */
+    uint32_t metaStatus;            /**< OmBootMetaReadStatus */
+    uint32_t metaCopy;              /**< 最新记录所在副本 */
+    uint32_t metaSeq;               /**< 最新记录 seq */
+    uint32_t metaState;             /**< OmBootMetaState */
+    uint32_t metaSlot;              /**< activeSlot */
+    uint32_t metaBootCount;         /**< bootCount */
+    uint32_t metaVersion;           /**< imageVersion */
+    uint32_t metaConfirmedMask;     /**< 按槽确认位 */
+    uint32_t metaTrialFromRollback; /**< 回退试用标记 */
+    uint32_t metaReason;            /**< OmBootMetaReason */
+    uint32_t imageAReady;           /**< 镜像 A 对象是否可用 */
+    uint32_t imageAVerify;          /**< OmBootImageStatus */
+    uint32_t imageAValid;           /**< 0/1 */
+    uint32_t imageAVersion;         /**< 镜像版本 */
+    uint32_t imageBReady;           /**< 镜像 B 对象是否可用 */
+    uint32_t imageBVerify;          /**< OmBootImageStatus */
+    uint32_t imageBValid;           /**< 0/1 */
+    uint32_t imageBVersion;         /**< 镜像版本 */
 } OmBootSampleState;
 
 volatile OmBootSampleState g_boot_sample_state;
-
-/** @brief 读槽头 magic；只读，不解释镜像。 */
-static uint32_t slot_header_magic(const OmPartitionRegistry *registry, const char *name)
-{
-    OmPartitionHandle handle;
-    uint32_t magic = BOOT_SAMPLE_BLANK;
-    OmRet ret = om_partition_open(registry, name, &handle);
-    if (ret != OM_OK)
-    {
-        return BOOT_SAMPLE_OPEN_FAILED;
-    }
-    ret = om_partition_read(&handle, 0u, &magic, sizeof(magic));
-    if (ret != OM_OK)
-    {
-        return BOOT_SAMPLE_READ_FAILED;
-    }
-    return magic;
-}
 
 int main(void)
 {
@@ -100,7 +85,7 @@ int main(void)
     g_boot_sample_state.vtor = SCB->VTOR;
     g_boot_sample_state.layout = OM_BOOT_LAYOUT_FINGERPRINT;
 
-    OmRet ret = om_startup_pre_scheduler();
+    OmRet ret = om_startup_pre_scheduler(); /* 分阶段调用的返回码 */
     g_boot_sample_state.preScheduler = (uint32_t)ret;
     if (ret != OM_OK)
     {
@@ -112,46 +97,125 @@ int main(void)
     }
     g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_PRE_SCHED;
 
-    const OmPartitionRegistry *registry = om_boot_partition_registry();
+    const OmPartitionRegistry *registry = om_boot_partition_registry(); /* 生成的分区表 */
     g_boot_sample_state.registryCount = om_partition_registry_count(registry);
-    g_boot_sample_state.registryValid =
-        (uint32_t)om_partition_registry_validate(registry);
+    g_boot_sample_state.registryValid = (uint32_t)om_partition_registry_validate(registry);
     g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_PARTITION;
 
-    OmPartitionHandle meta_handle;
-    ret = om_partition_open(registry, "meta", &meta_handle);
-    g_boot_sample_state.metaOpen = (uint32_t)ret;
-    if (ret == OM_OK)
+    OmPartitionHandle meta_part;   /* meta 分区句柄 */
+    OmPartitionHandle slot_a_part; /* 槽 A 分区句柄 */
+    OmPartitionHandle slot_b_part; /* 槽 B 分区句柄 */
+
+    OmBool meta_open = (om_partition_open(registry, "meta", &meta_part) == OM_OK) ? OM_TRUE : OM_FALSE;
+    OmBool slot_a_open = (om_partition_open(registry, "app_a", &slot_a_part) == OM_OK) ? OM_TRUE : OM_FALSE;
+    OmBool slot_b_open = (om_partition_open(registry, "app_b", &slot_b_part) == OM_OK) ? OM_TRUE : OM_FALSE;
+
+    OmBootImageVerifier verifier;                 /* 镜像校验器 */
+    const OmBootImageVerifyAlgorithm *algorithms; /* 内置算法表 */
+    uint32_t algorithm_count = 0u;                /* 算法表项数 */
+
+    algorithms = om_boot_image_verify_algorithms(&algorithm_count);
+    ret = om_boot_image_verifier_init(&verifier, algorithms, algorithm_count);
+    g_boot_sample_state.verifierInit = (uint32_t)ret;
+    if (ret != OM_OK)
     {
-        OmBootMeta meta;
-        ret = om_boot_meta_init(&meta, &meta_handle);
-        g_boot_sample_state.metaInit = (uint32_t)ret;
-        if (ret == OM_OK)
+        g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_ERROR;
+        for (;;)
         {
-            OmBootMetaEntry entry;
-            uint32_t copy_index = 0u;
-            OmRet read_ret = om_boot_meta_read(&meta, &entry, &copy_index);
-            g_boot_sample_state.metaRead = (uint32_t)read_ret;
-            if (read_ret == OM_OK)
-            {
-                g_boot_sample_state.metaCopy = copy_index;
-                g_boot_sample_state.metaSeq = entry.seq;
-                g_boot_sample_state.metaSlot = entry.activeSlot;
-                g_boot_sample_state.metaState = entry.state;
-                g_boot_sample_state.metaBootCount = entry.bootCount;
-                g_boot_sample_state.metaVersion = entry.imageVersion;
-                g_boot_sample_state.metaFlags = entry.flags;
-                g_boot_sample_state.metaReason = entry.reason;
-            }
+            __WFI();
         }
     }
-    g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_META;
 
-    g_boot_sample_state.slotAMagic = slot_header_magic(registry, "app_a");
-    g_boot_sample_state.slotBMagic = slot_header_magic(registry, "app_b");
+    OmBootMeta meta; /* meta 对象 */
+    if (meta_open == OM_TRUE && om_boot_meta_init(&meta, &meta_part) == OM_OK)
+    {
+        g_boot_sample_state.metaReady = 1u;
+    }
+    else
+    {
+        g_boot_sample_state.metaReady = 0u;
+    }
+
+    OmBootImage images[OM_BOOT_SLOT_COUNT];                        /* 两个镜像对象 */
+    OmBool image_ready[OM_BOOT_SLOT_COUNT] = {OM_FALSE, OM_FALSE}; /* 镜像对象是否可用 */
+    if (slot_a_open == OM_TRUE &&
+        om_boot_image_init(&images[0], &slot_a_part, 0u, &verifier) == OM_OK)
+    {
+        image_ready[0] = OM_TRUE;
+    }
+    if (slot_b_open == OM_TRUE &&
+        om_boot_image_init(&images[1], &slot_b_part, 1u, &verifier) == OM_OK)
+    {
+        image_ready[1] = OM_TRUE;
+    }
+    g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_OBJECT_INIT;
+
+    OmBootMetaReadResult meta_result; /* meta 读取结果 */
+    if (g_boot_sample_state.metaReady != 0u)
+    {
+        (void)om_boot_meta_read(&meta, &meta_result);
+    }
+    else
+    {
+        memset(&meta_result, 0, sizeof(meta_result));
+        meta_result.status = OM_BOOT_META_READ_IO_ERROR;
+    }
+
+    OmBootImageResult image_a; /* 镜像 A 校验结果 */
+    OmBootImageResult image_b; /* 镜像 B 校验结果 */
+    memset(&image_a, 0, sizeof(image_a));
+    memset(&image_b, 0, sizeof(image_b));
+    if (image_ready[0] == OM_TRUE)
+    {
+        (void)om_boot_image_verify(&images[0], &image_a);
+    }
+    else
+    {
+        image_a.status = OM_BOOT_IMAGE_READ_ERROR;
+    }
+    if (image_ready[1] == OM_TRUE)
+    {
+        (void)om_boot_image_verify(&images[1], &image_b);
+    }
+    else
+    {
+        image_b.status = OM_BOOT_IMAGE_READ_ERROR;
+    }
+
+    g_boot_sample_state.imageAReady = (image_ready[0] == OM_TRUE) ? 1u : 0u;
+    g_boot_sample_state.imageAVerify = (uint32_t)image_a.status;
+    g_boot_sample_state.imageAValid =
+        (image_a.status == OM_BOOT_IMAGE_VALID) ? 1u : 0u;
+    g_boot_sample_state.imageAVersion =
+        (image_a.status == OM_BOOT_IMAGE_VALID) ? image_a.info.imageVersion : 0u;
+    g_boot_sample_state.imageBReady = (image_ready[1] == OM_TRUE) ? 1u : 0u;
+    g_boot_sample_state.imageBVerify = (uint32_t)image_b.status;
+    g_boot_sample_state.imageBValid =
+        (image_b.status == OM_BOOT_IMAGE_VALID) ? 1u : 0u;
+    g_boot_sample_state.imageBVersion =
+        (image_b.status == OM_BOOT_IMAGE_VALID) ? image_b.info.imageVersion : 0u;
+
+    g_boot_sample_state.metaStatus = (uint32_t)meta_result.status;
+    if (meta_result.status == OM_BOOT_META_READ_OK)
+    {
+        g_boot_sample_state.metaCopy = meta_result.record.copyIndex;
+        g_boot_sample_state.metaSeq = meta_result.record.seq;
+        g_boot_sample_state.metaState = (uint32_t)meta_result.record.data.state;
+        g_boot_sample_state.metaSlot = meta_result.record.data.activeSlot;
+        g_boot_sample_state.metaBootCount = meta_result.record.data.bootCount;
+        g_boot_sample_state.metaVersion = meta_result.record.data.imageVersion;
+        g_boot_sample_state.metaConfirmedMask =
+            (meta_result.record.data.confirmed[0] == OM_TRUE ? OM_BOOT_META_FLAG_SLOT_A_CONFIRMED : 0u) |
+            (meta_result.record.data.confirmed[1] == OM_TRUE ? OM_BOOT_META_FLAG_SLOT_B_CONFIRMED : 0u);
+        g_boot_sample_state.metaTrialFromRollback =
+            (uint32_t)meta_result.record.data.trialFromRollback;
+        g_boot_sample_state.metaReason = (uint32_t)meta_result.record.data.reason;
+    }
+
+    g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_OBJECT_RUN;
     g_boot_sample_state.stage = OM_BOOT_SAMPLE_STAGE_READY;
 
-    /* 启动决策/跳转/下载在此接入；当前保持可观察的空闲状态。 */
+    /* 决策与跳转在此接入；当前保持可观察的空闲状态。 */
     for (;;)
     {
         __WFI();
