@@ -36,6 +36,9 @@ _Static_assert(OM_BOOT_META_COPIES == 2u, "meta 记录当前只支持两份副�
 /** seq 的擦除/无效哨兵，永不写入。 */
 #define OM_BOOT_META_SEQ_INVALID 0xFFFFFFFFu
 
+/** 不校验布局指纹的哨兵；记录中的指纹是 16 位，不会与该值冲突。 */
+#define OM_BOOT_META_FINGERPRINT_NONE 0xFFFFFFFFu
+
 /**
  * @brief 启动状态记录存储对象
  *
@@ -47,6 +50,7 @@ typedef struct OmBootMeta {
     uint32_t copyCount;                       /**< 逻辑副本数 */
     uint32_t copyOffset[OM_BOOT_META_COPIES]; /**< 每个副本的分区内偏移 */
     uint32_t copySize[OM_BOOT_META_COPIES];   /**< 每个副本的擦除单位大小 */
+    uint32_t layoutFingerprint;               /**< 当前构建的布局指纹；NONE 表示不校验 */
 } OmBootMeta;
 
 /**
@@ -54,6 +58,9 @@ typedef struct OmBootMeta {
  * @param meta      Meta 对象
  * @param partition 已打开的分区句柄
  * @return OM_OK / OM_ERR_INVALID_ARG（参数为空、擦除单位数不足、单位容不下记录）
+ *
+ * 构建带布局配置时捕获当前布局指纹，读取时据此过滤不兼容记录；无布局配置
+ * 时置为 NONE，不校验指纹。
  */
 OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition);
 
@@ -73,6 +80,7 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaReadResult *out);
  *
  * 选择副本的顺序：已擦副本优先，其次损坏副本，最后擦除最旧的非最新有效
  * 副本。最新有效副本永不擦除。写入顺序为先写前 28 字节，最后写 CRC。
+ * 对象带当前构建指纹时，写入记录使用当前指纹；否则使用 data 中的值。
  */
 OmRet om_boot_meta_write(OmBootMeta *meta, const OmBootMetaData *data);
 

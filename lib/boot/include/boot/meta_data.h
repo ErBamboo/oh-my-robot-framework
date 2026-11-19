@@ -21,10 +21,11 @@ extern "C" {
 
 /** 一次读取的存储层结论。 */
 typedef enum OmBootMetaReadStatus {
-    OM_BOOT_META_READ_OK        = 0, /**< 找到最新有效记录 */
-    OM_BOOT_META_READ_NO_RECORD = 1, /**< 全部副本为擦除态 */
-    OM_BOOT_META_READ_DAMAGED   = 2, /**< 无有效记录，存在非擦除的损坏副本 */
-    OM_BOOT_META_READ_IO_ERROR  = 3, /**< 至少一个副本读取失败，无法判定 */
+    OM_BOOT_META_READ_OK           = 0, /**< 找到最新有效记录 */
+    OM_BOOT_META_READ_NO_RECORD    = 1, /**< 全部副本为擦除态 */
+    OM_BOOT_META_READ_DAMAGED      = 2, /**< 无有效记录，存在非擦除的损坏副本 */
+    OM_BOOT_META_READ_IO_ERROR     = 3, /**< 至少一个副本读取失败，无法判定 */
+    OM_BOOT_META_READ_INCOMPATIBLE = 4, /**< 存在完整记录，但布局指纹与当前构建不一致 */
 } OmBootMetaReadStatus;
 
 /** 一条启动状态记录的内容。 */
@@ -51,8 +52,9 @@ typedef struct OmBootMetaRecord {
  * @brief Meta 读取结果
  *
  * status 为 OM_BOOT_META_READ_OK 时 record 整体有效；其他状态下 record
- * 无意义。读取操作成功完成时返回 OM_OK，由 status 表达 NO_RECORD、DAMAGED
- * 与 IO_ERROR；OM_ERR_INVALID_ARG 只用于参数错误。
+ * 无意义。读取操作成功完成时返回 OM_OK，由 status 表达 NO_RECORD、DAMAGED、
+ * INCOMPATIBLE 与 IO_ERROR；OM_ERR_INVALID_ARG 只用于参数错误。
+ * 同时存在损坏副本与指纹不兼容副本时，INCOMPATIBLE 优先，便于定位布局变更。
  */
 typedef struct OmBootMetaReadResult {
     OmBootMetaReadStatus status;

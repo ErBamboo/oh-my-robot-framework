@@ -12,9 +12,10 @@
 /** 单个副本的读取分类。 */
 typedef enum OmBootMetaCopyState
 {
-    OM_BOOT_META_COPY_ERASED = 0,  /**< 全 0xFF，可直接写 */
-    OM_BOOT_META_COPY_VALID = 1,   /**< CRC 与字段校验通过 */
-    OM_BOOT_META_COPY_INVALID = 2, /**< 半写或损坏，写前须擦除 */
+    OM_BOOT_META_COPY_ERASED = 0,       /**< 全 0xFF，可直接写 */
+    OM_BOOT_META_COPY_VALID = 1,        /**< CRC 与字段校验通过，指纹兼容 */
+    OM_BOOT_META_COPY_INVALID = 2,      /**< 半写或损坏，写前须擦除 */
+    OM_BOOT_META_COPY_INCOMPATIBLE = 3, /**< 记录完整，但布局指纹与当前构建不符 */
 } OmBootMetaCopyState;
 
 /** 计算记录的 CRC；crc32 字段自身不参与。 */
@@ -63,18 +64,31 @@ static OmRet read_copy_raw(const OmBootMeta *meta, uint32_t index, OmBootMetaEnt
     return om_partition_read(&meta->partition, meta->copyOffset[index], entry, sizeof(*entry));
 }
 
-/** 对已读出的记录做空白/有效/损坏分类。 */
-static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry)
+/** 从记录中取出布局指纹。 */
+static uint32_t entry_fingerprint(const OmBootMetaEntry *entry)
+{
+    return (entry->flags & OM_BOOT_META_FLAG_FINGERPRINT_MASK) >>
+           OM_BOOT_META_FLAG_FINGERPRINT_SHIFT;
+}
+
+/** 对已读出的记录做空白/兼容/损坏分类。 */
+static OmBootMetaCopyState classify_copy(const OmBootMetaEntry *entry,
+                                         uint32_t expectedFingerprint)
 {
     if (entry_is_erased(entry) == OM_TRUE)
     {
         return OM_BOOT_META_COPY_ERASED;
     }
-    if (entry_is_valid(entry) == OM_TRUE)
+    if (entry_is_valid(entry) == OM_FALSE)
     {
-        return OM_BOOT_META_COPY_VALID;
+        return OM_BOOT_META_COPY_INVALID;
     }
-    return OM_BOOT_META_COPY_INVALID;
+    if (expectedFingerprint != OM_BOOT_META_FINGERPRINT_NONE &&
+        entry_fingerprint(entry) != expectedFingerprint)
+    {
+        return OM_BOOT_META_COPY_INCOMPATIBLE;
+    }
+    return OM_BOOT_META_COPY_VALID;
 }
 
 /**
@@ -100,7 +114,7 @@ static OmRet scan_copies(const OmBootMeta *meta, OmBootMetaEntry *copies,
         {
             return ret;
         }
-        states[i] = classify_copy(&copies[i]);
+        states[i] = classify_copy(&copies[i], meta->layoutFingerprint);
         if (states[i] == OM_BOOT_META_COPY_VALID &&
             (*has_latest == OM_FALSE || copies[i].seq > *latest_seq))
         {
@@ -134,7 +148,8 @@ static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaEntry *cop
     }
     for (i = 0u; i < meta->copyCount; i++)
     {
-        if (states[i] == OM_BOOT_META_COPY_INVALID)
+        if (states[i] == OM_BOOT_META_COPY_INVALID ||
+            states[i] == OM_BOOT_META_COPY_INCOMPATIBLE)
         {
             return i;
         }
@@ -158,7 +173,8 @@ static uint32_t choose_target(const OmBootMeta *meta, const OmBootMetaEntry *cop
 }
 
 /** 把记录内容编码为 32 字节记录；seq 与 CRC 在写入时填写。 */
-static void encode_entry(const OmBootMetaData *data, OmBootMetaEntry *entry)
+static void encode_entry(const OmBootMetaData *data, uint32_t fingerprint,
+                         OmBootMetaEntry *entry)
 {
     uint32_t flags; /* 指纹与状态迁移位 */
 
@@ -169,7 +185,7 @@ static void encode_entry(const OmBootMetaData *data, OmBootMetaEntry *entry)
     entry->imageVersion = data->imageVersion;
     entry->reason = (uint32_t)data->reason;
 
-    flags = (data->layoutFingerprint & 0xFFFFu) << OM_BOOT_META_FLAG_FINGERPRINT_SHIFT;
+    flags = (fingerprint & 0xFFFFu) << OM_BOOT_META_FLAG_FINGERPRINT_SHIFT;
     if (data->confirmed[0] == OM_TRUE)
     {
         flags |= OM_BOOT_META_FLAG_SLOT_A_CONFIRMED;
@@ -293,6 +309,11 @@ OmRet om_boot_meta_init(OmBootMeta *meta, const OmPartitionHandle *partition)
     meta->partition = *partition;
     /* 分区可以大于副本集合；模块只使用前 N 个独立单位，多余单位不读、不擦、不校验。 */
     meta->copyCount = OM_BOOT_META_COPIES;
+#ifdef OM_BOOT_LAYOUT_FINGERPRINT
+    meta->layoutFingerprint = OM_BOOT_LAYOUT_FINGERPRINT;
+#else
+    meta->layoutFingerprint = OM_BOOT_META_FINGERPRINT_NONE;
+#endif
 
     for (i = 0u; i < OM_BOOT_META_COPIES; i++)
     {
@@ -343,10 +364,14 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaReadResult *out)
         out->status = OM_BOOT_META_READ_NO_RECORD;
         for (i = 0u; i < meta->copyCount; i++)
         {
+            if (states[i] == OM_BOOT_META_COPY_INCOMPATIBLE)
+            {
+                out->status = OM_BOOT_META_READ_INCOMPATIBLE;
+                break;
+            }
             if (states[i] == OM_BOOT_META_COPY_INVALID)
             {
                 out->status = OM_BOOT_META_READ_DAMAGED;
-                break;
             }
         }
         return OM_OK;
@@ -362,13 +387,18 @@ OmRet om_boot_meta_read(const OmBootMeta *meta, OmBootMetaReadResult *out)
 OmRet om_boot_meta_write(OmBootMeta *meta, const OmBootMetaData *data)
 {
     OmBootMetaEntry entry; /* 编码后的记录 */
+    uint32_t fingerprint;  /* 写入记录的布局指纹 */
 
     if (meta == NULL || data == NULL || meta->copyCount != OM_BOOT_META_COPIES)
     {
         return OM_ERR_INVALID_ARG;
     }
 
-    encode_entry(data, &entry);
+    /* 有当前构建指纹时由框架盖章，避免调用方写入与构建不符的值。 */
+    fingerprint = (meta->layoutFingerprint != OM_BOOT_META_FINGERPRINT_NONE)
+                      ? meta->layoutFingerprint
+                      : data->layoutFingerprint;
+    encode_entry(data, fingerprint, &entry);
     if (om_boot_meta_entry_schema_valid(&entry) == OM_FALSE)
     {
         return OM_ERR_INVALID_ARG;

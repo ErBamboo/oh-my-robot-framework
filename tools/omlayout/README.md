@@ -40,7 +40,7 @@ python -m unittest discover -s tools/omlayout/tests -v
 `flash.base + offset + payloadOffset` 推导；VTOR 偏移为 `offset + payloadOffset`。
 
 `payloadOffset` 属于镜像契约，GUI 中应作为只读派生值展示；`check` 会与
-`image.h` 的 `OM_IMAGE_PAYLOAD_OFFSET` 对拍。
+`contract/image.h` 的 `OM_IMAGE_PAYLOAD_OFFSET` 对拍。
 
 JSON Schema 见 `tools/omlayout/om_bootcfg.schema.json`，供编辑器和上位机表单使用。
 CLI 与未来的上位机使用同一套校验逻辑；GUI 保存同一个 JSON 源文件，不直接生成
@@ -51,8 +51,11 @@ C 头。
 - 分区与保留区不重叠、在 flash 内、按擦除单位对齐；
 - app_a/app_b 等大；
 - meta 分区的独立擦除单位数不少于 `metaCopies`；
-- `payloadOffset` 与 `image.h` 的 `OM_IMAGE_PAYLOAD_OFFSET` 一致（`check` 命令）；
+- `payloadOffset` 与 `contract/image.h` 的 `OM_IMAGE_PAYLOAD_OFFSET` 一致（`check` 命令）；
 - 现有链接脚本或生成链接脚本的 ROM 地址/长度与声明一致（`check --linker-root`）。
+
+同一源与模板的重复生成输出逐字节一致；CI 对比两次生成，并分别注入链接脚本
+漂移与布局源漂移验证 `check` 会失败。
 
 链接脚本模板为 `linker/templates/gcc/layout.ld.in` 与
 `linker/templates/arm/layout.sct.in`，占位符 `@ROM_ORIGIN@` / `@ROM_LENGTH@`
