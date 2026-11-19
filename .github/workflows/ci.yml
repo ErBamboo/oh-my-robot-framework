@@ -99,6 +99,48 @@ jobs:
           fi
           python3 -c "import base64, sys; from pathlib import Path; sys.path.insert(0, 'tools/omhost'); import server, omimg; server.LAYOUT = omimg.load_layout(Path(sys.argv[1])); assert server.contract_info()['layout']['board'] == 'rm-a-board'; r = server.pack_response(b'omhost layout smoke', {'slot': 'a'}); assert r['ok'] and r['verdict']['ok']; img = base64.b64decode(r['imageBase64']); assert server.inspect_response(img)['verdict']['ok']; print('omhost layout smoke OK')" "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json"
 
+      - name: Check layout determinism and drift
+        run: |
+          GEN_1="$RUNNER_TEMP/om_layout_gen_1"
+          GEN_2="$RUNNER_TEMP/om_layout_gen_2"
+          for out in "$GEN_1" "$GEN_2"; do
+            python3 tools/omlayout/omlayout.py generate \
+              --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
+              --out "$out" \
+              --template-root platform/bsp/boards/rm-a-board/linker/templates
+          done
+          diff -r "$GEN_1" "$GEN_2"
+
+          cp -r "$GEN_1" "$RUNNER_TEMP/om_layout_drift"
+          sed -i 's/ORIGIN = 0x08010200/ORIGIN = 0x08000200/' \
+            "$RUNNER_TEMP/om_layout_drift/linker/gcc/app_a.ld"
+          if python3 tools/omlayout/omlayout.py check \
+            --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
+            --linker-root "$RUNNER_TEMP/om_layout_drift/linker" \
+            --contract lib/boot/include/boot/contract/image.h; then
+            echo "::error::layout check accepted a drifted linker script"
+            exit 1
+          fi
+
+          cp samples/boot/layout/rm-a-board/om_bootcfg.json "$RUNNER_TEMP/om_bootcfg_drift.json"
+          python3 - "$RUNNER_TEMP/om_bootcfg_drift.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["payloadOffset"] = int(data["payloadOffset"]) + 0x200
+          path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+          PY
+          if python3 tools/omlayout/omlayout.py check \
+            --spec "$RUNNER_TEMP/om_bootcfg_drift.json" \
+            --linker-root "$GEN_1/linker" \
+            --contract lib/boot/include/boot/contract/image.h; then
+            echo "::error::layout check accepted a drifted layout source"
+            exit 1
+          fi
+
       - name: Test omhost layout source editing
         run: |
           cp samples/boot/layout/rm-a-board/om_bootcfg.json "$RUNNER_TEMP/om_bootcfg_src.json"
