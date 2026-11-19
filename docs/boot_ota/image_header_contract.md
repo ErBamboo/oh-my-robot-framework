@@ -75,7 +75,7 @@ typedef struct OmImageHeader {
 | 15 | `reserved[20]` | 20B | 44 | 恒 `0xFF` | 凑齐 64B 并为**兼容性加字段**留空间（不兼容变更走 `hdrVersion`） |
 
 合计 **64 字节**；全部字段自然对齐（无跨边界访问）。字段名即契约头中的 C 成员名；
-落地形态见 `lib/boot/include/boot/image.h`（含 `_Static_assert` 的尺寸与偏移锁定）。
+落地形态见 `lib/boot/include/boot/contract/image.h`（含 `_Static_assert` 的尺寸与偏移锁定）。
 
 ## 4. flags 位分配
 
@@ -222,5 +222,5 @@ bootloader 自身镜像化（引导区自升级）· 镜像加密 · 镜像压�
 
 - 2026-09-14：v0 提案（15 字段 64B 头 + 固定 256B 摘要区 + 十步拒绝顺序 + 待确认清单 IH-01..IH-16）。
 - 2026-09-14（同日）：v1 定稿——IH-01..IH-09 按提案确认、IH-10 定为"打包核心 + 单文件 Web 应用 HMI（分期）"；补 §8「地址与常量的归属」（回答"地址数据不该写死"：槽基址归工程配置、`payloadOffset` 归镜像自描述、仅契约不变量为编译期常量，含成熟框架对照）、§11「术语」、§12「主机侧工具」。
-- 2026-09-14（同日）：落地——契约头 `lib/boot/include/boot/image.h`（含尺寸与偏移的编译期锁定）；字段名以 C 成员名（camelBack）为准，原 `flags_reserved` 位改为 `slotId`（IH-09 方案①落点，头长不变）；打包工具 `tools/omimg/` 与 host 语料 `samples/host/boot_image_test/`（30 项，含与工具的摘要对拍）。
+- 2026-09-14（同日）：落地——契约头 `lib/boot/include/boot/contract/image.h`（含尺寸与偏移的编译期锁定）；字段名以 C 成员名（camelBack）为准，原 `flags_reserved` 位改为 `slotId`（IH-09 方案①落点，头长不变）；打包工具 `tools/omimg/` 与 host 语料 `samples/host/boot_image_test/`（30 项，含与工具的摘要对拍）。
 - 2026-09-14（同日）：**值的可配边界**——负载偏移改为"契约头默认值 + 工程可覆写"（契约头 `#ifndef` 守卫，工程配置 `om_bootcfg.h` 覆写，构建注入 `-DOM_USE_BOOTCFG`）；打包工具加 `--payload-offset`。判据与逐宏分类见 §8 末段。其余宏维持契约不变量。

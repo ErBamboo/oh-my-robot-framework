@@ -8,7 +8,7 @@
 
 | 件 | 出处 | 用途 |
 |---|---|---|
-| 镜像格式契约头 | `lib/boot/include/boot/image.h`（64B 头 + 256B 摘要区 + 十步判定顺序 + 尺寸编译期锁定） | 决策核的解析/校验依据；bootloader 与 app 共享的 ABI |
+| 镜像格式契约头 | `lib/boot/include/boot/contract/image.h`（64B 头 + 256B 摘要区 + 十步判定顺序 + 尺寸编译期锁定） | 决策核的解析/校验依据；bootloader 与 app 共享的 ABI |
 | CRC-32/ISO-HDLC 原语 | `lib/algorithm`（`om_crc32_iso_hdlc`，**支持分段续算**） | 流式校验整镜像（K-29 要求每次上电全量校验） |
 | 打包工具与 host 语料 | `tools/omimg`、`tools/omhost`、`samples/host/boot_image_test`（30 项，跨语言对拍） | 产出可校验镜像；工具与目标端摘要一致性 |
 | 分区表 v2 | `lib/drivers/include/drivers/storage/partition.h`：const 注册表 + `om_partition_query`（按名取几何）+ `om_partition_open`（名 + 器件 + 几何三合一） | 槽基址/容量按**分区名**获取；无运行期注册、无 init 顺序、API 可重入（ADR-0024） |

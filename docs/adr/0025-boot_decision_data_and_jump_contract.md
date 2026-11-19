@@ -6,7 +6,7 @@
 
 ## 背景 (Context)
 
-开工序列步骤 ②（Bootloader 最小工程）进入 S2-3 落地阶段。前置件全部就绪：FlashDev v1（PR #70）、分区表抽象 v2（ADR-0024）、osal-none v2（ADR-0022）、日志三件套、镜像头契约 v1 与主机侧工具（`lib/boot/include/boot/image.h` / `tools/omimg` / `tools/host/boot_image_test`）。
+开工序列步骤 ②（Bootloader 最小工程）进入 S2-3 落地阶段。前置件全部就绪：FlashDev v1（PR #70）、分区表抽象 v2（ADR-0024）、osal-none v2（ADR-0022）、日志三件套、镜像头契约 v1 与主机侧工具（`lib/boot/include/boot/contract/image.h` / `tools/omimg` / `tools/host/boot_image_test`）。
 
 三个原记"实现期定"的开口现在必须闭合——否则决策核无法开工：
 
