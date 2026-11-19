@@ -2,6 +2,45 @@
 #include "bsp.h"
 #include "core/om_interrupt.h"
 #include "core/om_init.h"
+#include "osal/osal_port.h"
+
+#if (OM_OSAL_PORT == OSAL_PORT_NONE)
+/* os=none 由本工程自行处理 SysTick：HAL 时基使用 SysTick，无 RTOS 接管时
+ * 提供一个最小 tick 处理，避免落到启动文件的默认死循环。 */
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+}
+#elif (OM_OSAL_PORT == OSAL_PORT_FREERTOS)
+/* SysTick 由 FreeRTOS 端口在调度器启动时配置。HAL 初始化及随后的时钟重配
+ * 不得提前使能该中断：调度器未启动时进入 RTOS tick 处理会访问尚未建立的
+ * 任务表与当前任务。 */
+HAL_StatusTypeDef HAL_InitTick(uint32_t TickPriority)
+{
+    (void)TickPriority;
+    return HAL_OK;
+}
+#endif
+
+#ifdef OM_USE_BOOTCFG
+#include "om_bootcfg.h"
+#endif
+
+#ifndef OM_BOARD_VECT_TAB_OFFSET
+/** @brief 向量表相对 FLASH 基址的偏移（槽链接基址 - FLASH_BASE；引导器为其分区偏移） */
+#define OM_BOARD_VECT_TAB_OFFSET 0u
+#endif
+
+/* 布局源存在时，槽偏移以生成的 om_bootcfg.h 为准；否则沿用板级链接变体。 */
+#if defined(OM_BOOT_LAYOUT_FINGERPRINT) && defined(OM_BOOT_VARIANT_APP_A)
+#define OM_BOARD_ACTIVE_VECT_TAB_OFFSET OM_BOOT_SLOT_A_VTOR_OFFSET
+#elif defined(OM_BOOT_LAYOUT_FINGERPRINT) && defined(OM_BOOT_VARIANT_APP_B)
+#define OM_BOARD_ACTIVE_VECT_TAB_OFFSET OM_BOOT_SLOT_B_VTOR_OFFSET
+#elif defined(OM_BOOT_LAYOUT_FINGERPRINT) && defined(OM_BOOT_VARIANT_BOOTLOADER)
+#define OM_BOARD_ACTIVE_VECT_TAB_OFFSET OM_BOOT_BOOTLOADER_OFFSET
+#else
+#define OM_BOARD_ACTIVE_VECT_TAB_OFFSET OM_BOARD_VECT_TAB_OFFSET
+#endif
 
 /**
  * @brief  This function is executed in case of error occurrence.
@@ -85,6 +124,8 @@ static OmBoardInterface g_om_board_interface = {
 
 void om_board_init(void)
 {
+    // 按槽设置向量表基址：引导器为分区偏移；app 槽为槽内负载偏移。
+    SCB->VTOR = FLASH_BASE | OM_BOARD_ACTIVE_VECT_TAB_OFFSET;
     // 开发板初始化，对于STM32来说，在CubeMX上配置时钟树，然后直接复制过来用就好
     // 仅保留 HAL 自举核（时钟/CPU 注册/DWT）；外设注册由 OM_INIT_BOARD 自注册
     // （见 bsp_selfreg.c），在 BOARD 级 om_board_init 之后执行。

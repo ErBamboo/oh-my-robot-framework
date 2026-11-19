@@ -191,7 +191,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--rules",
-        default="context,board_assets,image_convert,project_cfg,selfreg",
+        default="context,project_cfg,board_assets,image_convert,selfreg",
         help="comma-separated binary rule names",
     )
     parser.add_argument(

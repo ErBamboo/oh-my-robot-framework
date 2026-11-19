@@ -1,5 +1,8 @@
 .xmake/
-# xmake 构建输出目录（构建系统源码在顶层 xmake/，不入此忽略）
+# xmake 构建输出目录（构建系统源码在顶层 xmake/，不入此忽略；仅根目录 build/）
 /build/
 /om_preset.lua
+
+# Python 工具（tools/）运行产物
 __pycache__/
+*.pyc

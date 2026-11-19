@@ -54,6 +54,88 @@ jobs:
       - name: Test compatibility tools
         run: python3 -m unittest discover -s tools/omcheck/tests -v
 
+      - name: Test boot layout tools
+        run: python3 -m unittest discover -s tools/omlayout/tests -v
+
+      - name: Test USB relay tool
+        run: python3 -m unittest discover -s tools/omrelay/tests -v
+
+      - name: Test omhost test bench
+        run: python3 -m unittest discover -s tools/omhost/tests -v
+
+      - name: Check boot layout and linkers
+        run: |
+          python3 tools/omlayout/omlayout.py generate \
+            --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
+            --out "$RUNNER_TEMP/om_bootcfg" \
+            --template-root platform/bsp/boards/rm-a-board/linker/templates
+          test -s "$RUNNER_TEMP/om_bootcfg/om_bootcfg.h"
+          test -s "$RUNNER_TEMP/om_bootcfg/boot_partition_data.c"
+          test -s "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json"
+          test -s "$RUNNER_TEMP/om_bootcfg/linker/gcc/app_a.ld"
+          test -s "$RUNNER_TEMP/om_bootcfg/linker/arm/app_b.sct"
+          gcc -std=c11 -fsyntax-only \
+            -I lib/include -I lib/drivers/include -I lib/data_struct/include \
+            -I lib/osal/include -I platform/osal/none -I "$RUNNER_TEMP/om_bootcfg" \
+            "$RUNNER_TEMP/om_bootcfg/boot_partition_data.c"
+          python3 tools/omlayout/omlayout.py check \
+            --spec samples/boot/layout/rm-a-board/om_bootcfg.json \
+            --linker-root "$RUNNER_TEMP/om_bootcfg/linker" \
+            --contract lib/boot/include/boot/contract/image.h
+          printf 'omr layout smoke' > "$RUNNER_TEMP/om_payload.bin"
+          python3 tools/omimg/omimg.py pack \
+            --input "$RUNNER_TEMP/om_payload.bin" \
+            --output "$RUNNER_TEMP/om_app_a.img.bin" --slot a \
+            --layout "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json" > /dev/null
+          python3 tools/omimg/omimg.py verify "$RUNNER_TEMP/om_app_a.img.bin" \
+            --layout "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json" > /dev/null
+          if python3 tools/omimg/omimg.py pack \
+              --input "$RUNNER_TEMP/om_payload.bin" \
+              --output "$RUNNER_TEMP/om_bad.img.bin" --slot a \
+              --payload-offset 0x400 \
+              --layout "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json" > /dev/null 2>&1; then
+            echo "::error::omimg accepted payload offset mismatching layout"
+            exit 1
+          fi
+          python3 -c "import base64, sys; from pathlib import Path; sys.path.insert(0, 'tools/omhost'); import server, omimg; server.LAYOUT = omimg.load_layout(Path(sys.argv[1])); assert server.contract_info()['layout']['board'] == 'rm-a-board'; r = server.pack_response(b'omhost layout smoke', {'slot': 'a'}); assert r['ok'] and r['verdict']['ok']; img = base64.b64decode(r['imageBase64']); assert server.inspect_response(img)['verdict']['ok']; print('omhost layout smoke OK')" "$RUNNER_TEMP/om_bootcfg/om_bootcfg.generated.json"
+
+      - name: Test omhost layout source editing
+        run: |
+          cp samples/boot/layout/rm-a-board/om_bootcfg.json "$RUNNER_TEMP/om_bootcfg_src.json"
+          python3 - "$RUNNER_TEMP/om_bootcfg_src.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "tools/omhost")
+          import server  # omhost/server.py 先把 tools/omimg 注入 sys.path
+          import omimg
+
+          path = Path(sys.argv[1])
+          server.LAYOUT_SOURCE_PATH = str(path)
+          payload = server.layout_source_payload()
+          assert payload["ok"], payload
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["payloadOffset"] = 0x400
+          _, info = server.validate_layout_source(data)
+          assert info["slots"]["a"]["linkBase"] == 0x08010400, info
+
+          saved = server.save_layout_source(data)
+          assert saved["ok"], saved
+          assert json.loads(path.read_text(encoding="utf-8"))["payloadOffset"] == 0x400
+
+          bad = json.loads(path.read_text(encoding="utf-8"))
+          bad["partitions"][1]["offset"] = 0x1000
+          try:
+              server.validate_layout_source(bad)
+          except omimg.ImageError:
+              pass
+          else:
+              raise SystemExit("invalid layout source accepted")
+          print("omhost layout source smoke OK")
+          PY
+
       - name: Render compatibility views
         run: |
           python3 tools/omcheck/compat_render.py --compat tools/omcheck/compat.yaml \
@@ -202,6 +284,36 @@ jobs:
 
       - name: Build flash device host tests
         run: xmake build -P samples/host/flash_dev_test
+
+      - name: Configure boot image host tests
+        run: xmake f -P samples/host/boot_image_test -p linux -m debug
+
+      - name: Build boot image host tests
+        run: xmake build -P samples/host/boot_image_test
+
+      - name: Run boot image tests
+        run: xmake run -P samples/host/boot_image_test host_boot_image_test
+
+      - name: Configure boot image object host tests
+        run: xmake f -P samples/host/boot_image_object_test -p linux -m debug
+
+      - name: Build boot image object host tests
+        run: xmake build -P samples/host/boot_image_object_test
+
+      - name: Run boot image object tests
+        run: xmake run -P samples/host/boot_image_object_test host_boot_image_object_test
+
+      - name: Configure boot meta store host tests
+        run: xmake f -P samples/host/boot_meta_store_test -p linux -m debug
+
+      - name: Build boot meta store host tests
+        run: xmake build -P samples/host/boot_meta_store_test
+
+      - name: Run boot meta store tests
+        run: xmake run -P samples/host/boot_meta_store_test host_boot_meta_store_test
+
+      - name: Run image tool selftest
+        run: python tools/omimg/omimg.py selftest
 
   # ⑤ 框架 + 器件库联合构建：用生成壳把两个仓库接起来并产出 ELF
   devices-integration:

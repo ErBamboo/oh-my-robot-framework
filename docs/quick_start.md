@@ -186,7 +186,7 @@ target("robot_project")
     set_kind("binary")
     set_filename("robot_project.elf")
     add_deps("tar_oh_my_robot")
-    add_rules("oh_my_robot.context", "oh_my_robot.board_assets", "oh_my_robot.image_convert", "oh_my_robot.project_cfg", "oh_my_robot.selfreg")
+    add_rules("oh_my_robot.context", "oh_my_robot.project_cfg", "oh_my_robot.board_assets", "oh_my_robot.image_convert", "oh_my_robot.selfreg")
     add_files(path.join("oh-my-robot", "samples", "osal", "osal_thread", "main.c")) -- 示例文件
 target_end()
 ```

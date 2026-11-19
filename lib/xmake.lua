@@ -129,6 +129,19 @@ target("tar_awalgo")
     add_files("algorithm/src/**.c")
 target_end()
 
+--- @target tar_awboot
+--- @brief 启动域目标（镜像格式契约与决策数据读写）
+--- @details 静态库：镜像契约头不产生代码；决策数据模块依赖算法 CRC 与分区层。
+target("tar_awboot")
+    add_rules("oh_my_robot.project_cfg")
+    set_kind("static")
+    add_rules("oh_my_robot.context")
+    add_includedirs("boot/include", {public = true})
+    add_deps("tar_awalgo", {public = true})
+    add_deps("tar_awdrivers", {public = true})
+    add_files("boot/src/**.c")
+target_end()
+
 --- @target tar_awdrivers
 --- @brief 驱动静态库
 --- @details 聚合驱动层实现与依赖。
@@ -172,8 +185,8 @@ target_end()
 -- 根治"旗标/配置变更不重编、静态库成员陈旧、库源配置不一致"（2026-09-05 审计实证）
 local _cfg_rule_targets = {
     "tar_awalgo", "tar_awapi_async", "tar_awapi_driver", "tar_awapi_ipc", "tar_awapi_osal",
-    "tar_awapi_sync", "tar_awasync", "tar_awcore", "tar_awdatastruct", "tar_awdrivers",
-    "tar_awkernel", "tar_awosal_probe", "tar_awsystems",
+    "tar_awapi_sync", "tar_awasync", "tar_awboot", "tar_awcore", "tar_awdatastruct",
+    "tar_awdrivers", "tar_awkernel", "tar_awosal_probe", "tar_awsystems",
 }
 -- 规则与 depfile 独立挂接（rule 文件的全局函数不跨文件可见——depfile 直接本地实现）
 local _cfg_state_file = path.join(os.projectdir(), ".xmake", "om_cfg_state")

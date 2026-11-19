@@ -6,10 +6,12 @@
            R3 host 临界区 = 临界区对象（模拟关中断互斥，ISR 模拟辅助线程真并发）；
            R4 忙等让步 Sleep(0)（语义不变，不空转整核）。
 
-    运行方式（-P 惯例）：
-      xmake f -c -P oh-my-robot-framework/samples/host/osal_none_test -m debug --mingw="D:/Program Files/ProgramTools/WinGW/w64devkit"
-      xmake build -P oh-my-robot-framework/samples/host/osal_none_test
-      xmake run -P oh-my-robot-framework/samples/host/osal_none_test host_osal_none_test
+    运行方式（在框架根执行；-P 惯例）：
+      xmake g --mingw="<本机 mingw64 sdk 路径>"   -- 每台机器一次；不配则 xmake 会挑中 Git 自带的
+                                                 -- mingw64（其中没有 gcc，链接期报 cannot execute 'cc1'）
+      xmake f -c -P samples/host/osal_none_test -p mingw -m debug
+      xmake build -P samples/host/osal_none_test
+      xmake run -P samples/host/osal_none_test host_osal_none_test
 
     退出码 0=全绿。OM_OSAL_PORT=3（OSAL_PORT_NONE）；
     堆 = 端口同一静态池实现，cfg 调大（65536）供语料分配。

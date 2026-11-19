@@ -2,10 +2,12 @@
     @file partition_test/xmake.lua
     @brief 分区表抽象 host 测试（按名查询值拷贝/便捷层边界/配置错误显式报错）
 
-    运行方式（同 flash_dev_test -P 惯例）：
-      xmake f -c -P oh-my-robot-framework/samples/host/partition_test -m debug --mingw="D:/Program Files/ProgramTools/WinGW/w64devkit"
-      xmake build -P oh-my-robot-framework/samples/host/partition_test
-      xmake run -P oh-my-robot-framework/samples/host/partition_test host_partition_test
+    运行方式（在框架根执行；同 flash_dev_test -P 惯例）：
+      xmake g --mingw="<本机 mingw64 sdk 路径>"   -- 每台机器一次；不配则 xmake 会挑中 Git 自带的
+                                                 -- mingw64（其中没有 gcc，链接期报 cannot execute 'cc1'）
+      xmake f -c -P samples/host/partition_test -p mingw -m debug
+      xmake build -P samples/host/partition_test
+      xmake run -P samples/host/partition_test host_partition_test
 
     退出码 0=全绿。器件仿真与 osal 桩复用同级 flash_dev_test 基础设施
     （flash_sim.c/h、host_osal.c、osal/ sync/ 覆盖头——相对引用，不复制）。

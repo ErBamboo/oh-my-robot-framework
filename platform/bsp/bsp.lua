@@ -37,16 +37,18 @@ end
 
 --- 获取板级强覆盖源文件（直接并入 binary）
 ---@param board_name string 板级名称
+---@param selfreg_profile string|nil 自注册形态（full/boot）
 ---@return string[] sources 覆盖源文件
-function get_board_override_sources(board_name)
-    return inputs.get_board_override_sources(board_name)
+function get_board_override_sources(board_name, selfreg_profile)
+    return inputs.get_board_override_sources(board_name, selfreg_profile)
 end
 
 --- 获取板级自注册源文件（直接并入 binary，保证 OM_INIT 回调存活）
 ---@param board_name string 板级名称
+---@param selfreg_profile string|nil 自注册形态（full/boot）
 ---@return string[] sources 自注册源文件
-function get_board_selfreg_sources(board_name)
-    return inputs.get_board_selfreg_sources(board_name)
+function get_board_selfreg_sources(board_name, selfreg_profile)
+    return inputs.get_board_selfreg_sources(board_name, selfreg_profile)
 end
 
 --- 更新板级 OS 配置上下文
@@ -61,9 +63,10 @@ end
 --- 获取板级构建资源（启动文件与链接脚本）
 ---@param board_name string 板级名称
 ---@param toolchain_name string 工具链名称
+---@param variant_name string|nil 链接变体名称（缺省 default）
 ---@return table assets 资源信息
-function get_board_build_assets(board_name, toolchain_name)
-    return assets.get_board_build_assets(board_name, toolchain_name)
+function get_board_build_assets(board_name, toolchain_name, variant_name)
+    return assets.get_board_build_assets(board_name, toolchain_name, variant_name)
 end
 
 return {

@@ -14,6 +14,9 @@
 ---@field osal table<string, string> OS 配置路径映射
 ---@field startup table<string, string> 启动文件映射
 ---@field linkerscript table<string, string> 链接脚本映射
+---@field link_variants table<string, table> 链接变体（链接脚本 + 向量表偏移）
+---@field boot_selfreg_sources string[] 引导器自注册源子集
+---@field boot_override_sources string[] 引导器强覆盖源子集
 ---@field components string[] 组件白名单
 ---@field component_overrides table<string, table> 组件覆盖配置
 local board = {
@@ -67,6 +70,48 @@ local board = {
         ["gnu-rm"] = "boards/rm-a-board/linker/gcc/stm32f427iihx.ld",
         ["armclang"] = "boards/rm-a-board/linker/arm/stm32f427iihx.sct",
     },
+    -- 链接变体：按构建目标选择回退链接脚本与向量表偏移。
+    -- 有 cfg/boards/<board>/om_bootcfg.json 时，链接脚本由布局源生成，向量表偏移
+    -- 由生成的 om_bootcfg.h 提供；本表的 vect_tab_offset 仅作无布局源时回退。
+    -- default = 单镜像（旧行为）；bootloader / app_a / app_b 用于双槽构建。
+    link_variants = {
+        default = {
+            linkerscript = {
+                ["gnu-rm"] = "boards/rm-a-board/linker/gcc/stm32f427iihx.ld",
+                ["armclang"] = "boards/rm-a-board/linker/arm/stm32f427iihx.sct",
+            },
+            vect_tab_offset = 0x0,
+        },
+        bootloader = {
+            linkerscript = {
+                ["gnu-rm"] = "boards/rm-a-board/linker/gcc/bootloader.ld",
+                ["armclang"] = "boards/rm-a-board/linker/arm/bootloader.sct",
+            },
+            vect_tab_offset = 0x0,
+        },
+        app_a = {
+            linkerscript = {
+                ["gnu-rm"] = "boards/rm-a-board/linker/gcc/app_a.ld",
+                ["armclang"] = "boards/rm-a-board/linker/arm/app_a.sct",
+            },
+            vect_tab_offset = 0x10200,
+        },
+        app_b = {
+            linkerscript = {
+                ["gnu-rm"] = "boards/rm-a-board/linker/gcc/app_b.ld",
+                ["armclang"] = "boards/rm-a-board/linker/arm/app_b.sct",
+            },
+            vect_tab_offset = 0x110200,
+        },
+    },
+    -- 引导器自注册子集：只直连启动必需源，避免全量外设适配器进入 64K 域。
+    -- flash 适配器负责注册 flash0，引导器读取分区表与 meta 依赖它。
+    boot_selfreg_sources = {
+        "boards/rm-a-board/source/core/bsp_cpu.c",
+        "arch/cortex-m/om_hardfault.c",
+        "vendor/STM32/STM32F4/adapters/flash/bsp_flash_f4.c",
+    },
+    boot_override_sources = {},
     components = {
         "cmsis",
         "device",

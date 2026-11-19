@@ -31,11 +31,47 @@ function update_board_os_context(om_robot, board_name, os_name)
     })
 end
 
+--- 解析构建根目录
+---@return string build_dir 构建根目录绝对路径
+local function resolve_build_dir()
+    local config = import("core.project.config")
+    config.load()
+    return path.absolute(config.get("builddir") or "build", os.projectdir())
+end
+
+--- 解析生成链接脚本（存在布局源时由 project_cfg 生成）
+---@param board_name string 板级名称
+---@param toolchain_name string 工具链名称
+---@param variant_name string|nil 链接变体名称
+---@return string|nil path 生成脚本路径；无布局源时返回 nil
+local function resolve_generated_linkerscript(board_name, toolchain_name, variant_name)
+    if not variant_name or variant_name == "default" then
+        return nil
+    end
+    local spec = path.join(os.projectdir(), "cfg", "boards", board_name, "om_bootcfg.json")
+    if not os.isfile(spec) then
+        return nil
+    end
+    local template_root = path.join(bsp_root, "boards", board_name, "linker", "templates")
+    if not os.isdir(template_root) then
+        raise("linker templates not found: " .. template_root)
+    end
+    local tool_dir = toolchain_name == "armclang" and "arm" or "gcc"
+    local extension = tool_dir == "arm" and ".sct" or ".ld"
+    local generated = path.join(resolve_build_dir(), "gen", board_name, "om_bootcfg",
+                                "linker", tool_dir, variant_name .. extension)
+    if not os.isfile(generated) then
+        raise("generated linker script not found: " .. generated)
+    end
+    return generated
+end
+
 --- 获取板级构建资源（启动文件与链接脚本）
 ---@param board_name string 板级名称
 ---@param toolchain_name string 工具链名称
+---@param variant_name string|nil 链接变体名称（缺省 default）
 ---@return table assets 资源信息
-function get_board_build_assets(board_name, toolchain_name)
+function get_board_build_assets(board_name, toolchain_name, variant_name)
     utils.require_string(toolchain_name, "toolchain")
     local profile = data_loader.get_profile(board_name)
 
@@ -69,8 +105,28 @@ function get_board_build_assets(board_name, toolchain_name)
         return abs
     end
 
+    --- 解析变体链接脚本：变体存在时优先，否则回退板级默认映射
+    ---@return string path_abs 绝对路径
+    local function resolve_variant_linkerscript()
+        local generated = resolve_generated_linkerscript(board_name, toolchain_name, variant_name)
+        if generated then
+            return generated
+        end
+        local variants = profile.board.link_variants or {}
+        local variant = variants[variant_name or "default"]
+        local raw = resolve_asset(variant, "linkerscript")
+        if not raw then
+            return resolve_asset_path("linkerscript", "linkerscript")
+        end
+        local abs = path.is_absolute(raw) and raw or path.join(bsp_root, raw)
+        if not os.isfile(abs) then
+            raise("linkerscript file not found: " .. abs)
+        end
+        return abs
+    end
+
     return {
         startup = resolve_asset_path("startup", "startup"),
-        linkerscript = resolve_asset_path("linkerscript", "linkerscript"),
+        linkerscript = resolve_variant_linkerscript(),
     }
 end

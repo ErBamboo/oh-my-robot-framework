@@ -126,8 +126,13 @@ flowchart LR
     - `build mode` 通过目标模式接口判定（`debug`/`release`）。
     - 内存用量由 `tools/omcheck/mem_report.py` 调用工具链 `size` / `fromelf` 输出 `FLASH/RAM` 已用量；不解析链接脚本。
   - 构建后通过 `tools/omcheck/link_guard.py` 执行链接契约校验（`tar_os`/`tar_sync` 关键强符号与 `.om_init` 段边界检查），失败即终止构建。
+- `oh_my_robot.project_cfg`：
+  - 检测 `cfg/boards/<board>/om_bootcfg.json`，生成 boot 布局 C 头、分区表、清单与链接脚本。
+  - 生成物位于 `build/.../gen/<board>/om_bootcfg/`，由生成标记去重。
+  - 布局源可由 `tools/omhost` 界面编辑（校验通过才写回）；生成物仍只在下一次构建时更新。
 - `oh_my_robot.board_assets`：
   - 注入启动文件与链接脚本。
+  - 存在布局源时优先使用生成的链接脚本，否则回退板级 `link_variants`。
   - 依赖 `toolchain_linker_flag`。
 - `oh_my_robot.image_convert`：
   - 构建后生成 `hex/bin`。
@@ -143,8 +148,8 @@ flowchart LR
 - `bsp/data_loader.lua`：加载 board/chip/vendor 数据并生成 profile。
 - `bsp/arch.lua`：解析架构与 arch traits。
 - `bsp/components.lua`：合并组件数据（board 覆盖优先）。
-- `bsp/inputs.lua`：输出 `defines/includedirs/sources/headerfiles/extrafiles`。
-- `bsp/assets.lua`：解析启动文件/链接脚本与板级 OS 配置目录。
+- `bsp/inputs.lua`：输出 `defines/includedirs/sources/headerfiles/extrafiles`；链接变体槽标识在此注入，VTOR 在有布局源时由生成头提供。
+- `bsp/assets.lua`：解析启动文件/链接脚本与板级 OS 配置目录；有布局源时优先返回生成的链接脚本。
 - rm-c-board 的 armclang scatter 不再将 FreeRTOS 相关对象固定放入 `RW_IRAM2`，避免 CCM/DMA 风险。
 
 ### 8.5 armclang 运行时与 semihosting 维护约束
@@ -310,6 +315,10 @@ end
 ```
 新增 board 时需同步更新 [`oh-my-robot/platform/bsp/data/boards/index.lua`](../../platform/bsp/data/boards/index.lua)。
 
+若板级声明 `link_variants` 且工程提供 `cfg/boards/<board>/om_bootcfg.json`，需在
+`boards/<board>/linker/templates/` 提供 `gcc/layout.ld.in` 与 `arm/layout.sct.in`；
+生成器填入 ROM 基址/长度后由 `board_assets` 使用。
+
 **启用 vendor 共享适配层外设（板瘦身，见 ADR-0012）**：若新板使用已适配 MCU 家族的外设（如 STM32F4 的 CAN），无需复制实现，只需：
 1. `boards/<b>/include/bsp_<p>.h`：板配置 shim（`USE_*` 开关 + `BSP_<P>_COUNT` + include 适配层契约头）；
 2. `boards/<b>/source/peripherals/<p>/bsp_<p>_data.c`：板数据表（实例/参数/引脚/中断，自动 glob 进 selfreg）；
@@ -406,7 +415,7 @@ armlink 自动为每个执行域生成 `Image$$ER_OM_INIT_<N>$$Base` / `Image$$E
 
 **同级排序说明：** 级别顺序由链接器保证；同级内执行顺序由 prio 决定（启动期一次小排序）——armlink 无段内 `SORT_BY_NAME` 等价物，故 OMR 不做链接期 prio 排序（Zephyr 仅 GCC/Clang 系才用链接期排序）。
 
-**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/board_assets/image_convert/project_cfg` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。**框架默认 `main`（`lib/source/core/om_main.c`，弱符号）也经本规则注入** binary（`om_framework_main=on` 默认）；它不在 `tar_awcore` 归档内（`remove_files`），用户定义强 `main` 自动覆盖，`om_framework_main=off` 时整体关闭注入（见 ADR-0013）。
+**自注册模块的链接保障（重要）：** 自注册模块（`lib/systems/src`、`lib/services/src` 下的 `.c`）若仅含 `OM_INIT` 注册、无外部引用，会被静态库按需抽取丢弃。binary 目标须启用 `oh_my_robot.selfreg` 规则（与 `context/project_cfg/board_assets/image_convert` 并列）：该规则把这些源直接编译进 binary，直接 `.o` 先于归档被链接、定义模块符号，归档成员随后不再被抽取，故无需从静态库剔除、也不会重复。这是 Linux/Zephyr"全对象链接"目标在 XMake 静态归档模型下的等价实现（XMake 无干净的 per-dep `--whole-archive` 入口，详见 ADR-0010）。**框架默认 `main`（`lib/source/core/om_main.c`，弱符号）也经本规则注入** binary（`om_framework_main=on` 默认）；它不在 `tar_awcore` 归档内（`remove_files`），用户定义强 `main` 自动覆盖，`om_framework_main=off` 时整体关闭注入（见 ADR-0013）。
 
 **校验：** 构建后 linkguard 会按工具链校验最终 ELF 的每级边界符号（GCC 查 `__om_init_<N>_start/end`、armclang 查 `Image$$ER_OM_INIT_<N>$$Base/Limit`，N=0..6）；若缺失，构建期即报错（"该板链接脚本未提供每级 `.om_init_<N>` 段边界符号"），不再等到运行期静默失败。
 
